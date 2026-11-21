@@ -16,6 +16,7 @@ namespace Seamstress.Mcp;
 public sealed class GarmentSession
 {
     public Workspace Workspace { get; } = new();
+    public BodyLibrary BodyLibrary { get; } = new();
     public Avatar Avatar { get; private set; }
     public bool CudaAvailable { get; }
     public string ComputeBackend => ClothAcceleration.RegisteredDeviceName ?? "CPU";
@@ -27,6 +28,8 @@ public sealed class GarmentSession
     }
 
     public Document Doc => Workspace.Document;
+
+    public void SetAvatar(Avatar avatar) => Avatar = avatar;
 
     public void LoadObjAvatar(string path, float scale = 1f)
     {

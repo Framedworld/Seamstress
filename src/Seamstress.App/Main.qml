@@ -313,6 +313,8 @@ ApplicationWindow {
                     onObjectAdded: (index, object) => garmentMenu.insertItem(index + 3, object)
                     onObjectRemoved: (index, object) => garmentMenu.removeItem(object)
                 }
+                MenuSeparator {}
+                MenuItem { text: tr("Import Mesh as Pattern (OBJ)..."); onTriggered: importMeshDialog.open() }
             }
             Menu {
                 title: tr("&Simulation")
@@ -755,6 +757,13 @@ ApplicationWindow {
         nameFilters: ["Wavefront OBJ (*.obj)"]
         currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
         onAccepted: App.setAvatar("CustomObj", selectedFile, 1)
+    }
+    FileDialog {
+        id: importMeshDialog
+        title: tr("Import Mesh as Pattern (OBJ)")
+        nameFilters: ["Wavefront OBJ (*.obj)"]
+        currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        onAccepted: App.importMeshAsPattern(selectedFile)
     }
     ColorDialog {
         id: colorDialog

@@ -1030,6 +1030,37 @@ public partial class AppController : INotifyPropertyChanged
         StatusText = Lang.F("Added {0}. Press Simulate to sew and drape it.", Lang.T(name));
     }
 
+    public bool ImportMeshAsPattern(string fileUrl)
+    {
+        string path = LocalPath(fileUrl);
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+        try
+        {
+            StopSimulation();
+            MeshImportResult? imported = null;
+            _workspace.History.Edit(Lang.T("Import mesh as pattern"), doc =>
+            {
+                imported = MeshToPatternImporter.ImportFromFile(path, doc);
+                doc.Garments.Add(imported.Garment);
+            });
+            if (imported != null)
+            {
+                _workspace.SetActiveGarment(imported.Garment.Id);
+                _workspace.SelectLayer(imported.Garment.Id);
+                StatusText = Lang.F("Imported {0} ({1} pieces, {2} seams).",
+                    imported.Garment.Name, imported.ExtractedPieceCount, imported.AutoSeamCount);
+            }
+            return true;
+        }
+        catch (Exception e)
+        {
+            AppLog.Write($"ImportMeshAsPattern failed for {path}: {e}");
+            StatusText = e.Message;
+            return false;
+        }
+    }
+
     public string TemplateNames() => string.Join("|", Templates.Names);
 
     public void AddGroup() => _workspace.AddGroup();

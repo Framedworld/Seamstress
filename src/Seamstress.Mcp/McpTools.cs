@@ -5,6 +5,7 @@ using Seamstress.Core.Editing;
 using Seamstress.Core.Geometry;
 using Seamstress.Core.IO;
 using Seamstress.Core.Model;
+using Seamstress.Core.Simulation;
 
 namespace Seamstress.Mcp;
 
@@ -132,7 +133,45 @@ public sealed class McpToolRegistry
             ("height", "integer", "PNG height in pixels (default 480)."))),
         Tool("export_garment", "Export the garment to .glb, .gltf, .obj, .fbx, or .svg (2D sewing pattern).", Props(
             ("path", "string", "Output file path with extension (.glb, .gltf, .obj, .fbx, or .svg)."),
-            ("weldSeams", "boolean", "Weld closed seams on 3D export (default true).")), "path")
+            ("weldSeams", "boolean", "Weld closed seams on 3D export (default true).")), "path"),
+        Tool("import_mesh_as_pattern", "Import a sculpted 3D clothing blockout .obj (e.g. from ZBrush with UV Master UVs or Polygroups) into editable 2D Seamstress pattern pieces with automatic 3D-welded seam detection and 3D placement.", Props(
+            ("path", "string", "Path to source .obj file."),
+            ("scale", "number", "Unit scale to metres (default 1.0; use 0.01 for cm-scale Unreal/ZBrush/Maya exports)."),
+            ("zUpToYUp", "boolean", "Convert Z-up coordinates to Y-up (default false)."),
+            ("useUvs", "boolean", "Use UV islands when present (default true; falls back to PCA/ARAP flattening of Polygroups)."),
+            ("splitByGroups", "boolean", "Split panels across OBJ g/o Polygroup boundaries (default true)."),
+            ("autoSew", "boolean", "Automatically create seams across 3D-welded panel borders (default true)."),
+            ("simplifyToleranceCm", "number", "Outline simplification tolerance in cm (default 0.6)."),
+            ("particleDistanceCm", "number", "Target simulation mesh edge length in cm (default 2.0)."),
+            ("garmentName", "string", "Optional name for the imported garment.")), "path"),
+        Tool("list_body_profiles", "List all saved parametric body profiles in the Seamstress Body Library.", Props()),
+        Tool("save_body_profile", "Save a parametric body profile (Mannequin scales, OBJ, MorphTargetObj, or MetaHuman .dna) to the Body Library.", Props(
+            ("name", "string", "Profile name."),
+            ("description", "string", "Optional notes."),
+            ("sourceType", "string", "Mannequin, Obj, MorphTargetObj, or MetaHumanDna (default Mannequin)."),
+            ("baseMeshPath", "string", "Optional path to base .obj or .dna file."),
+            ("scale", "number", "Unit scale to metres (default 1.0; 0.01 for cm Unreal/MetaHuman OBJs)."),
+            ("zUpToYUp", "boolean", "Convert Z-up to Y-up (default false)."),
+            ("heightScale", "number", "Parametric vertical scale (default 1.0)."),
+            ("widthScale", "number", "Parametric lateral scale (default 1.0)."),
+            ("depthScale", "number", "Parametric front-to-back scale (default 1.0).")), "name"),
+        Tool("load_body_profile", "Switch the active simulation avatar to a saved Body Library profile (or inline parametric Mannequin scales).", Props(
+            ("profile", "string", "Saved profile ID or name (optional if passing inline scales)."),
+            ("heightScale", "number", "Inline mannequin height scale (default 1.0)."),
+            ("widthScale", "number", "Inline mannequin width scale (default 1.0)."),
+            ("depthScale", "number", "Inline mannequin depth scale (default 1.0)."))),
+        Tool("inspect_metahuman_dna", "Inspect a MetaHuman .dna file header, format version, size, and whether an OpenRigLogic Python extraction bridge is available.", Props(
+            ("path", "string", "Path to MetaHuman .dna file.")), "path"),
+        Tool("refit_garment_to_body", "Auto-fit a garment from the current avatar onto a same-topology target body profile (or parametric mannequin scales) via barycentric transfer, 2D pattern auto-grading, and CUDA morph-drape simulation.", Props(
+            ("garmentId", "string", "Optional garment ID (defaults to active garment)."),
+            ("targetProfile", "string", "Saved target Body Library profile ID or name (optional if passing inline scales)."),
+            ("targetHeightScale", "number", "Inline target mannequin height scale (default 1.0)."),
+            ("targetWidthScale", "number", "Inline target mannequin width scale (default 1.0)."),
+            ("targetDepthScale", "number", "Inline target mannequin depth scale (default 1.0)."),
+            ("grade2DPatterns", "boolean", "Auto-grade 2D pattern outlines to match target body proportions (default true)."),
+            ("runMorphDrape", "boolean", "Run staged morph-drape cloth simulation onto target body (default true)."),
+            ("morphStages", "integer", "Intermediate morph stages (default 3)."),
+            ("settleFrames", "integer", "Final settling frames on target body (default 30).")))
     );
 
     public object Dispatch(string name, JsonElement args)
@@ -163,6 +202,12 @@ public sealed class McpToolRegistry
             "inspect_fit" => _session.InspectFit(OptString(args, "garmentId")),
             "render_preview" => RenderPreview(args),
             "export_garment" => ExportGarment(args),
+            "import_mesh_as_pattern" => ImportMeshAsPattern(args),
+            "list_body_profiles" => ListBodyProfiles(),
+            "save_body_profile" => SaveBodyProfile(args),
+            "load_body_profile" => LoadBodyProfile(args),
+            "inspect_metahuman_dna" => MetaHumanDnaLoader.Inspect(ReqString(args, "path")),
+            "refit_garment_to_body" => RefitGarmentToBody(args),
             _ => throw new ArgumentException($"Unknown tool '{name}'."),
         };
     }
@@ -635,6 +680,154 @@ public sealed class McpToolRegistry
             path = Path.GetFullPath(path),
             meshes = scene.Meshes.Count,
             triangles = scene.Meshes.Sum(m => m.TriangleCount),
+        };
+    }
+
+    private object ImportMeshAsPattern(JsonElement args)
+    {
+        string path = ReqString(args, "path");
+        var options = new MeshImportOptions
+        {
+            Scale = OptFloat(args, "scale", 1f),
+            ZUpToYUp = OptBool(args, "zUpToYUp", false),
+            UseUvs = OptBool(args, "useUvs", true),
+            SplitByGroups = OptBool(args, "splitByGroups", true),
+            AutoSew = OptBool(args, "autoSew", true),
+            SimplifyToleranceCm = OptFloat(args, "simplifyToleranceCm", 0.6f),
+            ParticleDistanceCm = OptFloat(args, "particleDistanceCm", 2.0f),
+            GarmentName = OptString(args, "garmentName"),
+        };
+        var result = MeshToPatternImporter.ImportFromFile(path, _session.Doc, options);
+        _session.Doc.Garments.Add(result.Garment);
+        _session.Workspace.SetActiveGarment(result.Garment.Id);
+        return new
+        {
+            garmentId = result.Garment.Id,
+            name = result.Garment.Name,
+            sourceVertices = result.SourceVertexCount,
+            sourceTriangles = result.SourceTriangleCount,
+            extractedPieces = result.ExtractedPieceCount,
+            autoSeams = result.AutoSeamCount,
+            usedUvIslands = result.UsedUvIslands,
+            warnings = result.Warnings,
+            pieces = result.Garment.Pieces.Select(p => new { id = p.Id, name = p.Name, edges = p.EdgeCount }),
+        };
+    }
+
+    private object ListBodyProfiles()
+    {
+        var profiles = _session.BodyLibrary.ListProfiles();
+        return new
+        {
+            folder = BodyLibrary.DefaultFolder,
+            activeAvatar = _session.Avatar.Name,
+            profiles = profiles.Select(p => new
+            {
+                id = p.Id,
+                name = p.Name,
+                sourceType = p.SourceType,
+                baseMeshPath = p.BaseMeshPath,
+                heightScale = p.HeightScale,
+                widthScale = p.WidthScale,
+                depthScale = p.DepthScale,
+                description = p.Description,
+            }),
+        };
+    }
+
+    private object SaveBodyProfile(JsonElement args)
+    {
+        var profile = new BodyProfile
+        {
+            Name = ReqString(args, "name"),
+            Description = OptString(args, "description") ?? "",
+            SourceType = OptString(args, "sourceType") ?? "Mannequin",
+            BaseMeshPath = OptString(args, "baseMeshPath"),
+            Scale = OptFloat(args, "scale", 1f),
+            ZUpToYUp = OptBool(args, "zUpToYUp", false),
+            HeightScale = OptFloat(args, "heightScale", 1f),
+            WidthScale = OptFloat(args, "widthScale", 1f),
+            DepthScale = OptFloat(args, "depthScale", 1f),
+        };
+        _session.BodyLibrary.SaveProfile(profile);
+        return new { ok = true, id = profile.Id, name = profile.Name, sourceType = profile.SourceType };
+    }
+
+    private object LoadBodyProfile(JsonElement args)
+    {
+        BodyProfile profile;
+        if (OptString(args, "profile") is { Length: > 0 } key)
+        {
+            profile = _session.BodyLibrary.LoadProfile(key)
+                ?? throw new ArgumentException($"Body profile '{key}' not found.");
+        }
+        else
+        {
+            profile = new BodyProfile
+            {
+                Name = "Parametric Mannequin",
+                SourceType = "Mannequin",
+                HeightScale = OptFloat(args, "heightScale", 1f),
+                WidthScale = OptFloat(args, "widthScale", 1f),
+                DepthScale = OptFloat(args, "depthScale", 1f),
+            };
+        }
+        var avatar = _session.BodyLibrary.BuildAvatar(profile);
+        _session.SetAvatar(avatar);
+        return new
+        {
+            ok = true,
+            avatarName = avatar.Name,
+            vertexCount = avatar.Mesh.Positions.Length,
+            triangleCount = avatar.Mesh.Triangles.Length / 3,
+            landmarks = _session.GetAvatarLandmarks(),
+        };
+    }
+
+    private object RefitGarmentToBody(JsonElement args)
+    {
+        var garment = ResolveGarment(OptString(args, "garmentId"));
+        var sourceBody = _session.Avatar;
+
+        BodyProfile targetProfile;
+        if (OptString(args, "targetProfile") is { Length: > 0 } key)
+        {
+            targetProfile = _session.BodyLibrary.LoadProfile(key)
+                ?? throw new ArgumentException($"Target body profile '{key}' not found.");
+        }
+        else
+        {
+            targetProfile = new BodyProfile
+            {
+                Name = "Target Parametric Mannequin",
+                SourceType = "Mannequin",
+                HeightScale = OptFloat(args, "targetHeightScale", 1f),
+                WidthScale = OptFloat(args, "targetWidthScale", 1f),
+                DepthScale = OptFloat(args, "targetDepthScale", 1f),
+            };
+        }
+        var targetBody = _session.BodyLibrary.BuildAvatar(targetProfile);
+        var options = new RefitOptions
+        {
+            Grade2DPatterns = OptBool(args, "grade2DPatterns", true),
+            RunMorphDrape = OptBool(args, "runMorphDrape", true),
+            MorphStages = OptInt(args, "morphStages", 3),
+            SettleFrames = OptInt(args, "settleFrames", 30),
+        };
+        var result = GarmentRefitter.RefitGarment(_session.Doc, _session.Workspace, garment, sourceBody, targetBody, options);
+        _session.SetAvatar(targetBody);
+        return new
+        {
+            ok = true,
+            garmentId = garment.Id,
+            targetAvatar = targetBody.Name,
+            transferredVertices = result.TransferredVertices,
+            gradedPieces = result.GradedPieces,
+            simulatedFrames = result.SimulatedFrames,
+            computeBackend = result.ComputeBackend,
+            averageScale = new[] { MathF.Round(result.AverageScaleX, 3), MathF.Round(result.AverageScaleY, 3), MathF.Round(result.AverageScaleZ, 3) },
+            penetratedVerticesAfter = result.PenetratedVerticesAfter,
+            maxPenetrationMmAfter = MathF.Round(result.MaxPenetrationMmAfter, 2),
         };
     }
 
