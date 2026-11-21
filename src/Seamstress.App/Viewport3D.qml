@@ -284,15 +284,18 @@ Item {
             }
         }
 
-        DirectionalLight { eulerRotation: Qt.vector3d(-35, 30, 0); brightness: 1.1; ambientColor: Qt.rgba(0.28, 0.28, 0.30, 1) }
-        DirectionalLight { eulerRotation: Qt.vector3d(-20, -140, 0); brightness: 0.55 }
-        DirectionalLight { eulerRotation: Qt.vector3d(60, 180, 0); brightness: 0.25 }
+        // Sculpted 3-point studio lighting rig (warm-neutral key, cool soft fill, crisp rim, subtle ground bounce)
+        // so cloth folds, creases and silhouettes read clearly like a studio dress-form showcase.
+        DirectionalLight { eulerRotation: Qt.vector3d(-32, 34, 0); color: "#fff8ef"; brightness: 1.25; ambientColor: Qt.rgba(0.18, 0.20, 0.24, 1) }
+        DirectionalLight { eulerRotation: Qt.vector3d(-16, -62, 0); color: "#cfe0ff"; brightness: 0.52 }
+        DirectionalLight { eulerRotation: Qt.vector3d(-24, 152, 0); color: "#e6eeff"; brightness: 0.72 }
+        DirectionalLight { eulerRotation: Qt.vector3d(72, 20, 0); color: "#c4cbd8"; brightness: 0.18 }
 
         Model {
             visible: root.showAvatar && root.avatarSource !== ""
             pickable: true      // for the ruler
             source: root.avatarSource
-            materials: PrincipledMaterial { baseColor: "#b8aaa0"; roughness: 0.75 }
+            materials: PrincipledMaterial { baseColor: "#b9afa6"; roughness: 0.68 }
         }
 
         Repeater3D {
@@ -835,123 +838,185 @@ Item {
         onWheel: (e) => { root.distance = Math.max(0.25, Math.min(25, root.distance * Math.pow(0.999, e.angleDelta.y))) }
     }
 
-    Label {
+    Rectangle {
         id: viewTitle
-        anchors { left: parent.left; top: parent.top; margins: 8; right: viewButtons.left; rightMargin: 12 }
-        elide: Text.ElideRight
-        text: tr("3D Garment")
-        font.bold: true
-        opacity: 0.75
+        anchors { left: parent.left; top: parent.top; margins: 8 }
+        readonly property real available: viewButtons.x - x - 8
+        visible: available >= 60
+        implicitWidth: Math.min(viewTitleLabel.implicitWidth + 14, Math.max(0, available))
+        implicitHeight: 26
+        radius: 6
+        color: Qt.alpha(palette.window, 0.82)
+        border.color: Qt.alpha(palette.windowText, 0.12)
+        border.width: 1
+        Label {
+            id: viewTitleLabel
+            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 7; rightMargin: 7 }
+            elide: Text.ElideRight
+            text: tr("3D Garment")
+            font.pixelSize: 11
+            font.weight: Font.DemiBold
+            color: palette.windowText
+            opacity: 0.9
+        }
     }
     // Key for the normal direction colours.
-    RowLayout {
+    Rectangle {
         visible: root.showNormals
-        anchors { left: parent.left; top: viewTitle.bottom; leftMargin: 8; topMargin: 6 }
-        spacing: 6
-        Rectangle { implicitWidth: 12; implicitHeight: 12; radius: 2; color: "#3f78e0" }
-        Label { text: tr("Front (normal side)"); font.pixelSize: 11; opacity: 0.85 }
-        Rectangle { implicitWidth: 12; implicitHeight: 12; radius: 2; color: "#e04848"; Layout.leftMargin: 8 }
-        Label { text: tr("Back"); font.pixelSize: 11; opacity: 0.85 }
+        anchors { left: parent.left; top: viewTitle.visible ? viewTitle.bottom : parent.top; leftMargin: 8; topMargin: viewTitle.visible ? 6 : 8 }
+        implicitWidth: normalKeyRow.implicitWidth + 16
+        implicitHeight: 24
+        radius: 6
+        color: Qt.alpha(palette.window, 0.84)
+        border.color: Qt.alpha(palette.windowText, 0.12)
+        border.width: 1
+        RowLayout {
+            id: normalKeyRow
+            anchors.centerIn: parent
+            spacing: 6
+            Rectangle { implicitWidth: 10; implicitHeight: 10; radius: 2; color: "#3f78e0" }
+            Label { text: tr("Front (normal side)"); font.pixelSize: 11; opacity: 0.9 }
+            Rectangle { implicitWidth: 10; implicitHeight: 10; radius: 2; color: "#e04848"; Layout.leftMargin: 6 }
+            Label { text: tr("Back"); font.pixelSize: 11; opacity: 0.9 }
+        }
     }
 
     RowLayout {
         id: viewButtons
-        anchors { right: parent.right; top: parent.top; margins: 6 }
+        anchors { right: parent.right; top: parent.top; margins: 8 }
         spacing: 4
+        component ViewPill: Rectangle {
+            default property alias controls: pillRow.data
+            implicitWidth: pillRow.implicitWidth + 4
+            implicitHeight: 26
+            radius: 6
+            color: Qt.alpha(palette.window, 0.84)
+            border.color: Qt.alpha(palette.windowText, 0.13)
+            border.width: 1
+            RowLayout {
+                id: pillRow
+                anchors.centerIn: parent
+                spacing: 1
+            }
+        }
         component ViewButton: ToolButton {
+            id: vb
             font.pixelSize: 11
-            implicitHeight: 24
-            padding: 5
-        }
-        ViewButton { text: tr("view|Front"); onClicked: root.setView(0, -5) }
-        ViewButton { text: tr("view|Side"); onClicked: root.setView(90, -5) }
-        ViewButton { text: tr("view|Back"); onClicked: root.setView(180, -5) }
-        ViewButton {
-            text: tr("Ortho")
-            checkable: true
-            checked: root.orthographic
-            onToggled: root.orthographic = checked
-            ToolTip.visible: hovered
-            readonly property string key: { App.keysRevision; return App.keyText("view.ortho") }
-            ToolTip.text: tr("Orthographic view: no perspective, so parts of the garment can be compared in size") + (key !== "" ? " (" + key + ")" : "")
-        }
-        ToolSeparator { implicitHeight: 22 }
-        ViewButton {
-            text: tr("Checker")
-            checkable: true
-            checked: root.displayMode === "checker"
-            onToggled: root.displayMode = checked ? "checker" : "shaded"
-            ToolTip.visible: hovered
-            ToolTip.text: tr("Show a checker texture to judge UVs and texel density")
-        }
-        ViewButton {
-            text: tr("Wire")
-            checkable: true
-            checked: root.wireframe
-            onToggled: root.wireframe = checked
-            ToolTip.visible: hovered
-            ToolTip.text: tr("Show the mesh topology")
-        }
-        ViewButton {
-            text: tr("Pinch")
-            checkable: true
-            checked: root.pinchMode
-            onToggled: {
-                root.pinchMode = checked
-                if (checked)
-                    App.pinBrush = false
+            font.weight: vb.checked ? Font.DemiBold : Font.Normal
+            implicitHeight: 22
+            leftPadding: 5
+            rightPadding: 5
+            topPadding: 2
+            bottomPadding: 2
+            contentItem: Label {
+                text: vb.text
+                font: vb.font
+                color: vb.checked ? palette.highlightedText : palette.windowText
+                opacity: vb.checked ? 1.0 : (vb.hovered ? 1.0 : 0.86)
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
             }
-            ToolTip.visible: hovered
-            ToolTip.text: tr("Drag the cloth itself to tug it into place, during or after simulation")
+            background: Rectangle {
+                radius: 4
+                color: vb.checked ? (vb.hovered ? Qt.lighter(palette.highlight, 1.08) : palette.highlight)
+                    : vb.down ? Qt.alpha(palette.windowText, 0.18)
+                    : vb.hovered ? Qt.alpha(palette.windowText, 0.12)
+                    : "transparent"
+                Behavior on color { ColorAnimation { duration: 90 } }
+            }
         }
-        ViewButton {
-            text: tr("Rip")
-            checkable: true
-            checked: root.ripMode
-            onToggled: {
-                root.ripMode = checked
-                if (checked) {
-                    root.pinchMode = false
-                    App.pinBrush = false
+        ViewPill {
+            ViewButton { text: tr("view|Front"); onClicked: root.setView(0, -5) }
+            ViewButton { text: tr("view|Side"); onClicked: root.setView(90, -5) }
+            ViewButton { text: tr("view|Back"); onClicked: root.setView(180, -5) }
+            ViewButton {
+                text: tr("Ortho")
+                checkable: true
+                checked: root.orthographic
+                onToggled: root.orthographic = checked
+                ToolTip.visible: hovered
+                readonly property string key: { App.keysRevision; return App.keyText("view.ortho") }
+                ToolTip.text: tr("Orthographic view: no perspective, so parts of the garment can be compared in size") + (key !== "" ? " (" + key + ")" : "")
+            }
+        }
+        ViewPill {
+            ViewButton {
+                text: tr("Checker")
+                checkable: true
+                checked: root.displayMode === "checker"
+                onToggled: root.displayMode = checked ? "checker" : "shaded"
+                ToolTip.visible: hovered
+                ToolTip.text: tr("Show a checker texture to judge UVs and texel density")
+            }
+            ViewButton {
+                text: tr("Wire")
+                checkable: true
+                checked: root.wireframe
+                onToggled: root.wireframe = checked
+                ToolTip.visible: hovered
+                ToolTip.text: tr("Show the mesh topology")
+            }
+            ViewButton {
+                text: tr("Pinch")
+                checkable: true
+                checked: root.pinchMode
+                onToggled: {
+                    root.pinchMode = checked
+                    if (checked)
+                        App.pinBrush = false
                 }
+                ToolTip.visible: hovered
+                ToolTip.text: tr("Drag the cloth itself to tug it into place, during or after simulation")
             }
-            ToolTip.visible: hovered
-            readonly property string key: { App.keysRevision; return App.keyText("view.rip") }
-            ToolTip.text: tr("Drag across the cloth to tear it; hold Shift for a straight tear. The stroke may start or end outside the garment") + (key !== "" ? " (" + key + ")" : "")
-        }
-        ViewButton {
-            text: tr("Pin")
-            checkable: true
-            checked: App.pinBrush
-            onToggled: {
-                App.pinBrush = checked
-                if (checked)
-                    root.pinchMode = false
+            ViewButton {
+                text: tr("Rip")
+                checkable: true
+                checked: root.ripMode
+                onToggled: {
+                    root.ripMode = checked
+                    if (checked) {
+                        root.pinchMode = false
+                        App.pinBrush = false
+                    }
+                }
+                ToolTip.visible: hovered
+                readonly property string key: { App.keysRevision; return App.keyText("view.rip") }
+                ToolTip.text: tr("Drag across the cloth to tear it; hold Shift for a straight tear. The stroke may start or end outside the garment") + (key !== "" ? " (" + key + ")" : "")
             }
-            ToolTip.visible: hovered
-            readonly property string key: { App.keysRevision; return App.keyText("view.pinBrush") }
-            ToolTip.text: tr("Click cloth vertices, or drag a box, to pin them in place during simulation") + (key !== "" ? " (" + key + ")" : "")
-        }
-        ViewButton {
-            text: tr("Gizmo")
-            checkable: true
-            checked: root.showGizmo
-            onToggled: root.showGizmo = checked
-            ToolTip.visible: hovered
-            ToolTip.text: tr("Show handles to move (arrows) and rotate (rings) the selected pieces")
-        }
-        ViewButton {
-            text: tr("Avatar")
-            checkable: true
-            checked: root.showAvatar
-            onToggled: root.showAvatar = checked
+            ViewButton {
+                text: tr("Pin")
+                checkable: true
+                checked: App.pinBrush
+                onToggled: {
+                    App.pinBrush = checked
+                    if (checked)
+                        root.pinchMode = false
+                }
+                ToolTip.visible: hovered
+                readonly property string key: { App.keysRevision; return App.keyText("view.pinBrush") }
+                ToolTip.text: tr("Click cloth vertices, or drag a box, to pin them in place during simulation") + (key !== "" ? " (" + key + ")" : "")
+            }
+            ViewButton {
+                text: tr("Gizmo")
+                checkable: true
+                checked: root.showGizmo
+                onToggled: root.showGizmo = checked
+                ToolTip.visible: hovered
+                ToolTip.text: tr("Show handles to move (arrows) and rotate (rings) the selected pieces")
+            }
+            ViewButton {
+                text: tr("Avatar")
+                checkable: true
+                checked: root.showAvatar
+                onToggled: root.showAvatar = checked
+            }
         }
     }
 
     Label {
-        anchors { left: parent.left; right: rendererLabel.left; bottom: parent.bottom; margins: 8 }
+        anchors { left: parent.left; right: rendererLabel.left; bottom: parent.bottom; margins: 10; rightMargin: 12 }
         elide: Text.ElideRight
-        opacity: 0.55
+        opacity: 0.62
         font.pixelSize: 11
         text: App.pinBrush
             ? tr("Pin: click vertices or drag a box  ·  Shift: add to the selection  ·  Right-click: Pin menu  ·  %1: orbit").arg(orbitWords())
@@ -960,11 +1025,33 @@ Item {
             : root.ripMode ? tr("Rip: drag across a piece of cloth to tear it  ·  Shift: straight tear  ·  %1: orbit  ·  %2: pan  ·  Wheel: zoom").arg(orbitWords()).arg(panWords(false))
                             : tr("%1: orbit  ·  %2: pan  ·  Wheel: zoom  ·  Click: select  ·  Right-click: Edit menu  ·  Handles: move / rotate / scale (Q W E R)  ·  Shift: snap").arg(orbitWords()).arg(panWords(true))
     }
-    Label {
+    Rectangle {
         id: rendererLabel
+        readonly property bool cudaActive: App.computeBackend.indexOf("CUDA") === 0
         anchors { right: parent.right; bottom: parent.bottom; margins: 8 }
-        opacity: 0.55
-        font.pixelSize: 11
-        text: App.renderer
+        implicitWidth: backendRow.implicitWidth + 16
+        implicitHeight: 24
+        radius: 6
+        color: Qt.alpha(palette.window, 0.84)
+        border.color: cudaActive ? Qt.alpha("#10b981", 0.45) : Qt.alpha(palette.windowText, 0.14)
+        border.width: 1
+        RowLayout {
+            id: backendRow
+            anchors.centerIn: parent
+            spacing: 6
+            Rectangle {
+                implicitWidth: 7
+                implicitHeight: 7
+                radius: 3.5
+                color: rendererLabel.cudaActive ? "#10b981" : palette.placeholderText
+            }
+            Label {
+                font.pixelSize: 11
+                font.weight: Font.Medium
+                color: palette.windowText
+                opacity: 0.92
+                text: App.renderer + " · " + App.computeBackend
+            }
+        }
     }
 }

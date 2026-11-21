@@ -21,8 +21,8 @@ public class ThemeTests
     [Fact]
     public void PresetsLookTheWayTheyShould()
     {
-        Assert.Equal("#2b2d31", Theme.Preset("default")["window"]);
-        Assert.Equal("#24262b", Theme.Preset("default")["viewerBg"]);
+        Assert.Equal("#1b1e25", Theme.Preset("default")["window"]);
+        Assert.Equal("#15171c", Theme.Preset("default")["viewerBg"]);
         Assert.Equal("#f0f1f3", Theme.Preset("light")["window"]);
         Assert.Equal("#000000", Theme.Preset("hcdark")["window"]);
         Assert.Equal("#ffffff", Theme.Preset("hclight")["window"]);

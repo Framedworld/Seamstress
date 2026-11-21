@@ -161,6 +161,7 @@ Item {
         function onShowBodyOutlineChanged() { canvas.requestPaint() }
         function onImperialChanged() { canvas.requestPaint() }
         function onLanguageRevisionChanged() { canvas.requestPaint() }
+        function onThemeViewerBgChanged() { canvas.requestPaint() }
     }
 
     Canvas {
@@ -231,7 +232,7 @@ Item {
             const ctx = getContext("2d")
             const s = root.scene
             ctx.reset()
-            ctx.fillStyle = Qt.darker(palette.window, 1.25)
+            ctx.fillStyle = App.themeViewerBg
             ctx.fillRect(0, 0, width, height)
 
             if (root.uv) {
@@ -300,9 +301,9 @@ Item {
             const showPoints = (s.tool === "EditPoints" || s.tool === "TransformPoints") && !root.uv
             for (const p of s.pieces) {
                 traceShape(ctx, p.outline, p.holes)
-                ctx.fillStyle = withAlpha(p.color, p.active ? (root.uv ? 0.5 : 0.62) : 0.28)
+                ctx.fillStyle = withAlpha(p.color, p.active ? (root.uv ? 0.48 : 0.56) : 0.24)
                 ctx.fill()
-                ctx.lineWidth = p.selected ? 2.5 : 1.3
+                ctx.lineWidth = p.selected ? 2.2 : 1.35
                 ctx.strokeStyle = p.selected ? root.accent : (p.active ? App.themeEdgeActive : App.themeEdgeIdle)
                 ctx.stroke()
             }
@@ -361,11 +362,14 @@ Item {
                         ctx.beginPath(); ctx.arc(root.sx(c[2]), root.sy(c[3]), 4.5, 0, Math.PI * 2); ctx.fill()
                     }
                 }
-                ctx.fillStyle = p.active ? App.themeLabelActive : App.themeLabelDim
                 ctx.font = (p.selected ? "bold " : "") + "12px sans-serif"
                 ctx.textAlign = "center"
                 const label = root.uv ? p.name + "  ·  " + (App.imperial ? (p.density * 2.54).toFixed(1) + " px/in" : p.density.toFixed(1) + " px/cm") : p.name
-                ctx.fillText(label, root.sx(p.label[0]), root.sy(p.label[1]) + 4)
+                const lx = root.sx(p.label[0]), ly = root.sy(p.label[1]) + 4
+                ctx.fillStyle = withAlpha(App.themeViewerBg, 0.72)
+                ctx.fillText(label, lx, ly + 1)
+                ctx.fillStyle = p.active ? App.themeLabelActive : App.themeLabelDim
+                ctx.fillText(label, lx, ly)
             }
 
             if (s.inset) {
@@ -648,11 +652,23 @@ Item {
         }
     }
 
-    Label {
+    Rectangle {
         anchors { left: parent.left; top: parent.top; margins: 8 }
-        text: root.uv ? tr("UV Layout") : tr("2D Pattern")
-        font.bold: true
-        opacity: 0.75
+        implicitWidth: patternTitle.implicitWidth + 16
+        implicitHeight: 26
+        radius: 6
+        color: Qt.alpha(palette.window, 0.82)
+        border.color: Qt.alpha(palette.windowText, 0.12)
+        border.width: 1
+        Label {
+            id: patternTitle
+            anchors.centerIn: parent
+            text: root.uv ? tr("UV Layout") : tr("2D Pattern")
+            font.pixelSize: 11
+            font.weight: Font.DemiBold
+            color: palette.windowText
+            opacity: 0.9
+        }
     }
     // Inset Band: the width of the bands, and Apply / Cancel, while edges are chosen.
     Pane {
@@ -717,11 +733,22 @@ Item {
         }
     }
 
-    Label {
-        id: coords
+    Rectangle {
+        visible: coords.text !== ""
         anchors { right: parent.right; bottom: parent.bottom; margins: 8 }
-        opacity: 0.6
-        font.pixelSize: 11
+        implicitWidth: coords.implicitWidth + 14
+        implicitHeight: 22
+        radius: 5
+        color: Qt.alpha(palette.window, 0.80)
+        border.color: Qt.alpha(palette.windowText, 0.12)
+        border.width: 1
+        Label {
+            id: coords
+            anchors.centerIn: parent
+            color: palette.windowText
+            opacity: 0.78
+            font.pixelSize: 11
+        }
     }
     Label {
         anchors.centerIn: parent
