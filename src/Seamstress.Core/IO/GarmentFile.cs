@@ -119,6 +119,8 @@ public static class GarmentFile
                 w.WriteString("topology", g.Topology == MeshTopology.Quads ? "quads" : "triangles");
                 if (g.MakeHumanZDepth != Garment.DefaultMakeHumanZDepth)
                     w.WriteNumber("makeHumanZDepth", g.MakeHumanZDepth);
+                if (g.Layer != 0)
+                    w.WriteNumber("layer", g.Layer);
 
                 w.WriteStartArray("groups");
                 foreach (var group in g.Groups)
@@ -151,6 +153,13 @@ public static class GarmentFile
                 w.WriteRawValue(Lines(g.Seams.Select(s =>
                     $"{{ \"id\": {Quote(s.Id)}, \"from\": {{ \"piece\": {Quote(s.A.PieceId)}, \"edge\": {s.A.Edge} }}, "
                     + $"\"to\": {{ \"piece\": {Quote(s.B.PieceId)}, \"edge\": {s.B.Edge} }}, \"reversed\": {(s.Reversed ? "true" : "false")} }}"), 4));
+                if (g.SurfaceStitches.Count > 0)
+                {
+                    w.WritePropertyName("surfaceStitches");
+                    w.WriteRawValue(Lines(g.SurfaceStitches.Select(ss =>
+                        $"{{ \"id\": {Quote(ss.Id)}, \"sourcePiece\": {Quote(ss.SourcePieceId)}, \"sourceEdge\": {ss.SourceEdge}, "
+                        + $"\"targetPiece\": {Quote(ss.TargetPieceId)}, \"start\": {V(ss.TargetStart)}, \"end\": {V(ss.TargetEnd)} }}"), 4));
+                }
                 w.WriteEndObject();
             }
             w.WriteEndArray();
@@ -207,6 +216,10 @@ public static class GarmentFile
         w.WriteNumber("damping", p.Physics.Damping);
         w.WriteNumber("friction", p.Physics.Friction);
         w.WriteNumber("thickness", p.Physics.Thickness);
+        if (MathF.Abs(p.Physics.ShrinkWeft - 1f) > 1e-4f)
+            w.WriteNumber("shrinkWeft", p.Physics.ShrinkWeft);
+        if (MathF.Abs(p.Physics.ShrinkWarp - 1f) > 1e-4f)
+            w.WriteNumber("shrinkWarp", p.Physics.ShrinkWarp);
         w.WriteEndObject();
 
         if (p.MaterialId != null)
@@ -338,6 +351,7 @@ public static class GarmentFile
                 ? MeshTopology.Quads : MeshTopology.Triangles;
             garment.MakeHumanZDepth = Math.Clamp((int)MathF.Round(Num(g, "makeHumanZDepth", Garment.DefaultMakeHumanZDepth)),
                 0, Garment.MaxMakeHumanZDepth);
+            garment.Layer = (int)MathF.Round(Num(g, "layer", 0));
             foreach (var gr in Items(g, "groups"))
             {
                 var group = new LayerGroup();
@@ -370,6 +384,20 @@ public static class GarmentFile
             }
             // Drop references a hand edit may have broken rather than failing later.
             garment.Seams.RemoveAll(s => !EdgeExists(garment, s.A) || !EdgeExists(garment, s.B));
+            foreach (var ss in Items(g, "surfaceStitches"))
+            {
+                var stitch = new SurfaceStitch
+                {
+                    Id = Str(ss, "id") ?? Guid.NewGuid().ToString("N")[..8],
+                    SourcePieceId = Str(ss, "sourcePiece") ?? "",
+                    SourceEdge = (int)Num(ss, "sourceEdge", 0),
+                    TargetPieceId = Str(ss, "targetPiece") ?? "",
+                    TargetStart = Vec2(ss, "start", Vector2.Zero),
+                    TargetEnd = Vec2(ss, "end", Vector2.Zero),
+                };
+                if (!string.IsNullOrEmpty(stitch.SourcePieceId) && !string.IsNullOrEmpty(stitch.TargetPieceId))
+                    garment.SurfaceStitches.Add(stitch);
+            }
             foreach (var group in garment.Groups)
             {
                 if (group.ParentId != null && (garment.FindGroup(group.ParentId) == null || garment.IsGroupWithin(group.ParentId, group.Id)))
@@ -431,6 +459,8 @@ public static class GarmentFile
             piece.Physics.Damping = Num(physics, "damping", piece.Physics.Damping);
             piece.Physics.Friction = Num(physics, "friction", piece.Physics.Friction);
             piece.Physics.Thickness = Num(physics, "thickness", piece.Physics.Thickness);
+            piece.Physics.ShrinkWeft = Math.Clamp(Num(physics, "shrinkWeft", 1f), 0.5f, 1.5f);
+            piece.Physics.ShrinkWarp = Math.Clamp(Num(physics, "shrinkWarp", 1f), 0.5f, 1.5f);
         }
         piece.MaterialId = Str(p, "material");
         if (p.TryGetProperty("particleDistance", out var pd) && pd.ValueKind == JsonValueKind.Number)

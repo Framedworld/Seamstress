@@ -190,7 +190,7 @@ internal sealed class CudaRuntime
     private static class Kernels
     {
         private const float MaxSpeed = 8f;
-        private const float ContactGap = 0.0015f;
+        private const float ContactGap = 0.0022f;
 
         private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
 
@@ -211,7 +211,8 @@ internal sealed class CudaRuntime
             float vc = d1 * d4 - d3 * d2;
             if (vc <= 0f && d1 >= 0f && d3 <= 0f)
             {
-                float v = d1 / (d1 - d3);
+                float denomEdge = d1 - d3;
+                float v = denomEdge > 1e-12f ? d1 / denomEdge : 0f;
                 wa = 1f - v; wb = v; wc = 0f;
                 return a + ab * v;
             }
@@ -223,7 +224,8 @@ internal sealed class CudaRuntime
             float vb = d5 * d2 - d1 * d6;
             if (vb <= 0f && d2 >= 0f && d6 <= 0f)
             {
-                float w = d2 / (d2 - d6);
+                float denomEdge = d2 - d6;
+                float w = denomEdge > 1e-12f ? d2 / denomEdge : 0f;
                 wa = 1f - w; wb = 0f; wc = w;
                 return a + ac * w;
             }
@@ -231,12 +233,15 @@ internal sealed class CudaRuntime
             float va = d3 * d6 - d5 * d4;
             if (va <= 0f && (d4 - d3) >= 0f && (d5 - d6) >= 0f)
             {
-                float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+                float denomEdge = (d4 - d3) + (d5 - d6);
+                float w = denomEdge > 1e-12f ? (d4 - d3) / denomEdge : 0f;
                 wa = 0f; wb = 1f - w; wc = w;
                 return b + (c - b) * w;
             }
 
-            float denom = 1f / (va + vb + vc);
+            float sum = va + vb + vc;
+            if (sum <= 1e-12f) { wa = 1f; wb = 0f; wc = 0f; return a; }
+            float denom = 1f / sum;
             float bv = vb * denom, bw = vc * denom;
             wa = 1f - bv - bw; wb = bv; wc = bw;
             return a + ab * bv + ac * bw;
@@ -972,9 +977,14 @@ public sealed class CudaClothAccelerator : IClothAccelerator
 
         if (_ptCount > 0 && _ptContacts != null)
         {
-            _rt.SolvePointTriangleContactsKernel(_ptCount, _pos.View, _prev.View, _invMass.View,
-                _clothThickness.View, _friction.View, _ptContacts.View,
-                _contactDeltaX.View, _contactDeltaY.View, _contactDeltaZ.View, _contactHits.View);
+            for (int pass = 0; pass < 2; pass++)
+            {
+                _rt.SolvePointTriangleContactsKernel(_ptCount, _pos.View, _prev.View, _invMass.View,
+                    _clothThickness.View, _friction.View, _ptContacts.View,
+                    _contactDeltaX.View, _contactDeltaY.View, _contactDeltaZ.View, _contactHits.View);
+                _rt.ApplyContactDeltasKernel(_n, _pos.View, _invMass.View,
+                    _contactDeltaX.View, _contactDeltaY.View, _contactDeltaZ.View, _contactHits.View);
+            }
         }
 
         if (_hemCount > 0 && _hemContacts != null)
@@ -982,10 +992,9 @@ public sealed class CudaClothAccelerator : IClothAccelerator
             _rt.SolveHemContactsKernel(_hemCount, _pos.View, _invMass.View,
                 _clothThickness.View, _hemContacts.View,
                 _contactDeltaX.View, _contactDeltaY.View, _contactDeltaZ.View, _contactHits.View);
+            _rt.ApplyContactDeltasKernel(_n, _pos.View, _invMass.View,
+                _contactDeltaX.View, _contactDeltaY.View, _contactDeltaZ.View, _contactHits.View);
         }
-
-        _rt.ApplyContactDeltasKernel(_n, _pos.View, _invMass.View,
-            _contactDeltaX.View, _contactDeltaY.View, _contactDeltaZ.View, _contactHits.View);
     }
 
     private void SolveDistancesGpu(float invH2)

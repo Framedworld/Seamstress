@@ -99,9 +99,21 @@ public sealed class Garment
     public const int DefaultMakeHumanZDepth = 50;
     public const int MaxMakeHumanZDepth = 100;
 
+    /// <summary>
+    /// Layering priority for cloth-to-cloth collision (0 = base layer, higher = outer layer).
+    /// Higher layers are always pushed to the outward side of lower layers so inner garments cannot poke through.
+    /// </summary>
+    public int Layer { get; set; }
+
     public List<LayerGroup> Groups { get; set; } = new();
     public List<PatternPiece> Pieces { get; set; } = new();
     public List<Seam> Seams { get; set; } = new();
+
+    /// <summary>
+    /// Internal/surface stitches sewing a piece's edge (e.g. a patch pocket, cargo pocket, flap, knee pad, or belt loop)
+    /// directly onto a 2D line segment on the surface of a host piece (in this garment or an obstacle garment).
+    /// </summary>
+    public List<SurfaceStitch> SurfaceStitches { get; set; } = new();
 
     /// <summary>
     /// Ids of groups and pieces in the order the layers panel lists them among their siblings. Layers missing from it
@@ -120,9 +132,11 @@ public sealed class Garment
         Thickness = Thickness,
         Topology = Topology,
         MakeHumanZDepth = MakeHumanZDepth,
+        Layer = Layer,
         Groups = Groups.Select(g => g.Clone()).ToList(),
         Pieces = Pieces.Select(p => p.Clone()).ToList(),
         Seams = Seams.Select(s => s.Clone()).ToList(),
+        SurfaceStitches = SurfaceStitches.Select(s => s.Clone()).ToList(),
         LayerOrder = new List<string>(LayerOrder),
     };
 
@@ -433,6 +447,30 @@ public sealed class Seam
     public Seam Clone() => new() { Id = Id, A = A.Clone(), B = B.Clone(), Reversed = Reversed };
 }
 
+/// <summary>
+/// Sews a boundary edge of <see cref="SourcePieceId"/> onto a 2D line segment inside <see cref="TargetPieceId"/>
+/// (in pattern-local centimetres), enabling sewn-on patch pockets, flaps, knee pads, and belt loops.
+/// </summary>
+public sealed class SurfaceStitch
+{
+    public string Id { get; set; } = Document.NewId();
+    public string SourcePieceId { get; set; } = "";
+    public int SourceEdge { get; set; }
+    public string TargetPieceId { get; set; } = "";
+    public Vector2 TargetStart { get; set; }
+    public Vector2 TargetEnd { get; set; }
+
+    public SurfaceStitch Clone() => new()
+    {
+        Id = Id,
+        SourcePieceId = SourcePieceId,
+        SourceEdge = SourceEdge,
+        TargetPieceId = TargetPieceId,
+        TargetStart = TargetStart,
+        TargetEnd = TargetEnd,
+    };
+}
+
 public sealed class FabricPhysics
 {
     public string Preset { get; set; } = "Cotton";
@@ -457,6 +495,12 @@ public sealed class FabricPhysics
 
     /// <summary>Collision thickness in millimetres.</summary>
     public float Thickness { get; set; } = 3f;
+
+    /// <summary>Horizontal (X) rest-length multiplier (e.g. 0.88 = 12% elastic cinch for waistbands & cuffs).</summary>
+    public float ShrinkWeft { get; set; } = 1f;
+
+    /// <summary>Vertical (Y) rest-length multiplier (1.0 = no shrinkage).</summary>
+    public float ShrinkWarp { get; set; } = 1f;
 
     public FabricPhysics Clone() => (FabricPhysics)MemberwiseClone();
 

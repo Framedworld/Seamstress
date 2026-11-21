@@ -112,6 +112,7 @@ public static class Program
         }
         catch (Exception ex)
         {
+            Console.Error.WriteLine($"[Seamstress.Mcp] Tool '{toolName}' failed:\n{ex}");
             return new JsonObject
             {
                 ["content"] = new JsonArray

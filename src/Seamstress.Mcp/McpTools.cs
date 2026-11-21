@@ -26,7 +26,8 @@ public sealed class McpToolRegistry
             ("name", "string", "Garment name."),
             ("particleDistance", "number", "Target mesh edge length in cm (default 2.0; smaller = finer folds)."),
             ("topology", "string", "Triangles or Quads (default Triangles)."),
-            ("thicknessMm", "number", "Optional garment-wide collision thickness in mm.")), "name"),
+            ("thicknessMm", "number", "Optional garment-wide collision thickness in mm."),
+            ("layer", "integer", "Layer priority (0 = base layer, higher = outer garment pushed strictly outside lower layers).")), "name"),
         Tool("add_piece", "Draft a custom 2D pattern piece with counter-clockwise polygon points (cm, Y up), optional quadratic Bezier curve control points, optional holes, 3D placement (metres), fabric preset, and color.", new JsonObject
         {
             ["type"] = "object",
@@ -90,6 +91,14 @@ public sealed class McpToolRegistry
             ("pieceBId", "string", "Second piece ID."),
             ("edgeB", "integer", "0-based edge index on second piece."),
             ("reversed", "boolean", "If true, sews start-to-start instead of start-to-end (use to fix twisted seams).")), "pieceAId", "edgeA", "pieceBId", "edgeB"),
+        Tool("sew_surface_stitch", "Sew a boundary edge of a patch piece (chest pocket, cargo pocket, flap, knee patch, belt loop, or rag) directly onto a 2D line segment (x1,y1)->(x2,y2) inside a host piece (same garment or obstacle garment).", Props(
+            ("sourcePieceId", "string", "Patch/pocket/belt piece ID."),
+            ("sourceEdge", "integer", "0-based edge index on sourcePieceId."),
+            ("targetPieceId", "string", "Host piece ID (in the same garment or an already-draped lower-layer garment)."),
+            ("x1", "number", "Target line start X in host piece local cm."),
+            ("y1", "number", "Target line start Y in host piece local cm."),
+            ("x2", "number", "Target line end X in host piece local cm."),
+            ("y2", "number", "Target line end Y in host piece local cm.")), "sourcePieceId", "sourceEdge", "targetPieceId", "x1", "y1", "x2", "y2"),
         Tool("reverse_seam", "Flip the direction of an existing seam to fix twisting.", Props(("seamId", "string", "Seam ID.")), "seamId"),
         Tool("delete_seam", "Delete a seam by ID.", Props(("seamId", "string", "Seam ID.")), "seamId"),
         Tool("arrange_piece_3d", "Set a piece's 3D placement around the avatar before simulation.", Props(
@@ -111,7 +120,9 @@ public sealed class McpToolRegistry
             ("bend", "number", "0-100 bending stiffness."),
             ("damping", "number", "0-100 damping."),
             ("friction", "number", "0-100 friction."),
-            ("thickness", "number", "Collision thickness in mm."))),
+            ("thickness", "number", "Collision thickness in mm."),
+            ("shrinkWeft", "number", "Horizontal rest-length multiplier (e.g. 0.88 = 12% elastic cinch for waistbands/cuffs)."),
+            ("shrinkWarp", "number", "Vertical rest-length multiplier (default 1.0)."))),
         Tool("set_material", "Set the color and material name on a piece or garment.", Props(
             ("pieceId", "string", "Target piece ID (optional if garmentId given)."),
             ("garmentId", "string", "Target garment ID (optional if pieceId given)."),
@@ -192,6 +203,7 @@ public sealed class McpToolRegistry
             "inset_band" => InsetBand(args),
             "delete_piece" => DeletePiece(args),
             "sew_edges" => SewEdges(args),
+            "sew_surface_stitch" => SewSurfaceStitch(args),
             "reverse_seam" => ReverseSeam(args),
             "delete_seam" => DeleteSeam(args),
             "arrange_piece_3d" => ArrangePiece3D(args),
@@ -312,6 +324,7 @@ public sealed class McpToolRegistry
             Topology = string.Equals(OptString(args, "topology"), "Quads", StringComparison.OrdinalIgnoreCase)
                 ? MeshTopology.Quads : MeshTopology.Triangles,
             Thickness = TryOptFloat(args, "thicknessMm"),
+            Layer = OptInt(args, "layer", 0),
         };
         _session.Doc.Garments.Add(g);
         _session.Workspace.SetActiveGarment(g.Id);
@@ -524,6 +537,39 @@ public sealed class McpToolRegistry
         };
     }
 
+    private object SewSurfaceStitch(JsonElement args)
+    {
+        string srcId = ReqString(args, "sourcePieceId");
+        int srcEdge = ReqInt(args, "sourceEdge");
+        string dstId = ReqString(args, "targetPieceId");
+        var start = new Vector2(ReqFloat(args, "x1"), ReqFloat(args, "y1"));
+        var end = new Vector2(ReqFloat(args, "x2"), ReqFloat(args, "y2"));
+
+        var srcPiece = _session.Doc.FindPiece(srcId) ?? throw new ArgumentException($"Piece '{srcId}' not found.");
+        var dstPiece = _session.Doc.FindPiece(dstId) ?? throw new ArgumentException($"Piece '{dstId}' not found.");
+        var srcGarment = _session.Doc.GarmentOfPiece(srcId)!;
+        if (srcEdge < 0 || srcEdge >= srcPiece.EdgeCount)
+            throw new ArgumentException($"sourceEdge {srcEdge} out of range (0..{srcPiece.EdgeCount - 1}).");
+
+        var ss = new SurfaceStitch
+        {
+            SourcePieceId = srcId,
+            SourceEdge = srcEdge,
+            TargetPieceId = dstId,
+            TargetStart = start,
+            TargetEnd = end,
+        };
+        srcGarment.SurfaceStitches.Add(ss);
+        return new
+        {
+            stitchId = ss.Id,
+            sourcePiece = srcPiece.Name,
+            sourceEdge = srcEdge,
+            targetPiece = dstPiece.Name,
+            targetLengthCm = MathF.Round(Vector2.Distance(start, end), 2),
+        };
+    }
+
     private object ReverseSeam(JsonElement args)
     {
         string seamId = ReqString(args, "seamId");
@@ -579,6 +625,8 @@ public sealed class McpToolRegistry
             if (TryOptFloat(args, "damping") is { } dm) p.Physics.Damping = dm;
             if (TryOptFloat(args, "friction") is { } fr) p.Physics.Friction = fr;
             if (TryOptFloat(args, "thickness") is { } th) p.Physics.Thickness = th;
+            if (TryOptFloat(args, "shrinkWeft") is { } sw) p.Physics.ShrinkWeft = sw;
+            if (TryOptFloat(args, "shrinkWarp") is { } sk) p.Physics.ShrinkWarp = sk;
         }
         return new { ok = true, updatedPieces = targets.Count };
     }

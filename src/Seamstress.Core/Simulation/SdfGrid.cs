@@ -235,7 +235,7 @@ public sealed class SdfGrid
     public float Sample(Vector3 p, out Vector3 normal)
     {
         var g = (p - Origin) / Cell;
-        if (g.X < 0 || g.Y < 0 || g.Z < 0 || g.X >= Nx - 1 || g.Y >= Ny - 1 || g.Z >= Nz - 1)
+        if (!(g.X >= 0 && g.Y >= 0 && g.Z >= 0 && g.X < Nx - 1 && g.Y < Ny - 1 && g.Z < Nz - 1))
         {
             normal = Vector3.UnitY;
             return float.MaxValue;
@@ -366,7 +366,8 @@ public sealed class SdfGrid
         float vc = d1 * d4 - d3 * d2;
         if (vc <= 0 && d1 >= 0 && d3 <= 0)
         {
-            float v = d1 / (d1 - d3);
+            float denomEdge = d1 - d3;
+            float v = denomEdge > 1e-12f ? d1 / denomEdge : 0f;
             wa = 1 - v; wb = v; wc = 0;
             return a + ab * v;
         }
@@ -378,7 +379,8 @@ public sealed class SdfGrid
         float vb = d5 * d2 - d1 * d6;
         if (vb <= 0 && d2 >= 0 && d6 <= 0)
         {
-            float w = d2 / (d2 - d6);
+            float denomEdge = d2 - d6;
+            float w = denomEdge > 1e-12f ? d2 / denomEdge : 0f;
             wa = 1 - w; wb = 0; wc = w;
             return a + ac * w;
         }
@@ -386,12 +388,15 @@ public sealed class SdfGrid
         float va = d3 * d6 - d5 * d4;
         if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0)
         {
-            float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+            float denomEdge = (d4 - d3) + (d5 - d6);
+            float w = denomEdge > 1e-12f ? (d4 - d3) / denomEdge : 0f;
             wa = 0; wb = 1 - w; wc = w;
             return b + (c - b) * w;
         }
 
-        float denom = 1f / (va + vb + vc);
+        float sum = va + vb + vc;
+        if (sum <= 1e-12f) { wa = 1; wb = 0; wc = 0; return a; }
+        float denom = 1f / sum;
         float bv = vb * denom, bw = vc * denom;
         wa = 1 - bv - bw; wb = bv; wc = bw;
         return a + ab * bv + ac * bw;

@@ -58,6 +58,8 @@ public sealed partial class ClothSolver : IDisposable
     private Vector3[] _pieceShift = Array.Empty<Vector3>();
     private int[] _pieceStitches = Array.Empty<int>();
     private int[] _garmentOfPiece = Array.Empty<int>();
+    private int[] _pieceLayer = Array.Empty<int>();
+    private int _realParticleCount;
     private float[] _sewing = Array.Empty<float>();   // per garment: 1 while its seams are far apart, 0 once sewn
     private float[] _gap = Array.Empty<float>();
     private float[] _bestGap = Array.Empty<float>();
@@ -127,13 +129,34 @@ public sealed partial class ClothSolver : IDisposable
         }
         foreach (var g in simulated)
             Register(g, true);
-        if (settings.SelfCollision)
+        if (settings.SelfCollision || simulated.Any(g => g.Garment.SurfaceStitches.Count > 0))
         {
             foreach (var g in obstacles)
                 Register(g, false);
         }
 
-        var solver = new ClothSolver(count, pieces, collider, settings);
+        int realCount = count;
+        var pieceLookup = pieces.Select((cp, idx) => (cp, idx)).ToDictionary(x => x.cp.Piece.Id, x => x);
+
+        // Pre-count virtual surface-stitch anchors targeting frozen obstacle pieces so patch seams follow exact smooth
+        // 3D host triangles (with outward fabric-thickness clearance) instead of snapping to jagged Delaunay vertices.
+        int virtualAnchorCount = 0;
+        foreach (var g in simulated)
+        {
+            foreach (var ss in g.Garment.SurfaceStitches)
+            {
+                if (!pieceLookup.TryGetValue(ss.SourcePieceId, out var src) || !pieceLookup.TryGetValue(ss.TargetPieceId, out var dst))
+                    continue;
+                if (dst.cp.Simulated)
+                    continue;
+                if (ss.SourceEdge >= 0 && ss.SourceEdge < src.cp.Mesh.EdgeChains.Length)
+                    virtualAnchorCount += src.cp.Mesh.EdgeChains[ss.SourceEdge].Length;
+            }
+        }
+        int totalCount = realCount + virtualAnchorCount;
+
+        var solver = new ClothSolver(totalCount, pieces, collider, settings);
+        solver._realParticleCount = realCount;
         // For every piece: boundary edge -> the vertex opposite it, used to resist folding across seams.
         var rims = new Dictionary<PieceMesh, Dictionary<long, int>>();
         var triangles = new List<int>();
@@ -209,11 +232,14 @@ public sealed partial class ClothSolver : IDisposable
                     rim[key] = opposite.C;
                 int a = (int)(key >> 32), b = (int)(key & 0xFFFFFFFF);
                 var d2 = mesh.Points[b] - mesh.Points[a];
-                float length = d2.Length() * 0.01f;
+                float shrinkX = Math.Clamp(physics.ShrinkWeft, 0.5f, 1.5f);
+                float shrinkY = Math.Clamp(physics.ShrinkWarp, 0.5f, 1.5f);
+                var d2Shrunk = new Vector2(d2.X * shrinkX, d2.Y * shrinkY);
+                float length = d2Shrunk.Length() * 0.01f;
                 if (length < 1e-6f)
                     continue;
                 // Edges along the weave resist with the stretch stiffness, diagonal ones with the shear stiffness.
-                float sin2 = 2 * d2.X * d2.Y / d2.LengthSquared();
+                float sin2 = 2 * d2.X * d2.Y / MathF.Max(1e-12f, d2.LengthSquared());
                 float blend = sin2 * sin2;
                 float grade = Math.Clamp(physics.Stretch + (physics.Shear - physics.Stretch) * blend, 0, 100);
                 float stiffness = MathF.Pow(10f, 1f + 3f * grade / 100f);
@@ -224,7 +250,8 @@ public sealed partial class ClothSolver : IDisposable
 
                 if (opposite.D >= 0)
                 {
-                    float across = Vector2.Distance(mesh.Points[opposite.C], mesh.Points[opposite.D]) * 0.01f;
+                    var dAcross = mesh.Points[opposite.D] - mesh.Points[opposite.C];
+                    float across = new Vector2(dAcross.X * shrinkX, dAcross.Y * shrinkY).Length() * 0.01f;
                     ca.Add(off + opposite.C);
                     cb.Add(off + opposite.D);
                     rest.Add(across);
@@ -286,7 +313,121 @@ public sealed partial class ClothSolver : IDisposable
                 hrest.Add(flat);
                 hcompliance.Add(2f / (BendStiffness(pieceA.Physics) + BendStiffness(pieceB.Physics)));
             }
+
+            // Surface stitches: sew a patch/pocket/loop/placket edge smoothly onto a 2D line segment on a host piece.
+            if (g.Garment.SurfaceStitches.Count > 0)
+            {
+                var hostNormalsCache = new Dictionary<string, (Vector3[] Pos, Vector3[] Norm)>();
+                int nextAnchor = realCount;
+                // Advance past any anchors already populated by an earlier simulated garment in the same solver.
+                while (nextAnchor < totalCount && solver._stitched[nextAnchor])
+                    nextAnchor++;
+
+                foreach (var ss in g.Garment.SurfaceStitches)
+                {
+                    if (!pieceLookup.TryGetValue(ss.SourcePieceId, out var srcEntry) || !pieceLookup.TryGetValue(ss.TargetPieceId, out var dstEntry))
+                        continue;
+                    var srcCp = srcEntry.cp;
+                    var dstCp = dstEntry.cp;
+                    if (ss.SourceEdge < 0 || ss.SourceEdge >= srcCp.Mesh.EdgeChains.Length)
+                        continue;
+                    var chain = srcCp.Mesh.EdgeChains[ss.SourceEdge];
+                    if (chain.Length == 0)
+                        continue;
+
+                    if (!dstCp.Simulated && nextAnchor + chain.Length <= totalCount)
+                    {
+                        if (!hostNormalsCache.TryGetValue(dstCp.Piece.Id, out var hostData))
+                        {
+                            var dpos = new Vector3[dstCp.Mesh.VertexCount];
+                            Array.Copy(solver.Positions, dstCp.Offset, dpos, 0, dpos.Length);
+                            var dnorm = Mesher.ComputeNormals(dpos, dstCp.Mesh.Triangles);
+                            hostData = (dpos, dnorm);
+                            hostNormalsCache[dstCp.Piece.Id] = hostData;
+                        }
+                        float srcThick = srcCp.Source.EffectiveThicknessMm(srcCp.Piece);
+                        float dstThick = dstCp.Source.EffectiveThicknessMm(dstCp.Piece);
+                        float layerSign = srcCp.Source.Layer >= dstCp.Source.Layer ? 1f : -1f;
+                        float offset = layerSign * (0.5f * (srcThick + dstThick) * 0.001f + 0.0018f);
+
+                        var dstPts = dstCp.Mesh.Points;
+                        var dstTris = dstCp.Mesh.Triangles;
+                        for (int ci = 0; ci < chain.Length; ci++)
+                        {
+                            float t = chain.Length > 1 ? ci / (float)(chain.Length - 1) : 0.5f;
+                            var target2D = Vector2.Lerp(ss.TargetStart, ss.TargetEnd, t);
+                            var q2 = new Vector3(target2D.X, target2D.Y, 0f);
+                            int bestTri = 0;
+                            float bestD2 = float.MaxValue;
+                            float bestWa = 1f, bestWb = 0f, bestWc = 0f;
+                            for (int ti = 0; ti < dstTris.Length; ti += 3)
+                            {
+                                var p0 = dstPts[dstTris[ti]];
+                                var p1 = dstPts[dstTris[ti + 1]];
+                                var p2 = dstPts[dstTris[ti + 2]];
+                                var cp2 = SdfGrid.ClosestPointOnTriangle(
+                                    q2, new Vector3(p0.X, p0.Y, 0f), new Vector3(p1.X, p1.Y, 0f), new Vector3(p2.X, p2.Y, 0f),
+                                    out float wa, out float wb, out float wc);
+                                float d2 = Vector3.DistanceSquared(q2, cp2);
+                                if (d2 < bestD2)
+                                {
+                                    bestD2 = d2;
+                                    bestTri = ti;
+                                    bestWa = wa; bestWb = wb; bestWc = wc;
+                                    if (d2 < 1e-10f) break;
+                                }
+                            }
+                            int ia = dstTris[bestTri], ib = dstTris[bestTri + 1], ic = dstTris[bestTri + 2];
+                            var pHost = hostData.Pos[ia] * bestWa + hostData.Pos[ib] * bestWb + hostData.Pos[ic] * bestWc;
+                            var nHost = hostData.Norm[ia] * bestWa + hostData.Norm[ib] * bestWb + hostData.Norm[ic] * bestWc;
+                            float nLen = nHost.Length();
+                            nHost = nLen > 1e-6f ? nHost / nLen : Vector3.UnitZ;
+
+                            int anchor = nextAnchor++;
+                            var anchorPos = pHost + nHost * offset;
+                            solver.Positions[anchor] = anchorPos;
+                            solver._previous[anchor] = anchorPos;
+                            solver._invMass[anchor] = 0f;
+                            solver._pieceOf[anchor] = dstEntry.idx;
+                            solver._stitched[anchor] = true;
+
+                            int a = srcCp.Offset + chain[ci];
+                            sa.Add(a);
+                            sb.Add(anchor);
+                            int nearestHost = bestWa >= bestWb && bestWa >= bestWc ? ia : (bestWb >= bestWc ? ib : ic);
+                            welds.Add((a, dstCp.Offset + nearestHost));
+                            solver._stitched[a] = true;
+                        }
+                    }
+                    else
+                    {
+                        var dstPts = dstCp.Mesh.Points;
+                        for (int ci = 0; ci < chain.Length; ci++)
+                        {
+                            float t = chain.Length > 1 ? ci / (float)(chain.Length - 1) : 0.5f;
+                            var target2D = Vector2.Lerp(ss.TargetStart, ss.TargetEnd, t);
+                            int bestV = 0;
+                            float bestD2 = float.MaxValue;
+                            for (int vi = 0; vi < dstPts.Length; vi++)
+                            {
+                                float d2 = Vector2.DistanceSquared(dstPts[vi], target2D);
+                                if (d2 < bestD2) { bestD2 = d2; bestV = vi; }
+                            }
+                            int a = srcCp.Offset + chain[ci];
+                            int b = dstCp.Offset + bestV;
+                            if (a == b)
+                                continue;
+                            sa.Add(a);
+                            sb.Add(b);
+                            welds.Add((a, b));
+                            solver._stitched[a] = true;
+                            solver._stitched[b] = true;
+                        }
+                    }
+                }
+            }
         }
+        solver._pieceLayer = pieces.Select(p => p.Source.Layer).ToArray();
         if (settings.SelfCollision)
         {
             foreach (var g in obstacles)
@@ -315,7 +456,7 @@ public sealed partial class ClothSolver : IDisposable
         solver._hcompliance = hcompliance.ToArray();
         solver._sa = sa.ToArray();
         solver._sb = sb.ToArray();
-        solver._openStitchBytes = new byte[count];
+        solver._openStitchBytes = new byte[totalCount];
         solver.TryAttachAccelerator(garmentCount, pieces.Count);
         return solver;
     }

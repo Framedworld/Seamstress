@@ -7,7 +7,7 @@ namespace Seamstress.Core.Simulation;
 public sealed partial class ClothSolver
 {
     private const float ContactMargin = 0.02f;
-    private const float ContactGap = 0.0015f;
+    private const float ContactGap = 0.0022f;
 
     private struct Contact
     {
@@ -249,20 +249,21 @@ public sealed partial class ClothSolver
         float reach = margin * margin;
         const float samePieceSq = SamePieceRestDistance * SamePieceRestDistance;
 
-        if (x.Length < 512)
+        int activeCount = _realParticleCount > 0 ? _realParticleCount : x.Length;
+        if (activeCount < 512)
         {
-            if (_triStampEpoch > int.MaxValue - x.Length - 2)
+            if (_triStampEpoch > int.MaxValue - activeCount - 2)
             {
                 Array.Clear(_triStamp);
                 _triStampEpoch = 0;
             }
             int baseEpoch = _triStampEpoch;
-            _triStampEpoch += x.Length + 1;
-            QueryParticleRange(0, x.Length, inv, mask, triCount, reach, samePieceSq, _triStamp, baseEpoch, null);
+            _triStampEpoch += activeCount + 1;
+            QueryParticleRange(0, activeCount, inv, mask, triCount, reach, samePieceSq, _triStamp, baseEpoch, null);
         }
         else
         {
-            int workers = Math.Clamp(x.Length / 256, 2, Environment.ProcessorCount);
+            int workers = Math.Clamp(activeCount / 256, 2, Environment.ProcessorCount);
             if (_workerStamps.Length != workers)
             {
                 _workerStamps = new int[workers][];
@@ -274,11 +275,11 @@ public sealed partial class ClothSolver
                     _workerContacts[w] = new List<Contact>(256);
                 }
             }
-            int chunk = (x.Length + workers - 1) / workers;
+            int chunk = (activeCount + workers - 1) / workers;
             Parallel.For(0, workers, w =>
             {
                 int start = w * chunk;
-                int end = Math.Min(start + chunk, x.Length);
+                int end = Math.Min(start + chunk, activeCount);
                 var list = _workerContacts[w];
                 list.Clear();
                 if (start >= end)
@@ -382,10 +383,15 @@ public sealed partial class ClothSolver
                 if (AreNeighbours(p, t))
                     continue;
 
-                // Remember which face of the triangle the particle is on; it has to stay there for as long as the
-                // pair remains close, even if it gets pushed through for a moment.
+                // Layer priority: outer layers (higher Layer index) always resolve to the outward (+normal) side of
+                // lower layers so inner garments never poke through outer jackets/pants.
                 long key = (long)p * triCount + t;
-                if (!sides.TryGetValue(key, out float side))
+                int pLayer = _pieceLayer[pPiece];
+                int tLayer = _pieceLayer[triPiece[t]];
+                float side;
+                if (pLayer != tLayer)
+                    side = pLayer > tLayer ? 1f : -1f;
+                else if (!sides.TryGetValue(key, out side))
                     side = height >= 0f ? 1f : -1f;
                 var contact = new Contact { Particle = p, Triangle = t, Side = side };
                 if (output != null)
@@ -533,6 +539,7 @@ public sealed partial class ClothSolver
     private void SolveContacts()
     {
         var x = Positions;
+        for (int pass = 0; pass < 2; pass++)
         for (int i = 0; i < _contactCount; i++)
         {
             ref var contact = ref _contacts[i];
