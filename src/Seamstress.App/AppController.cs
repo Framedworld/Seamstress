@@ -1039,7 +1039,7 @@ public partial class AppController : INotifyPropertyChanged
         {
             StopSimulation();
             MeshImportResult? imported = null;
-            _workspace.History.Edit(Lang.T("Import mesh as pattern"), doc =>
+            _workspace.History.Execute(Lang.T("Import mesh as pattern"), doc =>
             {
                 imported = MeshToPatternImporter.ImportFromFile(path, doc);
                 doc.Garments.Add(imported.Garment);
