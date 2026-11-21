@@ -6,6 +6,7 @@ import QtQuick.Layouts
 Pane {
     id: root
     padding: 0
+    background: Rectangle { color: palette.window }
 
     property var rows: []
     function tr(text) { App.languageRevision; return App.tr(text) }
@@ -89,27 +90,40 @@ Pane {
         anchors.fill: parent
         spacing: 0
 
-        Label {
-            text: tr("Layers")
-            font.bold: true
-            padding: 8
+        Rectangle {
             Layout.fillWidth: true
+            implicitHeight: 34
+            color: palette.window
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                height: 1
+                color: palette.mid
+            }
+            Label {
+                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 12; rightMargin: 12 }
+                text: tr("Layers")
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
         }
 
         ListView {
             id: list
             Layout.fillWidth: true
             Layout.fillHeight: true
+            topMargin: 4
+            bottomMargin: 4
             clip: true
             model: root.rows
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar {}
 
-            delegate: Rectangle {
+            delegate: Item {
                 id: row
                 required property var modelData
                 width: list.width
-                height: 26
+                height: 28
                 property string dropZone: ""
                 property real grabX: 0
                 property real grabY: 0
@@ -122,22 +136,37 @@ Pane {
                     dragProxy.x = p.x
                     dragProxy.y = p.y
                 }
-                color: row.dropZone === "into" ? Qt.alpha(palette.highlight, 0.7)
-                     : (modelData.selected ? Qt.alpha(palette.highlight, 0.45)
-                     : (modelData.kind === "garment" && modelData.active ? Qt.alpha(palette.highlight, 0.14) : "transparent"))
+
+                Rectangle {
+                    anchors { fill: parent; leftMargin: 5; rightMargin: 5; topMargin: 1; bottomMargin: 1 }
+                    radius: 5
+                    color: row.dropZone === "into" ? Qt.alpha(palette.highlight, 0.55)
+                         : modelData.selected ? Qt.alpha(palette.highlight, 0.28)
+                         : (modelData.kind === "garment" && modelData.active ? Qt.alpha(palette.highlight, 0.11)
+                         : (rowMouse.containsMouse ? Qt.alpha(palette.windowText, 0.05) : "transparent"))
+                    border.width: modelData.selected || row.dropZone === "into" ? 1 : 0
+                    border.color: Qt.alpha(palette.highlight, 0.65)
+                    Rectangle {
+                        visible: modelData.kind === "garment" && modelData.active
+                        anchors { left: parent.left; top: parent.top; bottom: parent.bottom; topMargin: 4; bottomMargin: 4 }
+                        width: 2
+                        radius: 1
+                        color: palette.highlight
+                    }
+                }
 
                 // A copy of the row that follows the cursor during a drag; kept in the window overlay so the
                 // list cannot clip it.
                 Rectangle {
                     id: dragProxy
                     parent: Overlay.overlay
-                    width: row.width
-                    height: row.height
+                    width: row.width - 10
+                    height: row.height - 2
                     visible: rowMouse.drag.active || gripMouse.drag.active
                     z: 1000
-                    radius: 4
+                    radius: 5
                     color: palette.highlight
-                    opacity: 0.9
+                    opacity: 0.92
                     border.color: palette.highlightedText
                     border.width: 1
 
@@ -162,6 +191,7 @@ Pane {
                 MouseArea {
                     id: rowMouse
                     anchors.fill: parent
+                    hoverEnabled: true
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     drag.target: row.modelData.kind === "garment" ? null : dragProxy
                     drag.threshold: 12
@@ -213,10 +243,11 @@ Pane {
                 // the layer goes in at the top of the group.
                 Rectangle {
                     visible: row.dropZone === "before" || row.dropZone === "after"
-                    x: 6 + (row.modelData.depth + (row.dropZone === "after" && row.modelData.kind === "group"
+                    x: 8 + (row.modelData.depth + (row.dropZone === "after" && row.modelData.kind === "group"
                             && row.modelData.expanded && row.modelData.hasChildren ? 1 : 0)) * 14
-                    width: row.width - x - 6
+                    width: row.width - x - 8
                     height: 2
+                    radius: 1
                     y: row.dropZone === "before" ? 0 : row.height - height
                     z: 2
                     color: palette.highlight
@@ -224,8 +255,8 @@ Pane {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 6 + row.modelData.depth * 14
-                    anchors.rightMargin: 6
+                    anchors.leftMargin: 10 + row.modelData.depth * 14
+                    anchors.rightMargin: 10
                     spacing: 4
 
                     // Drag handle: pieces and groups can be dragged into a group or another garment, or reordered.
@@ -233,7 +264,7 @@ Pane {
                         Layout.preferredWidth: 8
                         text: "⋮⋮"
                         font.pixelSize: 10
-                        opacity: row.modelData.kind === "garment" ? 0 : 0.35
+                        opacity: row.modelData.kind === "garment" ? 0 : (rowMouse.containsMouse ? 0.55 : 0.25)
                         MouseArea {
                             id: gripMouse
                             anchors.fill: parent
@@ -256,11 +287,12 @@ Pane {
                     Label {
                         Layout.preferredWidth: 12
                         text: row.modelData.hasChildren ? (row.modelData.expanded ? "▾" : "▸") : ""
-                        opacity: 0.8
+                        color: row.modelData.kind === "garment" && row.modelData.active ? palette.highlight : palette.placeholderText
                         MouseArea {
                             anchors.fill: parent
                             anchors.margins: -4
                             enabled: row.modelData.hasChildren
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                             onClicked: App.setExpanded(row.modelData.id, !row.modelData.expanded)
                         }
                     }
@@ -268,15 +300,16 @@ Pane {
                     Rectangle {
                         visible: row.modelData.kind === "piece"
                         Layout.preferredWidth: 10; Layout.preferredHeight: 10
-                        radius: 2
+                        radius: 3
                         color: row.modelData.color || "transparent"
-                        border.color: Qt.alpha(palette.windowText, 0.4)
+                        border.color: Qt.alpha(palette.windowText, 0.35)
                     }
                     Label {
                         visible: row.modelData.kind !== "piece"
                         text: row.modelData.kind === "garment" ? "◆" : "▣"
-                        opacity: 0.7
-                        font.pixelSize: 11
+                        color: row.modelData.kind === "garment" && row.modelData.active ? palette.highlight : palette.windowText
+                        opacity: row.modelData.kind === "garment" && row.modelData.active ? 0.95 : 0.65
+                        font.pixelSize: 10
                     }
 
                     Label {
@@ -284,17 +317,25 @@ Pane {
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                         text: row.modelData.name
-                        font.bold: row.modelData.kind === "garment"
-                        opacity: row.modelData.visible ? 1 : 0.45
+                        font.pixelSize: 12
+                        font.weight: row.modelData.kind === "garment" ? Font.DemiBold : Font.Normal
+                        opacity: row.modelData.visible ? 0.95 : 0.42
                     }
                     TextField {
                         id: nameEdit
                         visible: root.editingId === row.modelData.id
                         Layout.fillWidth: true
                         implicitHeight: 22
-                        padding: 2
+                        leftPadding: 4; rightPadding: 4; topPadding: 1; bottomPadding: 1
+                        verticalAlignment: Text.AlignVCenter
                         text: row.modelData.name
                         selectByMouse: true
+                        background: Rectangle {
+                            radius: 4
+                            color: palette.base
+                            border.color: palette.highlight
+                            border.width: 1
+                        }
                         function start() { text = row.modelData.name; forceActiveFocus(); selectAll() }
                         // Enter or clicking elsewhere keeps the new name; Escape leaves it as it was.
                         function finish(keep) {
@@ -315,11 +356,12 @@ Pane {
                         visible: row.modelData.kind === "garment" && root.editingId !== row.modelData.id
                         text: row.modelData.kind === "garment" ? tr("%1 faces").arg(row.modelData.faces.toLocaleString(Qt.locale(), "f", 0)) : ""
                         font.pixelSize: 10
-                        opacity: 0.55
+                        color: palette.placeholderText
                     }
 
                     // Garments can opt in to being simulated together with whichever garment is active.
                     ToolButton {
+                        id: linkBtn
                         visible: row.modelData.kind === "garment"
                         implicitWidth: 22; implicitHeight: 22
                         padding: 0
@@ -327,7 +369,12 @@ Pane {
                         font.pixelSize: 12
                         checkable: true
                         checked: row.modelData.kind === "garment" && row.modelData.simulateWithOthers
-                        opacity: checked ? 1 : 0.35
+                        opacity: checked ? 1 : (hovered ? 0.85 : 0.38)
+                        background: Rectangle {
+                            radius: 4
+                            color: linkBtn.checked ? Qt.alpha(palette.highlight, 0.25)
+                                : linkBtn.hovered ? Qt.alpha(palette.windowText, 0.1) : "transparent"
+                        }
                         onClicked: App.setSimulateWithOthers(row.modelData.id, checked)
                         ToolTip.visible: hovered
                         ToolTip.delay: 400
@@ -335,11 +382,16 @@ Pane {
                     }
 
                     ToolButton {
+                        id: visBtn
                         implicitWidth: 22; implicitHeight: 22
                         padding: 0
                         text: row.modelData.visible ? "◉" : "○"
                         font.pixelSize: 12
-                        opacity: row.modelData.visible ? 0.9 : 0.4
+                        opacity: row.modelData.visible ? 0.88 : (hovered ? 0.75 : 0.38)
+                        background: Rectangle {
+                            radius: 4
+                            color: visBtn.hovered ? Qt.alpha(palette.windowText, 0.1) : "transparent"
+                        }
                         onClicked: App.setVisible(row.modelData.id, !row.modelData.visible)
                         ToolTip.visible: hovered
                         ToolTip.delay: 400
@@ -351,19 +403,55 @@ Pane {
             Label {
                 anchors.centerIn: parent
                 visible: root.rows.length === 0
-                opacity: 0.5
+                color: palette.placeholderText
+                font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
                 text: tr("No garments yet")
             }
         }
 
-        RowLayout {
+        Rectangle {
             Layout.fillWidth: true
-            Layout.margins: 4
-            spacing: 4
-            Button { text: tr("+ Garment"); Layout.fillWidth: true; onClicked: App.addGarment() }
-            Button { text: tr("+ Group"); Layout.fillWidth: true; onClicked: App.addGroup(); enabled: root.rows.length > 0 }
-            Button { text: tr("Delete"); Layout.fillWidth: true; onClicked: App.deleteSelection(); enabled: root.rows.some(r => r.selected) }
+            implicitHeight: 38
+            color: palette.window
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; top: parent.top }
+                height: 1
+                color: palette.mid
+            }
+            RowLayout {
+                anchors { fill: parent; leftMargin: 8; rightMargin: 8; topMargin: 6; bottomMargin: 5 }
+                spacing: 6
+                component FooterButton: Button {
+                    id: fb
+                    Layout.fillWidth: true
+                    implicitHeight: 26
+                    hoverEnabled: true
+                    contentItem: Label {
+                        text: fb.text
+                        font.pixelSize: 11
+                        font.weight: Font.Medium
+                        color: fb.enabled ? palette.buttonText : palette.placeholderText
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                    }
+                    background: Rectangle {
+                        radius: 5
+                        color: !fb.enabled ? Qt.alpha(palette.button, 0.45)
+                            : fb.down ? palette.dark
+                            : fb.hovered ? palette.midlight
+                            : palette.button
+                        border.width: 1
+                        border.color: !fb.enabled ? Qt.alpha(palette.mid, 0.5)
+                            : fb.hovered ? palette.light : palette.mid
+                        Behavior on color { ColorAnimation { duration: 90 } }
+                    }
+                }
+                FooterButton { text: tr("+ Garment"); onClicked: App.addGarment() }
+                FooterButton { text: tr("+ Group"); onClicked: App.addGroup(); enabled: root.rows.length > 0 }
+                FooterButton { text: tr("Delete"); onClicked: App.deleteSelection(); enabled: root.rows.some(r => r.selected) }
+            }
         }
     }
 

@@ -23,21 +23,21 @@ public static class Theme
         "annotation", "annotationDeep", "annotationFill", "warningText", "dangerText", "infoText",
     ];
 
-    // The dark scheme the application has always used.
+    // The dark studio scheme: deep charcoal surfaces, crisp slate dividers, cobalt accent and warm amber highlights.
     private static readonly Dictionary<string, string> DefaultColors = new()
     {
-        ["window"] = "#2b2d31", ["windowText"] = "#e4e6ea", ["base"] = "#1e1f22", ["alternateBase"] = "#25272b",
-        ["text"] = "#e4e6ea", ["button"] = "#3a3d43", ["buttonText"] = "#e4e6ea", ["highlight"] = "#4f8fd9",
-        ["highlightedText"] = "#ffffff", ["mid"] = "#4a4d54", ["dark"] = "#191a1d", ["light"] = "#5a5e66",
-        ["midlight"] = "#454850", ["shadow"] = "#101012", ["placeholderText"] = "#8c9099", ["toolTipBase"] = "#3a3d43",
-        ["toolTipText"] = "#e4e6ea", ["brightText"] = "#ffffff", ["link"] = "#6aa7ee",
-        ["viewerBg"] = "#24262b", ["gridMinor"] = "#383b41", ["gridMajor"] = "#484c53", ["gridAxis"] = "#6a6f78",
-        ["checkerA"] = "#3b3e44", ["checkerB"] = "#55595f", ["checkerEdge"] = "#9aa0a8",
-        ["ghostFill"] = "#8c96a6", ["ghostStroke"] = "#a8b2c2",
-        ["edgeActive"] = "#e8eaee", ["edgeIdle"] = "#8a8f98", ["labelActive"] = "#f4f5f7", ["labelDim"] = "#a9adb5",
-        ["pointFill"] = "#f2f3f5", ["overlayText"] = "#c9ccd2",
-        ["annotation"] = "#ffd447", ["annotationDeep"] = "#c9a227", ["annotationFill"] = "#ffe58a",
-        ["warningText"] = "#ffb469", ["dangerText"] = "#ff7b72", ["infoText"] = "#7ed491",
+        ["window"] = "#1b1e25", ["windowText"] = "#e8ecf4", ["base"] = "#161920", ["alternateBase"] = "#20242d",
+        ["text"] = "#e8ecf4", ["button"] = "#232731", ["buttonText"] = "#e8ecf4", ["highlight"] = "#3b82f6",
+        ["highlightedText"] = "#ffffff", ["mid"] = "#343b4d", ["dark"] = "#15171c", ["light"] = "#4a5368",
+        ["midlight"] = "#2b303c", ["shadow"] = "#0d0f13", ["placeholderText"] = "#8e97a8", ["toolTipBase"] = "#232731",
+        ["toolTipText"] = "#e8ecf4", ["brightText"] = "#ffffff", ["link"] = "#60a5fa",
+        ["viewerBg"] = "#15171c", ["gridMinor"] = "#212530", ["gridMajor"] = "#2d3343", ["gridAxis"] = "#4a556d",
+        ["checkerA"] = "#252a35", ["checkerB"] = "#343b4a", ["checkerEdge"] = "#6b768e",
+        ["ghostFill"] = "#7d8ba3", ["ghostStroke"] = "#9aa8c0",
+        ["edgeActive"] = "#e8ecf4", ["edgeIdle"] = "#7e889b", ["labelActive"] = "#f1f5fb", ["labelDim"] = "#929cae",
+        ["pointFill"] = "#f1f5fb", ["overlayText"] = "#aeb6c7",
+        ["annotation"] = "#f59e0b", ["annotationDeep"] = "#d97706", ["annotationFill"] = "#fde68a",
+        ["warningText"] = "#fbbf24", ["dangerText"] = "#f87171", ["infoText"] = "#10b981",
     };
 
     private static readonly Dictionary<string, string> LightColors = new()

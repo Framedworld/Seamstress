@@ -220,6 +220,9 @@ public partial class AppController : INotifyPropertyChanged
     }
     public string Renderer => Lang.T(Startup.RendererDescription);
 
+    /// <summary>The cloth simulation compute backend (e.g. "CUDA (NVIDIA GeForce RTX 4090)" or "CPU").</summary>
+    public string ComputeBackend => ClothAcceleration.RegisteredDeviceName ?? "CPU";
+
     /// <summary>The application version from Directory.Build.props, without the source revision the SDK appends.</summary>
     public string Version { get; } = (System.Reflection.CustomAttributeExtensions
         .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(AppController).Assembly)?.InformationalVersion ?? "").Split('+')[0];

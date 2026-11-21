@@ -7,6 +7,7 @@ import QtQuick.Layouts
 Pane {
     id: root
     padding: 0
+    background: Rectangle { color: palette.window }
 
     function tr(text) { App.languageRevision; return App.tr(text) }
     property var sel: ({ kind: "none", count: 0, presets: [], materials: [], simulation: {} })
@@ -35,30 +36,73 @@ Pane {
         onTriggered: scroll.ScrollBar.vertical.position = 1 - scroll.ScrollBar.vertical.size
     }
 
-    component Section: ColumnLayout {
+    component Section: Rectangle {
         id: section
         property string title: ""
         property bool open: true
         default property alias content: body.data
         Layout.fillWidth: true
-        spacing: 0
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 26
-            color: Qt.alpha(palette.windowText, 0.07)
-            Label {
-                anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
-                text: (section.open ? "▾  " : "▸  ") + section.title
-                font.bold: true
-            }
-            MouseArea { anchors.fill: parent; onClicked: section.open = !section.open }
-        }
+        Layout.leftMargin: 8
+        Layout.rightMargin: 8
+        Layout.topMargin: 6
+        implicitHeight: sectionLayout.implicitHeight
+        radius: 6
+        color: palette.alternateBase
+        border.color: Qt.alpha(palette.mid, 0.88)
+        border.width: 1
+
         ColumnLayout {
-            id: body
-            visible: section.open
-            Layout.fillWidth: true
-            Layout.margins: 8
-            spacing: 5
+            id: sectionLayout
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            spacing: 0
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 28
+                radius: 6
+                color: headerMouse.containsMouse ? Qt.alpha(palette.windowText, 0.05) : "transparent"
+                RowLayout {
+                    anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                    spacing: 6
+                    Label {
+                        text: section.open ? "▾" : "▸"
+                        font.pixelSize: 11
+                        color: section.open ? palette.highlight : palette.placeholderText
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                        text: section.title
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        color: palette.windowText
+                    }
+                }
+                MouseArea {
+                    id: headerMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: section.open = !section.open
+                }
+            }
+
+            Rectangle {
+                visible: section.open
+                Layout.fillWidth: true
+                Layout.leftMargin: 1
+                Layout.rightMargin: 1
+                implicitHeight: 1
+                color: Qt.alpha(palette.mid, 0.75)
+            }
+
+            ColumnLayout {
+                id: body
+                visible: section.open
+                Layout.fillWidth: true
+                Layout.margins: 10
+                spacing: 7
+            }
         }
     }
 
@@ -74,18 +118,17 @@ Pane {
         signal edited(real value)
         Layout.fillWidth: true
         spacing: 6
-        Label { text: numberRow.label; Layout.preferredWidth: 118; elide: Text.ElideRight; opacity: 0.85 }
+        Label { text: numberRow.label; Layout.preferredWidth: 112; elide: Text.ElideRight; font.pixelSize: 12; color: palette.windowText; opacity: 0.82 }
         NumberField {
             Layout.fillWidth: true
             implicitHeight: 24
-            padding: 3
             value: numberRow.value
             decimals: numberRow.decimals
             step: numberRow.step
             from: numberRow.from
             onEdited: (v) => numberRow.edited(v)
         }
-        Label { visible: numberRow.suffix !== ""; text: numberRow.suffix; opacity: 0.6; Layout.preferredWidth: 26 }
+        Label { visible: numberRow.suffix !== ""; text: numberRow.suffix; font.pixelSize: 11; color: palette.placeholderText; Layout.preferredWidth: 26 }
     }
 
     component SliderRow: RowLayout {
@@ -102,7 +145,7 @@ Pane {
         Layout.fillWidth: true
         spacing: 6
         onValueChanged: if (!slider.pressed) slider.value = value
-        Label { text: sliderRow.label; Layout.preferredWidth: 118; elide: Text.ElideRight; opacity: 0.85 }
+        Label { text: sliderRow.label; Layout.preferredWidth: 112; elide: Text.ElideRight; font.pixelSize: 12; color: palette.windowText; opacity: 0.82 }
         Slider {
             id: slider
             Layout.fillWidth: true
@@ -110,12 +153,42 @@ Pane {
             from: sliderRow.from; to: sliderRow.to; stepSize: sliderRow.stepSize
             value: sliderRow.value
             onMoved: sliderRow.edited(value)
+            background: Rectangle {
+                x: slider.leftPadding
+                y: slider.topPadding + slider.availableHeight / 2 - height / 2
+                implicitWidth: 100
+                implicitHeight: 4
+                width: slider.availableWidth
+                height: implicitHeight
+                radius: 2
+                color: palette.base
+                border.color: Qt.alpha(palette.mid, 0.75)
+                border.width: 1
+                Rectangle {
+                    width: slider.visualPosition * parent.width
+                    height: parent.height
+                    radius: 2
+                    color: slider.enabled ? palette.highlight : palette.mid
+                }
+            }
+            handle: Rectangle {
+                x: slider.leftPadding + slider.visualPosition * (slider.availableWidth - width)
+                y: slider.topPadding + slider.availableHeight / 2 - height / 2
+                implicitWidth: 12
+                implicitHeight: 12
+                radius: 6
+                color: slider.pressed || slider.hovered ? palette.brightText : palette.windowText
+                border.color: slider.pressed || slider.hovered ? palette.highlight : Qt.alpha(palette.highlight, 0.85)
+                border.width: slider.pressed ? 2.5 : 1.5
+            }
         }
         Label {
             text: slider.value.toFixed(sliderRow.decimals) + sliderRow.suffix
             Layout.preferredWidth: sliderRow.valueWidth
             horizontalAlignment: Text.AlignRight
-            opacity: 0.8
+            font.pixelSize: 11
+            color: palette.windowText
+            opacity: 0.82
         }
     }
 
@@ -123,24 +196,27 @@ Pane {
         property string label: ""
         property string value: ""
         Layout.fillWidth: true
-        Label { text: parent.label; Layout.preferredWidth: 118; opacity: 0.85 }
-        Label { text: parent.value; Layout.fillWidth: true; elide: Text.ElideRight; horizontalAlignment: Text.AlignRight }
+        Label { text: parent.label; Layout.preferredWidth: 112; font.pixelSize: 12; color: palette.windowText; opacity: 0.78 }
+        Label { text: parent.value; Layout.fillWidth: true; font.pixelSize: 11; elide: Text.ElideRight; horizontalAlignment: Text.AlignRight; color: palette.windowText; opacity: 0.92 }
     }
 
-    ScrollView {
-        id: scroll
+    ColumnLayout {
         anchors.fill: parent
-        contentWidth: availableWidth
-        clip: true
+        spacing: 0
 
-        ColumnLayout {
-            width: scroll.availableWidth
-            spacing: 0
-
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 34
+            color: palette.window
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                height: 1
+                color: palette.mid
+            }
             Label {
-                Layout.fillWidth: true
-                padding: 8
-                font.bold: true
+                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 12; rightMargin: 12 }
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
                 elide: Text.ElideRight
                 text: root.sel.kind === "seam" ? tr("Seam")
                     : root.sel.kind === "reference" ? root.sel.reference.name
@@ -148,15 +224,28 @@ Pane {
                     : root.sel.kind === "garment" ? root.sel.garment.name
                     : tr("Properties")
             }
+        }
 
-            Label {
-                visible: root.sel.kind === "none"
-                Layout.fillWidth: true
-                padding: 8
-                wrapMode: Text.WordWrap
-                opacity: 0.6
-                text: tr("Nothing selected. Add a garment from the Garment menu or draw a piece in the 2D view.")
-            }
+        ScrollView {
+            id: scroll
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: availableWidth
+            clip: true
+
+            ColumnLayout {
+                width: scroll.availableWidth
+                spacing: 0
+
+                Label {
+                    visible: root.sel.kind === "none"
+                    Layout.fillWidth: true
+                    padding: 14
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 12
+                    color: palette.placeholderText
+                    text: tr("Nothing selected. Add a garment from the Garment menu or draw a piece in the 2D view.")
+                }
 
             // ---- Reference image -----------------------------------------------------
             Section {
@@ -252,7 +341,7 @@ Pane {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    Label { text: tr("Faces"); Layout.preferredWidth: 118; opacity: 0.85 }
+                    Label { text: tr("Faces"); Layout.preferredWidth: 112; font.pixelSize: 12; color: palette.windowText; opacity: 0.82 }
                     ComboBox {
                         Layout.fillWidth: true
                         implicitHeight: 26
@@ -401,7 +490,7 @@ Pane {
                 visible: root.sel.kind === "pieces"
                 RowLayout {
                     Layout.fillWidth: true
-                    Label { text: tr("Preset"); Layout.preferredWidth: 118; opacity: 0.85 }
+                    Label { text: tr("Preset"); Layout.preferredWidth: 112; font.pixelSize: 12; color: palette.windowText; opacity: 0.82 }
                     ComboBox {
                         id: presetBox
                         Layout.fillWidth: true
@@ -461,31 +550,47 @@ Pane {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    Label { text: tr("Name"); Layout.preferredWidth: 118; opacity: 0.85 }
+                    Label { text: tr("Name"); Layout.preferredWidth: 112; font.pixelSize: 12; color: palette.windowText; opacity: 0.82 }
                     TextField {
+                        id: matNameField
                         Layout.fillWidth: true
                         implicitHeight: 24
-                        padding: 3
+                        leftPadding: 6; rightPadding: 6; topPadding: 2; bottomPadding: 2
+                        verticalAlignment: Text.AlignVCenter
                         selectByMouse: true
                         text: root.sel.material ? root.sel.material.name : ""
+                        background: Rectangle {
+                            radius: 4
+                            color: matNameField.activeFocus ? palette.base : Qt.alpha(palette.base, 0.88)
+                            border.width: 1
+                            border.color: matNameField.activeFocus ? palette.highlight : Qt.alpha(palette.mid, 0.95)
+                        }
                         onEditingFinished: if (root.sel.material && text.trim() !== "" && text !== root.sel.material.name) App.renameMaterial(text)
                     }
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    Label { text: tr("Colour"); Layout.preferredWidth: 118; opacity: 0.85 }
+                    Label { text: tr("Colour"); Layout.preferredWidth: 112; font.pixelSize: 12; color: palette.windowText; opacity: 0.82 }
                     Rectangle {
+                        id: colorSwatch
                         Layout.fillWidth: true
                         implicitHeight: 24
-                        radius: 3
+                        radius: 5
                         color: root.sel.material ? root.sel.material.color : "gray"
-                        border.color: Qt.alpha(palette.windowText, 0.4)
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.pickColor(root.sel.material.color) }
+                        border.width: 1
+                        border.color: swatchMouse.containsMouse ? palette.highlight : Qt.alpha(palette.windowText, 0.28)
+                        MouseArea {
+                            id: swatchMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.pickColor(root.sel.material.color)
+                        }
                     }
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    Label { text: tr("Texture"); Layout.preferredWidth: 118; opacity: 0.85 }
+                    Label { text: tr("Texture"); Layout.preferredWidth: 112; font.pixelSize: 12; color: palette.windowText; opacity: 0.82 }
                     Label {
                         Layout.fillWidth: true
                         elide: Text.ElideMiddle
@@ -566,6 +671,7 @@ Pane {
             }
 
             Item { Layout.fillHeight: true; implicitHeight: 12 }
+            }
         }
     }
 }

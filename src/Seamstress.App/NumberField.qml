@@ -18,7 +18,27 @@ TextField {
 
     selectByMouse: true
     horizontalAlignment: Text.AlignRight
+    verticalAlignment: Text.AlignVCenter
+    leftPadding: 6
+    rightPadding: 6
+    topPadding: 2
+    bottomPadding: 2
+    color: enabled ? palette.text : palette.placeholderText
+    selectionColor: palette.highlight
+    selectedTextColor: palette.highlightedText
     validator: DoubleValidator { notation: DoubleValidator.StandardNotation; locale: "C" }
+
+    background: Rectangle {
+        implicitWidth: 68
+        implicitHeight: 24
+        radius: 4
+        color: field.activeFocus ? palette.base : Qt.alpha(palette.base, 0.88)
+        border.width: 1
+        border.color: field.activeFocus ? palette.highlight
+            : (field.dragging ? palette.highlight
+            : (field.hovered && field.enabled ? Qt.alpha(palette.windowText, 0.30) : Qt.alpha(palette.mid, 0.95)))
+        Behavior on border.color { ColorAnimation { duration: 90 } }
+    }
 
     function shown(v) { return Number(v).toFixed(decimals) }
     function clamp(v) { return Math.min(to, Math.max(from, v)) }

@@ -400,15 +400,64 @@ ApplicationWindow {
         }
 
         // ------------------------------------------------------------------ toolbar
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 1
+            color: palette.mid
+            opacity: 0.75
+        }
         ToolBar {
             Layout.fillWidth: true
+            implicitHeight: 44
+            background: Rectangle {
+                color: palette.window
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: 1
+                    color: palette.mid
+                }
+            }
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 6
-                anchors.rightMargin: 6
-                spacing: 2
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                spacing: 8
 
-                component ToolChoice: ToolButton {
+                component ToolGroup: Rectangle {
+                    default property alias items: groupRow.data
+                    implicitWidth: groupRow.implicitWidth + 6
+                    implicitHeight: 32
+                    radius: 6
+                    color: Qt.alpha(palette.dark, 0.6)
+                    border.color: Qt.alpha(palette.mid, 0.9)
+                    border.width: 1
+                    RowLayout {
+                        id: groupRow
+                        anchors.centerIn: parent
+                        spacing: 2
+                    }
+                }
+                component StudioIconButton: ToolButton {
+                    id: studioBtn
+                    display: AbstractButton.IconOnly
+                    implicitWidth: 28
+                    implicitHeight: 26
+                    padding: 3
+                    icon.width: 18
+                    icon.height: 18
+                    icon.color: !enabled ? palette.placeholderText
+                        : (checked ? palette.highlightedText : palette.buttonText)
+                    background: Rectangle {
+                        radius: 5
+                        color: !studioBtn.enabled ? "transparent"
+                            : studioBtn.checked ? (studioBtn.hovered ? Qt.lighter(palette.highlight, 1.08) : palette.highlight)
+                            : studioBtn.down ? Qt.alpha(palette.windowText, 0.16)
+                            : studioBtn.hovered ? Qt.alpha(palette.windowText, 0.10)
+                            : "transparent"
+                        Behavior on color { ColorAnimation { duration: 90 } }
+                    }
+                }
+                component ToolChoice: StudioIconButton {
                     property string tool: ""
                     property string label: ""
                     property string tip: ""
@@ -417,11 +466,7 @@ ApplicationWindow {
                     checkable: true
                     checked: App.tool === tool && !App.uvMode
                     enabled: !App.uvMode || tool === "Select"
-                    display: AbstractButton.IconOnly
                     icon.source: window.toolIcons + iconFile
-                    icon.width: 22
-                    icon.height: 22
-                    icon.color: enabled ? palette.buttonText : palette.placeholderText
                     Accessible.name: label
                     Accessible.description: tip
                     onClicked: App.tool = tool
@@ -429,84 +474,58 @@ ApplicationWindow {
                     ToolTip.delay: 500
                     ToolTip.text: tip + window.keyHint(command)
                 }
-                // A short, faint line between the buttons of one group, and a taller, brighter one with more room
-                // around it between groups.
-                component ButtonDivider: Rectangle {
-                    implicitWidth: 1
-                    implicitHeight: 16
-                    Layout.leftMargin: 2
-                    Layout.rightMargin: 2
-                    color: palette.mid
-                    opacity: 0.55
-                }
-                component GroupDivider: Rectangle {
-                    implicitWidth: 1
-                    implicitHeight: 26
-                    Layout.leftMargin: 10
-                    Layout.rightMargin: 10
-                    color: palette.mid
+
+                ToolGroup {
+                    ToolChoice { label: tr("Select"); tool: "Select"; command: "tool.select"; iconFile: "select.svg"; tip: tr("Select and move pieces") }
+                    ToolChoice { label: tr("Edit Points"); tool: "EditPoints"; command: "tool.editPoints"; iconFile: "edit-points.svg"; tip: tr("Move points, curve edges, add points") }
+                    ToolChoice { label: tr("Transform Points"); tool: "TransformPoints"; command: "tool.transformPoints"; iconFile: "transform-points.svg"; tip: tr("Select points and move, rotate or scale them with handles") }
+                    ToolChoice { label: tr("Sew"); tool: "Sew"; command: "tool.sew"; iconFile: "sew.svg"; tip: tr("Click two edges to sew them together") }
+                    ToolChoice { label: tr("Inset Band"); tool: "InsetBand"; command: "tool.insetBand"; iconFile: "inset-band.svg"; tip: tr("Cut a band (a waistband, collar band or facing) off pieces along the edges you click, already sewn on") }
+                    ToolChoice { label: tr("Cut"); tool: "Cut"; command: "tool.cut"; iconFile: "cut.svg"; tip: tr("Draw a line across pieces to cut them into separate pieces") }
                 }
 
-                ToolChoice { label: tr("Select"); tool: "Select"; command: "tool.select"; iconFile: "select.svg"; tip: tr("Select and move pieces") }
-                ButtonDivider {}
-                ToolChoice { label: tr("Edit Points"); tool: "EditPoints"; command: "tool.editPoints"; iconFile: "edit-points.svg"; tip: tr("Move points, curve edges, add points") }
-                ButtonDivider {}
-                ToolChoice { label: tr("Transform Points"); tool: "TransformPoints"; command: "tool.transformPoints"; iconFile: "transform-points.svg"; tip: tr("Select points and move, rotate or scale them with handles") }
-                ButtonDivider {}
-                ToolChoice { label: tr("Sew"); tool: "Sew"; command: "tool.sew"; iconFile: "sew.svg"; tip: tr("Click two edges to sew them together") }
-                ButtonDivider {}
-                ToolChoice { label: tr("Inset Band"); tool: "InsetBand"; command: "tool.insetBand"; iconFile: "inset-band.svg"; tip: tr("Cut a band (a waistband, collar band or facing) off pieces along the edges you click, already sewn on") }
-                ButtonDivider {}
-                ToolChoice { label: tr("Cut"); tool: "Cut"; command: "tool.cut"; iconFile: "cut.svg"; tip: tr("Draw a line across pieces to cut them into separate pieces") }
-                GroupDivider {}
-                ToolChoice { label: tr("Polygon"); tool: "Polygon"; command: "tool.polygon"; iconFile: "polygon.svg"; tip: tr("Draw a piece corner by corner") }
-                ButtonDivider {}
-                ToolChoice { label: tr("Rectangle"); tool: "Rectangle"; command: "tool.rectangle"; iconFile: "rectangle.svg"; tip: tr("Drag out a rectangular piece") }
-                ButtonDivider {}
-                ToolChoice { label: tr("Ellipse"); tool: "Ellipse"; command: "tool.ellipse"; iconFile: "ellipse.svg"; tip: tr("Drag out an elliptical piece") }
-                GroupDivider {}
-                ToolChoice { label: tr("Ruler"); tool: "Ruler"; command: "tool.ruler"; iconFile: "ruler.svg"; tip: tr("Measure distances in the 2D view, or between two points on the cloth or avatar in the 3D view") }
-                GroupDivider {}
-                ToolButton {
-                    display: AbstractButton.IconOnly
-                    icon.source: window.toolIcons + "undo.svg"
-                    icon.width: 22
-                    icon.height: 22
-                    icon.color: enabled ? palette.buttonText : palette.placeholderText
-                    enabled: App.canUndo
-                    Accessible.name: tr("Undo")
-                    Accessible.description: App.undoText
-                    onClicked: App.undo()
-                    ToolTip.visible: hovered
-                    ToolTip.text: App.undoText
+                ToolGroup {
+                    ToolChoice { label: tr("Polygon"); tool: "Polygon"; command: "tool.polygon"; iconFile: "polygon.svg"; tip: tr("Draw a piece corner by corner") }
+                    ToolChoice { label: tr("Rectangle"); tool: "Rectangle"; command: "tool.rectangle"; iconFile: "rectangle.svg"; tip: tr("Drag out a rectangular piece") }
+                    ToolChoice { label: tr("Ellipse"); tool: "Ellipse"; command: "tool.ellipse"; iconFile: "ellipse.svg"; tip: tr("Drag out an elliptical piece") }
                 }
-                ToolButton {
-                    display: AbstractButton.IconOnly
-                    icon.source: window.toolIcons + "redo.svg"
-                    icon.width: 22
-                    icon.height: 22
-                    icon.color: enabled ? palette.buttonText : palette.placeholderText
-                    enabled: App.canRedo
-                    Accessible.name: tr("Redo")
-                    Accessible.description: App.redoText
-                    onClicked: App.redo()
-                    ToolTip.visible: hovered
-                    ToolTip.text: App.redoText
+
+                ToolGroup {
+                    ToolChoice { label: tr("Ruler"); tool: "Ruler"; command: "tool.ruler"; iconFile: "ruler.svg"; tip: tr("Measure distances in the 2D view, or between two points on the cloth or avatar in the 3D view") }
                 }
-                GroupDivider {}
-                ToolButton {
-                    display: AbstractButton.IconOnly
-                    icon.source: window.toolIcons + (App.uvMode ? "uv-layout.svg" : "pattern.svg")
-                    icon.width: 22
-                    icon.height: 22
-                    icon.color: palette.buttonText
-                    checkable: true
-                    checked: App.uvMode
-                    Accessible.name: App.uvMode ? tr("UV Layout") : tr("Pattern")
-                    Accessible.description: tr("Switch the 2D view between the pattern and its UV layout")
-                    onClicked: App.uvMode = checked
-                    ToolTip.visible: hovered
-                    ToolTip.text: tr("Switch the 2D view between the pattern and its UV layout") + window.keyHint("view.uv")
+
+                ToolGroup {
+                    StudioIconButton {
+                        icon.source: window.toolIcons + "undo.svg"
+                        enabled: App.canUndo
+                        Accessible.name: tr("Undo")
+                        Accessible.description: App.undoText
+                        onClicked: App.undo()
+                        ToolTip.visible: hovered
+                        ToolTip.text: App.undoText
+                    }
+                    StudioIconButton {
+                        icon.source: window.toolIcons + "redo.svg"
+                        enabled: App.canRedo
+                        Accessible.name: tr("Redo")
+                        Accessible.description: App.redoText
+                        onClicked: App.redo()
+                        ToolTip.visible: hovered
+                        ToolTip.text: App.redoText
+                    }
+                }
+
+                ToolGroup {
+                    StudioIconButton {
+                        icon.source: window.toolIcons + (App.uvMode ? "uv-layout.svg" : "pattern.svg")
+                        checkable: true
+                        checked: App.uvMode
+                        Accessible.name: App.uvMode ? tr("UV Layout") : tr("Pattern")
+                        Accessible.description: tr("Switch the 2D view between the pattern and its UV layout")
+                        onClicked: App.uvMode = checked
+                        ToolTip.visible: hovered
+                        ToolTip.text: tr("Switch the 2D view between the pattern and its UV layout") + window.keyHint("view.uv")
+                    }
                 }
 
                 Item { Layout.fillWidth: true }
@@ -514,6 +533,7 @@ ApplicationWindow {
                 CheckBox {
                     text: tr("All garments")
                     checked: App.simulateAll
+                    font.pixelSize: 12
                     onToggled: App.simulateAll = checked
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
@@ -522,18 +542,57 @@ ApplicationWindow {
                 Button {
                     id: simulateButton
                     text: App.simulating ? "■  " + tr("Stop") : "▶  " + tr("Simulate")
-                    implicitWidth: 120
+                    implicitWidth: 118
+                    implicitHeight: 30
                     highlighted: true
-                    palette.highlight: App.simulating ? "#d9534f" : "#3fa35a"
-                    palette.button: App.simulating ? "#d9534f" : "#3fa35a"
+                    hoverEnabled: true
                     onClicked: App.toggleSimulation()
+                    contentItem: Label {
+                        text: simulateButton.text
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        color: "#ffffff"
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 6
+                        color: App.simulating
+                            ? (simulateButton.down ? "#b91c1c" : simulateButton.hovered ? "#dc2626" : "#ef4444")
+                            : (simulateButton.down ? "#047857" : simulateButton.hovered ? "#059669" : "#10b981")
+                        border.width: 1
+                        border.color: App.simulating ? Qt.alpha("#fca5a5", 0.35) : Qt.alpha("#6ee7b7", 0.35)
+                        Behavior on color { ColorAnimation { duration: 100 } }
+                    }
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
                     ToolTip.text: tr("Sew and drape the active garment") + window.keyHint("sim.toggle")
                 }
                 Button {
+                    id: resetButton
                     text: tr("Reset")
+                    implicitHeight: 30
+                    leftPadding: 14
+                    rightPadding: 14
+                    hoverEnabled: true
                     onClicked: App.resetArrangement()
+                    contentItem: Label {
+                        text: resetButton.text
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+                        color: palette.buttonText
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 6
+                        color: resetButton.down ? palette.dark
+                            : resetButton.hovered ? palette.midlight
+                            : palette.button
+                        border.width: 1
+                        border.color: resetButton.hovered ? palette.light : palette.mid
+                        Behavior on color { ColorAnimation { duration: 90 } }
+                    }
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
                     ToolTip.text: tr("Return the pieces to their flat arrangement")
@@ -546,6 +605,18 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             orientation: Qt.Horizontal
+            handle: Rectangle {
+                implicitWidth: 3
+                color: SplitHandle.pressed ? palette.highlight
+                    : SplitHandle.hovered ? Qt.alpha(palette.highlight, 0.55)
+                    : palette.dark
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 1
+                    height: parent.height
+                    color: SplitHandle.pressed || SplitHandle.hovered ? palette.highlight : palette.mid
+                }
+            }
 
             LayersPanel {
                 SplitView.preferredWidth: 280
@@ -555,6 +626,18 @@ ApplicationWindow {
             SplitView {
                 SplitView.fillWidth: true
                 orientation: Qt.Horizontal
+                handle: Rectangle {
+                    implicitWidth: 3
+                    color: SplitHandle.pressed ? palette.highlight
+                        : SplitHandle.hovered ? Qt.alpha(palette.highlight, 0.55)
+                        : palette.dark
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 1
+                        height: parent.height
+                        color: SplitHandle.pressed || SplitHandle.hovered ? palette.highlight : palette.mid
+                    }
+                }
                 Viewport3D {
                     id: viewport
                     onContextMenuRequested: contextMenu.popup()
@@ -582,18 +665,46 @@ ApplicationWindow {
         // ------------------------------------------------------------------ status bar
         Rectangle {
             Layout.fillWidth: true
-            implicitHeight: 24
+            implicitHeight: 26
             color: palette.dark
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; top: parent.top }
+                height: 1
+                color: palette.mid
+            }
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 16
-                Label { text: App.statusText; Layout.fillWidth: true; elide: Text.ElideRight; font.pixelSize: 12 }
-                Label { text: App.simInfo; visible: text !== ""; font.pixelSize: 12; color: App.themeInfoText }
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                spacing: 14
                 Label {
-                    font.pixelSize: 12
-                    opacity: 0.7
+                    text: App.statusText
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    font.pixelSize: 11
+                    color: palette.windowText
+                    opacity: 0.85
+                }
+                Rectangle {
+                    visible: App.simInfo !== ""
+                    implicitWidth: simInfoLabel.implicitWidth + 14
+                    implicitHeight: 18
+                    radius: 4
+                    color: Qt.alpha(App.themeInfoText, 0.14)
+                    border.color: Qt.alpha(App.themeInfoText, 0.45)
+                    border.width: 1
+                    Label {
+                        id: simInfoLabel
+                        anchors.centerIn: parent
+                        text: App.simInfo
+                        font.pixelSize: 11
+                        font.weight: Font.Medium
+                        color: App.themeInfoText
+                    }
+                }
+                Label {
+                    font.pixelSize: 11
+                    color: palette.placeholderText
                     text: propertiesPanel.sel.totalFaces !== undefined ? tr("%1 faces total").arg(propertiesPanel.sel.totalFaces.toLocaleString(Qt.locale(), "f", 0)) : ""
                 }
             }
