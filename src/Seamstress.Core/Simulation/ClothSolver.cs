@@ -23,12 +23,20 @@ public sealed class ClothPiece
 /// Position-based cloth solver (XPBD with small substeps). Every mesh edge is a stretch constraint, every pair of
 /// adjacent triangles a bend constraint, and every stitch pulls two particles together.
 /// </summary>
-public sealed partial class ClothSolver
+public sealed partial class ClothSolver : IDisposable
 {
     private const float FrameTime = 1f / 60f;
     private const float MaxSpeed = 8f;
     private const float SeamClosingSpeed = 0.8f;
     private const float SkinOffset = 0.002f;
+
+    private IClothAccelerator? _accelerator;
+    private byte[] _openStitchBytes = Array.Empty<byte>();
+    private bool _gpuDirty;
+    private Action<Vector3[], Vector3[], bool>? _acceleratorContacts;
+
+    /// <summary>Human-readable compute backend currently driving this solver (e.g. "CUDA (...)" or "CPU").</summary>
+    public string BackendName => _accelerator?.Name ?? "CPU";
 
     public Vector3[] Positions { get; }
     private readonly Vector3[] _previous;
@@ -307,7 +315,54 @@ public sealed partial class ClothSolver
         solver._hcompliance = hcompliance.ToArray();
         solver._sa = sa.ToArray();
         solver._sb = sb.ToArray();
+        solver._openStitchBytes = new byte[count];
+        solver.TryAttachAccelerator(garmentCount, pieces.Count);
         return solver;
+    }
+
+    private void TryAttachAccelerator(int garmentCount, int pieceCount)
+    {
+        if (!ClothAcceleration.Enabled || ClothAcceleration.Factory == null || Positions.Length == 0)
+            return;
+        try
+        {
+            _accelerator = ClothAcceleration.Factory(new ClothSolverData
+            {
+                Positions = Positions,
+                InvMass = _invMass,
+                Thickness = _thickness,
+                Friction = _friction,
+                Drag = _drag,
+                ClothThickness = _clothThickness,
+                Stitched = _stitched,
+                PieceOf = _pieceOf,
+                GarmentOfPiece = _garmentOfPiece,
+                PieceCount = pieceCount,
+                GarmentCount = garmentCount,
+                Ca = _ca,
+                Cb = _cb,
+                Rest = _rest,
+                Compliance = _compliance,
+                Ha = _ha,
+                Hb = _hb,
+                HRest = _hrest,
+                HCompliance = _hcompliance,
+                Sa = _sa,
+                Sb = _sb,
+                Collider = Collider,
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write($"GPU cloth accelerator unavailable, falling back to CPU: {ex.Message}");
+            _accelerator = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        _accelerator?.Dispose();
+        _accelerator = null;
     }
 
     private static float BendStiffness(FabricPhysics physics)
@@ -361,6 +416,38 @@ public sealed partial class ClothSolver
         int searchEvery = Math.Max(1, substeps / Math.Clamp((int)MathF.Ceiling(travel / (0.75f * ContactMargin)), 1, substeps));
 
         UpdatePinch();
+
+        if (_accelerator != null && !IsPinching)
+        {
+            if (_gpuDirty)
+            {
+                _accelerator.UploadState(x, _velocity);
+                _gpuDirty = false;
+            }
+            for (int i = 0; i < n; i++)
+                _openStitchBytes[i] = _openStitch[i] ? (byte)1 : (byte)0;
+            var stepParams = new ClothStepParams
+            {
+                Substeps = substeps,
+                SubstepDt = h,
+                GravityY = Settings.Gravity,
+                GroundPlane = Settings.GroundPlane,
+                SelfCollision = Settings.SelfCollision,
+                SearchEvery = searchEvery,
+                Sewing = _sewing,
+                OpenStitch = _openStitchBytes,
+            };
+            PeakSpeed = _accelerator.StepFrame(stepParams,
+                Settings.SelfCollision ? _acceleratorContacts ??= SolveContactsForAccelerator : null);
+            _accelerator.DownloadPositions(x);
+            return;
+        }
+
+        // The accelerator owns the velocities while it steps. The first CPU frame after it (a pinch has started)
+        // fetches them, so the cloth carries on with the motion it has instead of the last one the CPU saw.
+        if (_accelerator != null && !_gpuDirty)
+            _accelerator.DownloadVelocities(_velocity);
+        _gpuDirty = true;
         for (int step = 0; step < substeps; step++)
         {
             if (Settings.SelfCollision && step % searchEvery == 0)
@@ -399,6 +486,21 @@ public sealed partial class ClothSolver
         for (int i = 0; i < n; i++)
             peak = MathF.Max(peak, _velocity[i].LengthSquared());
         PeakSpeed = MathF.Sqrt(peak);
+    }
+
+    /// <summary>
+    /// One substep of cloth-on-cloth contacts for an accelerator, which solves everything else itself.
+    /// <paramref name="previous"/> holds the positions at the start of the substep, which friction is measured against.
+    /// </summary>
+    private void SolveContactsForAccelerator(Vector3[] positions, Vector3[] previous, bool search)
+    {
+        var x = Positions;
+        Array.Copy(positions, x, x.Length);
+        Array.Copy(previous, _previous, x.Length);
+        if (search)
+            FindContacts();
+        SolveContacts();
+        Array.Copy(x, positions, x.Length);
     }
 
     private void SolveDistances(float h)

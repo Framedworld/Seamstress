@@ -40,7 +40,7 @@ public static class AppLog
                 // Two launches in the same second must still get a file of their own.
                 for (int n = 2; File.Exists(path); n++)
                     path = Path.Combine(folder, $"seamstress-{stamp}-{n}.txt");
-                _writer = new StreamWriter(new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read)) { AutoFlush = true };
+                _writer = new StreamWriter(new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite)) { AutoFlush = true };
                 _file = path;
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)

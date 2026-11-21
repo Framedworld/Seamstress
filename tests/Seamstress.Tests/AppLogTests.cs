@@ -17,7 +17,9 @@ public class AppLogTests
             Assert.True(AppLog.IsActive);
             Assert.Matches(@"^seamstress-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.txt$", Path.GetFileName(first));
             AppLog.Write("something happened");
-            string text = File.ReadAllText(first);
+            string text;
+            using (var reader = new StreamReader(new FileStream(first, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)))
+                text = reader.ReadToEnd();
             Assert.Contains("first run", text);
             Assert.Contains("something happened", text);
             Assert.Matches(@"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\]", text);

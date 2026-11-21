@@ -571,6 +571,9 @@ Item {
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         hoverEnabled: true
         property bool panning: false
+        property bool zooming: false
+        property real pressX: 0
+        property real pressY: 0
         property real lastX: 0
         property real lastY: 0
         property real travelled: 0
@@ -583,7 +586,10 @@ Item {
                 App.pointerDown(root.wx(e.x), root.wy(e.y), root.tolerance(), (e.modifiers & Qt.ControlModifier) !== 0)
             } else {
                 panning = true
+                // Alt+right-drag zooms, as in Maya; every other drag here pans.
+                zooming = e.button === Qt.RightButton && (e.modifiers & Qt.AltModifier) !== 0
                 lastX = e.x; lastY = e.y
+                pressX = e.x; pressY = e.y
                 travelled = 0
             }
         }
@@ -591,8 +597,17 @@ Item {
             if (panning) {
                 root.userAdjusted = true
                 travelled += Math.abs(e.x - lastX) + Math.abs(e.y - lastY)
-                root.panX += e.x - lastX
-                root.panY -= e.y - lastY
+                if (zooming) {
+                    // Drag right or up to zoom in, about the point the drag started on.
+                    const factor = Math.pow(1.005, (e.x - lastX) - (e.y - lastY))
+                    const cx = root.wx(pressX), cy = root.wy(pressY)
+                    root.zoom = Math.max(root.uv ? 20 : 0.2, Math.min(root.uv ? 20000 : 400, root.zoom * factor))
+                    root.panX = pressX - cx * root.zoom
+                    root.panY = root.height - pressY - cy * root.zoom
+                } else {
+                    root.panX += e.x - lastX
+                    root.panY -= e.y - lastY
+                }
                 lastX = e.x; lastY = e.y
                 canvas.requestPaint()
             } else {
@@ -607,6 +622,7 @@ Item {
         onReleased: (e) => {
             if (panning) {
                 panning = false
+                zooming = false
                 if (e.button === Qt.RightButton && travelled < 4) {
                     if (!root.uv)
                         App.contextSelect(root.wx(e.x), root.wy(e.y))

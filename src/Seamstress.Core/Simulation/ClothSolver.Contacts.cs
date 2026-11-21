@@ -31,6 +31,14 @@ public sealed partial class ClothSolver
     private Vector2[] _triRest = Array.Empty<Vector2>();
     private Vector2[] _rest2D = Array.Empty<Vector2>();
 
+    // Free boundary (hem) edges for edge-edge collision so two hanging hems do not slip past each other.
+    private int[] _hemA = Array.Empty<int>();
+    private int[] _hemB = Array.Empty<int>();
+    private int[] _hemPiece = Array.Empty<int>();
+    private Vector2[] _hemRest = Array.Empty<Vector2>();
+    private (int E1, int E2)[] _hemContacts = Array.Empty<(int, int)>();
+    private int _hemContactCount;
+
     // Within one piece, cloth closer than this in the flat pattern (cm) is held apart by the fabric itself.
     private const float SamePieceRestDistance = 5f;
 
@@ -99,6 +107,35 @@ public sealed partial class ClothSolver
             Array.Sort(sorted);
             _near[i] = sorted;
         }
+
+        // Collect free boundary (hem) edges: edges belonging to a single triangle and not stitched on both ends.
+        var edgeCounts = new Dictionary<long, (int A, int B, int Count)>();
+        for (int t = 0; t < triangles.Length; t += 3)
+        {
+            for (int k = 0; k < 3; k++)
+            {
+                int a = triangles[t + k], b = triangles[t + (k + 1) % 3];
+                long key = a < b ? ((long)a << 32) | (uint)b : ((long)b << 32) | (uint)a;
+                edgeCounts[key] = edgeCounts.TryGetValue(key, out var e) ? (e.A, e.B, e.Count + 1) : (a, b, 1);
+            }
+        }
+        var hemA = new List<int>();
+        var hemB = new List<int>();
+        var hemPiece = new List<int>();
+        var hemRest = new List<Vector2>();
+        foreach (var (_, (a, b, count)) in edgeCounts)
+        {
+            if (count != 1 || (_stitched[a] && _stitched[b]))
+                continue;
+            hemA.Add(a);
+            hemB.Add(b);
+            hemPiece.Add(_pieceOf[a]);
+            hemRest.Add((_rest2D[a] + _rest2D[b]) * 0.5f);
+        }
+        _hemA = hemA.ToArray();
+        _hemB = hemB.ToArray();
+        _hemPiece = hemPiece.ToArray();
+        _hemRest = hemRest.ToArray();
     }
 
     private bool AreNeighbours(int particle, int triangle)
@@ -230,6 +267,91 @@ public sealed partial class ClothSolver
             }
         }
         (_sides, _sidesNext) = (_sidesNext, _sides);
+        FindHemContacts(margin);
+    }
+
+    private void FindHemContacts(float margin)
+    {
+        _hemContactCount = 0;
+        int m = _hemA.Length;
+        if (m < 2)
+            return;
+        var x = Positions;
+        float reachSq = margin * margin;
+        float samePieceSq = SamePieceRestDistance * SamePieceRestDistance;
+        for (int i = 0; i < m; i++)
+        {
+            int a1 = _hemA[i], b1 = _hemB[i];
+            var p1 = x[a1];
+            var q1 = x[b1];
+            var lo1 = Vector3.Min(p1, q1) - new Vector3(margin);
+            var hi1 = Vector3.Max(p1, q1) + new Vector3(margin);
+            int piece1 = _hemPiece[i];
+            for (int j = i + 1; j < m; j++)
+            {
+                int a2 = _hemA[j], b2 = _hemB[j];
+                if (_invMass[a1] == 0 && _invMass[b1] == 0 && _invMass[a2] == 0 && _invMass[b2] == 0)
+                    continue;
+                if (piece1 == _hemPiece[j] && Vector2.DistanceSquared(_hemRest[i], _hemRest[j]) < samePieceSq)
+                    continue;
+                if (_weld[a1] == _weld[a2] || _weld[a1] == _weld[b2] || _weld[b1] == _weld[a2] || _weld[b1] == _weld[b2])
+                    continue;
+                var p2 = x[a2];
+                var q2 = x[b2];
+                var lo2 = Vector3.Min(p2, q2);
+                var hi2 = Vector3.Max(p2, q2);
+                if (hi1.X < lo2.X || lo1.X > hi2.X || hi1.Y < lo2.Y || lo1.Y > hi2.Y || hi1.Z < lo2.Z || lo1.Z > hi2.Z)
+                    continue;
+                ClosestPointsOnSegments(p1, q1, p2, q2, out _, out _, out var c1, out var c2);
+                if (Vector3.DistanceSquared(c1, c2) > reachSq)
+                    continue;
+                if (_hemContactCount == _hemContacts.Length)
+                    Array.Resize(ref _hemContacts, Math.Max(128, _hemContacts.Length * 2));
+                _hemContacts[_hemContactCount++] = (i, j);
+            }
+        }
+    }
+
+    private static void ClosestPointsOnSegments(Vector3 p1, Vector3 q1, Vector3 p2, Vector3 q2,
+        out float s, out float t, out Vector3 c1, out Vector3 c2)
+    {
+        var d1 = q1 - p1;
+        var d2 = q2 - p2;
+        var r = p1 - p2;
+        float a = Vector3.Dot(d1, d1);
+        float e = Vector3.Dot(d2, d2);
+        float f = Vector3.Dot(d2, r);
+        if (a <= 1e-12f && e <= 1e-12f)
+        {
+            s = t = 0f;
+            c1 = p1; c2 = p2;
+            return;
+        }
+        if (a <= 1e-12f)
+        {
+            s = 0f;
+            t = Math.Clamp(f / e, 0f, 1f);
+        }
+        else
+        {
+            float c = Vector3.Dot(d1, r);
+            if (e <= 1e-12f)
+            {
+                t = 0f;
+                s = Math.Clamp(-c / a, 0f, 1f);
+            }
+            else
+            {
+                float b = Vector3.Dot(d1, d2);
+                float denom = a * e - b * b;
+                s = denom > 1e-12f ? Math.Clamp((b * f - c * e) / denom, 0f, 1f) : 0f;
+                t = (b * s + f) / e;
+                if (t < 0f) { t = 0f; s = Math.Clamp(-c / a, 0f, 1f); }
+                else if (t > 1f) { t = 1f; s = Math.Clamp((b - c) / a, 0f, 1f); }
+            }
+        }
+        c1 = p1 + d1 * s;
+        c2 = p2 + d2 * t;
     }
 
     /// <summary>Every substep: pushes particles and triangles apart where they are closer than the fabrics allow.</summary>
@@ -283,6 +405,31 @@ public sealed partial class ClothSolver
             x[ia] += cancel * (wa * ma);
             x[ib] += cancel * (wb * mb);
             x[ic] += cancel * (wc * mc);
+        }
+
+        // Resolve hem edge-edge contacts so free hems keep fabric thickness clearance.
+        for (int k = 0; k < _hemContactCount; k++)
+        {
+            var (e1, e2) = _hemContacts[k];
+            int a1 = _hemA[e1], b1 = _hemB[e1], a2 = _hemA[e2], b2 = _hemB[e2];
+            ClosestPointsOnSegments(x[a1], x[b1], x[a2], x[b2], out float s, out float t, out var c1, out var c2);
+            var diff = c1 - c2;
+            float dist = diff.Length();
+            float sep = 0.25f * (_clothThickness[a1] + _clothThickness[b1] + _clothThickness[a2] + _clothThickness[b2]);
+            if (dist >= sep || dist < 1e-9f)
+                continue;
+            var normal = diff / dist;
+            float depth = MathF.Min(sep - dist, sep * 0.5f);
+            float w1a = 1f - s, w1b = s, w2a = 1f - t, w2b = t;
+            float m1a = _invMass[a1], m1b = _invMass[b1], m2a = _invMass[a2], m2b = _invMass[b2];
+            float w = w1a * w1a * m1a + w1b * w1b * m1b + w2a * w2a * m2a + w2b * w2b * m2b;
+            if (w == 0f)
+                continue;
+            var push = normal * (depth / w);
+            x[a1] += push * (w1a * m1a);
+            x[b1] += push * (w1b * m1b);
+            x[a2] -= push * (w2a * m2a);
+            x[b2] -= push * (w2b * m2b);
         }
     }
 }

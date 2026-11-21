@@ -262,6 +262,7 @@ public static class Program
                     Console.WriteLine("Usage: Seamstress [file.garment.json] [--cpu | --gpu]\n"
                         + "  --cpu   render the 3D viewport on the CPU (software rasterizer)\n"
                         + "  --gpu   render on the GPU even if the last GPU start failed\n"
+                        + "  --no-cuda  simulate cloth on the CPU even when an NVIDIA GPU is available\n"
                         + "  --lang  interface language for this run: " + string.Join(", ", Lang.Languages.Select(l => l.Code)));
                     return;
                 default:
@@ -289,6 +290,12 @@ public static class Program
             e.SetObserved();
         };
         AppDomain.CurrentDomain.ProcessExit += (_, _) => AppLog.Stop();
+
+        // After the log has started, so that it records which device the cloth solver got, or why it got none.
+        if (args.Contains("--no-cuda"))
+            AppLog.Write("Cloth solver: CPU (CUDA turned off with --no-cuda).");
+        else if (!Seamstress.Cuda.CudaClothBackend.Register())
+            AppLog.Write("Cloth solver: CPU.");
 
         // Decide between the GPU renderer and the CPU fallback before Qt creates its rendering context.
         string preference = forced ?? settings.Renderer;

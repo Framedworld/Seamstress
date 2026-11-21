@@ -48,6 +48,9 @@ public sealed class SdfGrid
 
     public float At(int x, int y, int z) => _d[Index(x, y, z)];
 
+    /// <summary>Raw signed-distance volume in (z * Ny + y) * Nx + x order, for GPU upload.</summary>
+    public float[] RawValues => _d;
+
     /// <summary>Samples an implicit function (negative inside). The result is only used to extract a surface.</summary>
     public static SdfGrid FromFunction(Func<Vector3, float> f, Vector3 min, Vector3 max, float cell)
     {

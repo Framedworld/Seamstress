@@ -683,6 +683,8 @@ public class DocumentTests
         Assert.Equal("Ctrl+MouseLeft", KeyBindings.Normalize("ctrl+mouseleft"));
         Assert.Equal("MouseMiddle", KeyBindings.Normalize("MOUSEMIDDLE"));
         Assert.Equal("Shift+MouseRight", KeyBindings.Normalize("shift+mouseright"));
+        // Orbiting is Alt-drag first, as in Maya; Ctrl-drag stays for desktops that keep Alt-drag for moving windows.
+        Assert.Equal(new[] { "Alt+MouseLeft", "Ctrl+MouseLeft" }, KeyBindings.Find("view.orbit")!.Defaults);
 
         // Every command has a unique id, and the defaults never clash with each other.
         var commands = KeyBindings.Commands;

@@ -43,6 +43,7 @@
   <ItemGroup>
     <PackageReference Include="$(QtBridgePackageId)" Version="0.4.*-*" />
     <ProjectReference Include="..\Seamstress.Core\Seamstress.Core.csproj" />
+    <ProjectReference Include="..\Seamstress.Cuda\Seamstress.Cuda.csproj" />
   </ItemGroup>
 
   <ItemGroup>

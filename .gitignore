@@ -58,6 +58,9 @@ bin/
 obj/
 *.user
 .vs/
+.agents/
+.mcp.json
+logs/
 TestResults/
 
 # Build script output

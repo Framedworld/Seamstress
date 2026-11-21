@@ -136,9 +136,69 @@ function Invoke-Aqt([string[]]$arguments) {
     if ($LASTEXITCODE -ne 0) { Fail 'downloading Qt failed' }
 }
 
+function Install-QtDirect($version, $aqtArch) {
+    $verTag = $version.Replace('.', '')
+    $subDir = $aqtArch -replace '^win64_', ''
+    $baseUrl = "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_$verTag/qt6_${verTag}_$subDir"
+    Say "Falling back to direct Qt $version ($aqtArch) download from $baseUrl"
+    [xml]$xml = (Invoke-WebRequest -Uri "$baseUrl/Updates.xml" -UseBasicParsing).Content
+    $wantedNames = @(
+        "qt.qt6.$verTag.$aqtArch",
+        "qt.qt6.$verTag.addons.qtquick3d.$aqtArch",
+        "qt.qt6.$verTag.addons.qtshadertools.$aqtArch",
+        "qt.qt6.$verTag.addons.qtquicktimeline.$aqtArch",
+        "qt.qt6.$verTag.addons.qtimageformats.$aqtArch"
+    )
+    $qtRoot = Join-Path $HOME 'Qt'
+    $prefix = Join-Path $qtRoot "$version\$subDir"
+    $tmp = Join-Path $tools "qt-dl-$verTag"
+    New-Item -ItemType Directory -Force -Path $prefix, $tmp | Out-Null
+    $archives = @()
+    foreach ($pkg in $xml.Updates.PackageUpdate) {
+        if ($wantedNames -notcontains $pkg.Name) { continue }
+        if (-not $pkg.DownloadableArchives) { continue }
+        foreach ($a in ($pkg.DownloadableArchives -split ',\s*')) {
+            if (-not $a -or $a -like 'qtdoc-*' -or $a -like '*-debug-symbols.7z') { continue }
+            $url = "$baseUrl/$($pkg.Name)/$($pkg.Version)$a"
+            $dest = Join-Path $tmp "$($pkg.Name)-$a"
+            $archives += [pscustomobject]@{ Url = $url; Dest = $dest; Name = $a }
+        }
+    }
+    if ($archives.Count -eq 0) { Fail "No Qt $version archives found in $baseUrl/Updates.xml" }
+    foreach ($item in $archives) {
+        if (-not (Test-Path $item.Dest)) {
+            Say "Downloading $($item.Name)"
+            Invoke-WebRequest -Uri $item.Url -OutFile $item.Dest -UseBasicParsing
+        }
+    }
+    Say "Extracting $($archives.Count) Qt archives into $prefix"
+    $pyExtract = "import sys, py7zr; [py7zr.SevenZipFile(p, mode='r').extractall(path=sys.argv[1]) for p in sys.argv[2:]]"
+    if (Get-Command 7z -ErrorAction SilentlyContinue) {
+        foreach ($item in $archives) { & 7z x -y "-o$prefix" $item.Dest | Out-Null }
+    } elseif (Get-Command uvx -ErrorAction SilentlyContinue) {
+        & uvx --from py7zr python -c $pyExtract $prefix ($archives | ForEach-Object { $_.Dest })
+    } else {
+        Fail "7z or uvx (for py7zr) is needed to extract Qt archives."
+    }
+    if ($LASTEXITCODE -ne 0) { Fail 'extracting Qt archives failed' }
+    $qtConf = Join-Path $prefix 'bin\qt.conf'
+    if (-not (Test-Path $qtConf)) {
+        "[Paths]`nPrefix=..`n" | Set-Content -Path $qtConf -Encoding ASCII
+    }
+}
+
 function Install-Qt($aqtHost, $aqtArch, $version) {
     Say "Installing Qt $version ($aqtArch) into ~\Qt with aqtinstall"
-    Invoke-Aqt (@('install-qt', $aqtHost, 'desktop', $version, $aqtArch, '-O', (Join-Path $HOME 'Qt'), '-m') + $QtModules)
+    $ErrorActionPreference = 'Continue'
+    if (Get-Command uvx -ErrorAction SilentlyContinue) { & uvx --from aqtinstall aqt install-qt $aqtHost desktop $version $aqtArch -O (Join-Path $HOME 'Qt') -m @QtModules }
+    elseif (Get-Command pipx -ErrorAction SilentlyContinue) { & pipx run --spec aqtinstall aqt install-qt $aqtHost desktop $version $aqtArch -O (Join-Path $HOME 'Qt') -m @QtModules }
+    else { Invoke-Aqt (@('install-qt', $aqtHost, 'desktop', $version, $aqtArch, '-O', (Join-Path $HOME 'Qt'), '-m') + $QtModules) }
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($code -ne 0) {
+        if ($aqtHost -eq 'windows') { Install-QtDirect $version $aqtArch }
+        else { Fail 'downloading Qt failed' }
+    }
 }
 
 # Newest <root>\<version>\<subdir> under C:\Qt (Qt online installer) and ~\Qt (aqtinstall) that passes the test.

@@ -161,8 +161,8 @@ Item {
     }
 
     // The orbit gesture set in Preferences ("3D: Orbit"), read again when the keys change. Each key is a mouse
-    // gesture such as "Ctrl+MouseLeft" (the default) or "MouseMiddle"; the left button always needs a modifier,
-    // so it never takes over the tools' ordinary left-drag.
+    // gesture such as "Alt+MouseLeft" (the default, as in Maya) or "MouseMiddle"; the left button always needs a
+    // modifier, so it never takes over the tools' ordinary left-drag.
     readonly property var orbitKeys: { App.keysRevision; return JSON.parse(App.keysJson("view.orbit")) }
 
     // Whether a mouse press is one of the orbit gestures: the button must match and the modifiers (without Num)
@@ -185,14 +185,14 @@ Item {
         return false
     }
 
-    // A gesture in words, for the hint line: "Ctrl-drag" for the default, "drag with middle button" for a plain
+    // A gesture in words, for the hint line: "Alt-drag" for the default, "drag with middle button" for a plain
     // middle-drag.
     function dragWords(gesture) {
         const parts = gesture.split("+")
         const main = parts.pop()
         const mods = parts.map(m => m === "Shift" ? tr("Shift") : m)
         if (main === "MouseLeft")
-            // The left button is the one everything drags with, so the modifiers say it all ("Ctrl-drag").
+            // The left button is the one everything drags with, so the modifiers say it all ("Alt-drag").
             return mods.length > 0 ? tr("%1-drag").arg(mods.join("+")) : tr("drag with %1").arg(tr("3d|left button"))
         const button = main === "MouseMiddle" ? tr("3d|middle button") : main === "MouseRight" ? tr("3d|right button") : main
         return tr("drag with %1").arg(mods.length > 0 ? mods.join("+") + "+" + button : button)
@@ -533,7 +533,7 @@ Item {
         property real lastX: 0
         property real lastY: 0
         property real travelled: 0
-        property int mode: 0   // 1 orbit, 2 pan, 3 dragging a handle, 4 pinching cloth, 5 placing a ruler end, 6 pin box, 7 ripping
+        property int mode: 0   // 1 orbit, 2 pan, 3 dragging a handle, 4 pinching cloth, 5 placing a ruler end, 6 pin box, 7 ripping, 8 zoom
         hoverEnabled: root.rulerOpen
         property vector3d pinchStart: Qt.vector3d(0, 0, 0)
         property real pinchScale: 0
@@ -620,9 +620,15 @@ Item {
                 }
             }
             if (root.orbitMatches(e.button, e.modifiers)) {
-                // The orbit gesture set in Preferences (Ctrl-drag by default); it wins over the tools, so the
+                // The orbit gesture set in Preferences (Alt-drag by default); it wins over the tools, so the
                 // camera can be turned anywhere, also while Pinch or the Ruler is active.
                 mode = 1
+                return
+            }
+            if (e.button === Qt.RightButton
+                    && (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.ShiftModifier | Qt.MetaModifier)) === Qt.AltModifier) {
+                // Alt+right-drag zooms, as in Maya (Alt+middle pans below, like any middle-drag).
+                mode = 8
                 return
             }
             if (e.button === Qt.LeftButton && App.pinBrush && !(e.modifiers & Qt.ControlModifier)) {
@@ -740,6 +746,9 @@ Item {
                 root.target = Qt.vector3d(root.target.x - (r.x * dx - u.x * dy) * k,
                                           root.target.y - (r.y * dx - u.y * dy) * k,
                                           root.target.z - (r.z * dx - u.z * dy) * k)
+            } else if (mode === 8) {
+                // Drag right or up to move in, left or down to move out; the same limits as the wheel.
+                root.distance = Math.max(0.25, Math.min(25, root.distance * Math.pow(0.995, (dx - dy) * App.mouseSensitivity)))
             }
         }
         onReleased: (e) => {

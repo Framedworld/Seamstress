@@ -60,6 +60,7 @@ public sealed class SimulationController : IDisposable
         var active = simulated.Select(g => _workspace.MeshFor(g)).ToList();
         var obstacles = doc.Garments.Where(g => g.Visible && !simulated.Contains(g)).Select(g => _workspace.MeshFor(g)).ToList();
         var solver = ClothSolver.Create(active, obstacles, _avatar()?.Sdf, doc.Simulation.Clone());
+        AppLog.Write($"Simulating {solver.ParticleCount} particles on {solver.BackendName}.");
         _garments.Clear();
         foreach (var g in simulated)
             _garments.Add(g.Id);
@@ -109,6 +110,7 @@ public sealed class SimulationController : IDisposable
         {
             runner.Stop();
             Pump(force: true);
+            runner.Dispose(); // frees the solver's GPU buffers now instead of whenever the garbage collector gets to them
             _runner = null;
             _garments.Clear();
             _workspace.History.Commit();

@@ -81,7 +81,7 @@ From here, the rest of this guide explains each area in detail, including how to
 | 2 | **Tools** | Pick what the mouse does in the 2D view; undo and redo; switch the 2D view between pattern and UV layout. |
 | 3 | **Simulation controls** | **Simulate** starts and stops the cloth simulation. **All garments** widens it from the active garment to every visible one. **Reset** returns pieces to their flat arrangement. |
 | 4 | **Layers** | Every garment, the groups inside it and its pieces. Select, rename, hide, group, delete. |
-| 5 | **3D Garment view** | The avatar and the garments on it. Ctrl-drag to orbit around, select pieces, move and rotate them with the handles. |
+| 5 | **3D Garment view** | The avatar and the garments on it. Alt-drag to orbit around, select pieces, move and rotate them with the handles. |
 | 6 | **2D Pattern view** | Where pieces are drawn, shaped and sewn. Also shows the UV layout. |
 | 7 | **Properties** | Settings of whatever is selected: topology, 3D arrangement, fabric physics, material, UVs, seams, simulation. |
 | 8 | **Status bar** | Hints for the current tool, simulation progress, and the total face count. |
@@ -178,7 +178,7 @@ square and says how big it is: 1 mm, 1 cm, 10 cm, 1 m or 10 m in metric, and 1/8
 in imperial. Every few squares there is a stronger line (every tenth square in metric).
 
 **Moving around:** scroll to zoom about the cursor; drag with the middle or right mouse button (or
-Alt+left-drag) to pan; press **F** to frame everything. A right-click without dragging opens the Edit menu.
+Alt+left-drag) to pan; Alt+right-drag also zooms; press **F** to frame everything. A right-click without dragging opens the Edit menu.
 
 **The body** is drawn faintly behind the pieces: a front view of the same avatar you see in 3D (the mannequin
 or a MakeHuman mesh), at its true size, standing on the origin, so you can see where the pattern falls on the
@@ -257,7 +257,7 @@ Pick the **Ruler** (**M**).
   corner to corner is exact. Hold **Shift** to keep the line to 15° steps.
 - **In the 3D view**, click a point on the cloth or the avatar, then click a second one; the far end follows the
   pointer until you do. You can also drag from the first point to the second. The distance is straight across,
-  not along the surface. Ctrl+dragging from empty space still orbits the camera.
+  not along the surface. Alt+dragging (or Ctrl+dragging) from empty space still orbits the camera.
 
 The ruler stays until you measure again, click empty space, press **Esc**, or pick another tool. It never
 changes the pattern.
@@ -439,9 +439,9 @@ simulation pulls each stitch shut.
 
 | To | Do this |
 | --- | --- |
-| Orbit | Ctrl+drag with the left mouse button |
+| Orbit | Alt+drag with the left mouse button (Ctrl+drag also works) |
 | Pan | Shift+drag, or drag with the middle or right button |
-| Zoom | Scroll |
+| Zoom | Scroll, or Alt+drag with the right button |
 | Select a piece | Click it (Ctrl+click adds to the selection). Click empty space to deselect |
 | Edit menu | Right-click without dragging |
 | Front / side / back | **1** / **3** / **Ctrl+1** (on the number row or the keypad) |
@@ -541,7 +541,7 @@ body.
   cloth settle for a moment after you let go, and stops again. The whole pinch is one undo step (**Ctrl+Z**).
 - The cloth still collides with the avatar and other garments, so you can pull it over a shoulder or smooth it
   down against the body, but not drag it through.
-- While Pinch is on, Ctrl+drag orbits the camera, Shift+drag pans, and the move/rotate handles are hidden. Turn
+- While Pinch is on, Alt+drag orbits the camera, Shift+drag pans, and the move/rotate handles are hidden. Turn
   Pinch off to get them back.
 - About 5 cm of cloth around the cursor is held; cloth further away is moved only by the fabric pulling on it.
 - Only garments that are being simulated can be pinched. If another garment is the active one and a simulation
@@ -561,7 +561,7 @@ to tear in a straight line instead of following the surface.
 - The pieces keep the fabric, group, UVs and 3D arrangement. A draped piece stays draped, and the new piece is
   draped from the cloth it was torn from.
 - Seams on edges the tear does not divide stay sewn; a seam on an edge that is divided is removed.
-- A very short drag does nothing. Ctrl+drag orbits the camera, middle/right-drag pans, and the move/rotate
+- A very short drag does nothing. Alt+drag orbits the camera, middle/right-drag pans, and the move/rotate
   handles are hidden while Rip is on. Shift starts a straight rip instead of panning.
 - **Ctrl+Z** undoes the whole rip in one step.
 
@@ -1094,7 +1094,7 @@ These are the defaults. All of them can be changed under [Preferences ▸ Keyboa
 | | 2D view | 3D view |
 | --- | --- | --- |
 | Left button | The current tool | Click to select; drag a handle to move or rotate; with Pinch on, drag the cloth to pull it; with Rip on, drag across the cloth to tear it |
-| Ctrl + drag (or the button set for **3D: Orbit** in Preferences) | — | Orbit around the avatar |
+| Alt + drag, or Ctrl + drag (or the button set for **3D: Orbit** in Preferences) | — | Orbit around the avatar |
 | Ctrl + click | Add to the selection | Add to the selection |
 | Shift + click | — | Add to the selection |
 | Shift while drawing | Square, circle, a snapped polygon side, or a 15° cut line | — |
@@ -1106,7 +1106,8 @@ These are the defaults. All of them can be changed under [Preferences ▸ Keyboa
 | Shift + drag a piece (Select) | Snap the piece to the grid | — |
 | Middle or right drag | Pan | Pan, unless the **3D: Orbit** gesture uses that button (then it orbits); Shift + drag still pans |
 | Right-click | Edit menu | Edit menu |
-| Alt + left drag | Pan | — |
+| Alt + left drag | Pan | Orbit |
+| Alt + right drag | Zoom about where the drag started | Zoom |
 | Scroll | Zoom about the cursor | Zoom |
 | Double-click | Finish a polygon; add a point on an edge (Edit Points); select every point of a piece | — |
 | Drag (Ruler) | Measure; the ends catch on pattern points | Click or drag between two points on the cloth or avatar |

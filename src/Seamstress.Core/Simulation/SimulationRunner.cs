@@ -119,5 +119,9 @@ public sealed class SimulationRunner : IDisposable
         }
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        Stop();
+        _solver.Dispose();
+    }
 }
