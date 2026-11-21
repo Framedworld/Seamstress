@@ -46,6 +46,34 @@ public readonly struct ClothStepParams
     public required byte[] OpenStitch { get; init; }
 }
 
+/// <summary>Compact point-triangle self-collision contact pair for GPU resolution (must be public for ILGPU).</summary>
+public struct GpuPtContact
+{
+    public int Particle;
+    public int Ia;
+    public int Ib;
+    public int Ic;
+    public float Side;
+}
+
+/// <summary>Compact hem edge-edge self-collision contact pair for GPU resolution (must be public for ILGPU).</summary>
+public struct GpuHemContact
+{
+    public int A1;
+    public int B1;
+    public int A2;
+    public int B2;
+}
+
+/// <summary>Compact contact lists produced by a CPU broadphase refresh for GPU contact kernels.</summary>
+public readonly struct ContactBroadphaseResult
+{
+    public required GpuPtContact[] PtContacts { get; init; }
+    public required int PtCount { get; init; }
+    public required GpuHemContact[] HemContacts { get; init; }
+    public required int HemCount { get; init; }
+}
+
 /// <summary>Optional GPU/SIMD backend that accelerates <see cref="ClothSolver"/> substeps.</summary>
 public interface IClothAccelerator : IDisposable
 {
@@ -71,12 +99,12 @@ public interface IClothAccelerator : IDisposable
     /// Runs one full display frame (all substeps) on the accelerator.
     /// Returns the peak particle speed (m/s) after the final substep.
     /// </summary>
-    /// <param name="onSelfCollisionSubstep">
-    /// Called once per substep when self-collision is on, with the current positions, the positions at the start of
-    /// that substep (cloth friction is measured against them) and whether contacts should be searched again. The
-    /// callback edits the positions in place; they are uploaded again when it returns.
+    /// <param name="onBroadphase">
+    /// Called only on broadphase substeps (<c>step % parameters.SearchEvery == 0</c>) when self-collision is on,
+    /// receiving current particle positions and returning compact point-triangle and hem contact arrays to upload
+    /// for GPU-side contact resolution across this and subsequent substeps.
     /// </param>
-    float StepFrame(in ClothStepParams parameters, Action<Vector3[], Vector3[], bool>? onSelfCollisionSubstep = null);
+    float StepFrame(in ClothStepParams parameters, Func<Vector3[], ContactBroadphaseResult>? onBroadphase = null);
 }
 
 /// <summary>Global registration point for an optional GPU accelerator (e.g. Seamstress.Cuda).</summary>

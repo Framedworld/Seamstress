@@ -27,9 +27,15 @@ public sealed partial class ClothSolver
     private int[] _bucketFill = Array.Empty<int>();
     private int[] _bucketItems = Array.Empty<int>();
     private int[] _triStamp = Array.Empty<int>();
+    private int _triStampEpoch;
     private int[] _triPiece = Array.Empty<int>();
     private Vector2[] _triRest = Array.Empty<Vector2>();
+    private Vector3[] _triMin = Array.Empty<Vector3>();
+    private Vector3[] _triMax = Array.Empty<Vector3>();
     private Vector2[] _rest2D = Array.Empty<Vector2>();
+    private int[][] _workerStamps = Array.Empty<int[]>();
+    private int[] _workerEpochs = Array.Empty<int>();
+    private List<Contact>[] _workerContacts = Array.Empty<List<Contact>>();
 
     // Free boundary (hem) edges for edge-edge collision so two hanging hems do not slip past each other.
     private int[] _hemA = Array.Empty<int>();
@@ -38,6 +44,8 @@ public sealed partial class ClothSolver
     private Vector2[] _hemRest = Array.Empty<Vector2>();
     private (int E1, int E2)[] _hemContacts = Array.Empty<(int, int)>();
     private int _hemContactCount;
+    private GpuPtContact[] _gpuPtContacts = Array.Empty<GpuPtContact>();
+    private GpuHemContact[] _gpuHemContacts = Array.Empty<GpuHemContact>();
 
     // Within one piece, cloth closer than this in the flat pattern (cm) is held apart by the fabric itself.
     private const float SamePieceRestDistance = 5f;
@@ -52,7 +60,10 @@ public sealed partial class ClothSolver
     private void BuildContactTopology(int[] triangles, List<(int A, int B)> welds)
     {
         _tris = triangles;
-        _triStamp = new int[triangles.Length / 3];
+        int triCount = triangles.Length / 3;
+        _triStamp = new int[triCount];
+        _triMin = new Vector3[triCount];
+        _triMax = new Vector3[triCount];
         int n = Positions.Length;
         _rest2D = new Vector2[n];
         foreach (var piece in Pieces)
@@ -164,6 +175,7 @@ public sealed partial class ClothSolver
             return;
 
         const float margin = ContactMargin;
+        var marginVec = new Vector3(margin);
         float cell = MathF.Max(0.04f, margin);
         float inv = 1f / cell;
         int size = 1024;
@@ -177,17 +189,30 @@ public sealed partial class ClothSolver
         }
         Array.Clear(_bucketStart);
 
-        // Two passes over the triangles' padded bounding boxes: count, then fill.
+        // Two passes over the triangles' padded bounding boxes: count (caching AABBs), then fill.
         for (int pass = 0; pass < 2; pass++)
         {
             int total = 0;
             for (int t = 0; t < triCount; t++)
             {
-                var a = x[_tris[3 * t]];
-                var b = x[_tris[3 * t + 1]];
-                var c = x[_tris[3 * t + 2]];
-                var lo = (Vector3.Min(a, Vector3.Min(b, c)) - new Vector3(margin)) * inv;
-                var hi = (Vector3.Max(a, Vector3.Max(b, c)) + new Vector3(margin)) * inv;
+                Vector3 minP, maxP;
+                if (pass == 0)
+                {
+                    var a = x[_tris[3 * t]];
+                    var b = x[_tris[3 * t + 1]];
+                    var c = x[_tris[3 * t + 2]];
+                    minP = Vector3.Min(a, Vector3.Min(b, c)) - marginVec;
+                    maxP = Vector3.Max(a, Vector3.Max(b, c)) + marginVec;
+                    _triMin[t] = minP;
+                    _triMax[t] = maxP;
+                }
+                else
+                {
+                    minP = _triMin[t];
+                    maxP = _triMax[t];
+                }
+                var lo = minP * inv;
+                var hi = maxP * inv;
                 int x0 = (int)MathF.Floor(lo.X), x1 = (int)MathF.Floor(hi.X);
                 int y0 = (int)MathF.Floor(lo.Y), y1 = (int)MathF.Floor(hi.Y);
                 int z0 = (int)MathF.Floor(lo.Z), z1 = (int)MathF.Floor(hi.Z);
@@ -222,28 +247,130 @@ public sealed partial class ClothSolver
 
         _sidesNext.Clear();
         float reach = margin * margin;
-        for (int p = 0; p < x.Length; p++)
+        const float samePieceSq = SamePieceRestDistance * SamePieceRestDistance;
+
+        if (x.Length < 512)
         {
-            var pos = x[p];
-            int bucket = Bucket((int)MathF.Floor(pos.X * inv), (int)MathF.Floor(pos.Y * inv), (int)MathF.Floor(pos.Z * inv), mask);
-            for (int k = _bucketStart[bucket]; k < _bucketStart[bucket + 1]; k++)
+            if (_triStampEpoch > int.MaxValue - x.Length - 2)
             {
-                int t = _bucketItems[k];
-                if (_triStamp[t] == p + 1)
+                Array.Clear(_triStamp);
+                _triStampEpoch = 0;
+            }
+            int baseEpoch = _triStampEpoch;
+            _triStampEpoch += x.Length + 1;
+            QueryParticleRange(0, x.Length, inv, mask, triCount, reach, samePieceSq, _triStamp, baseEpoch, null);
+        }
+        else
+        {
+            int workers = Math.Clamp(x.Length / 256, 2, Environment.ProcessorCount);
+            if (_workerStamps.Length != workers)
+            {
+                _workerStamps = new int[workers][];
+                _workerEpochs = new int[workers];
+                _workerContacts = new List<Contact>[workers];
+                for (int w = 0; w < workers; w++)
+                {
+                    _workerStamps[w] = new int[triCount];
+                    _workerContacts[w] = new List<Contact>(256);
+                }
+            }
+            int chunk = (x.Length + workers - 1) / workers;
+            Parallel.For(0, workers, w =>
+            {
+                int start = w * chunk;
+                int end = Math.Min(start + chunk, x.Length);
+                var list = _workerContacts[w];
+                list.Clear();
+                if (start >= end)
+                    return;
+                var stamp = _workerStamps[w];
+                int span = end - start + 1;
+                if (_workerEpochs[w] > int.MaxValue - span - 1)
+                {
+                    Array.Clear(stamp);
+                    _workerEpochs[w] = 0;
+                }
+                int baseEpoch = _workerEpochs[w];
+                _workerEpochs[w] += span;
+                QueryParticleRange(start, end, inv, mask, triCount, reach, samePieceSq, stamp, baseEpoch, list);
+            });
+
+            for (int w = 0; w < workers; w++)
+            {
+                var list = _workerContacts[w];
+                int count = list.Count;
+                if (count == 0)
                     continue;
-                _triStamp[t] = p + 1;
-                bool samePiece = _triPiece[t] == _pieceOf[p];
-                if (samePiece && Vector2.DistanceSquared(_triRest[t], _rest2D[p]) < SamePieceRestDistance * SamePieceRestDistance)
+                if (_contactCount + count > _contacts.Length)
+                    Array.Resize(ref _contacts, Math.Max(1024, Math.Max(_contacts.Length * 2, _contactCount + count)));
+                for (int i = 0; i < count; i++)
+                {
+                    var c = list[i];
+                    _contacts[_contactCount++] = c;
+                    _sidesNext[(long)c.Particle * triCount + c.Triangle] = c.Side;
+                }
+            }
+        }
+
+        (_sides, _sidesNext) = (_sidesNext, _sides);
+        FindHemContacts(margin);
+    }
+
+    private void QueryParticleRange(
+        int start, int end, float inv, int mask, int triCount, float reach, float samePieceSq,
+        int[] stamp, int baseEpoch, List<Contact>? output)
+    {
+        var x = Positions;
+        var bucketStart = _bucketStart;
+        var bucketItems = _bucketItems;
+        var triMin = _triMin;
+        var triMax = _triMax;
+        var triPiece = _triPiece;
+        var triRest = _triRest;
+        var rest2D = _rest2D;
+        var pieceOf = _pieceOf;
+        var tris = _tris;
+        var invMass = _invMass;
+        var sides = _sides;
+
+        for (int p = start; p < end; p++)
+        {
+            int tag = baseEpoch + (p - start) + 1;
+            var pos = x[p];
+            int pPiece = pieceOf[p];
+            var pRest = rest2D[p];
+            float mp = invMass[p];
+            int bucket = Bucket((int)MathF.Floor(pos.X * inv), (int)MathF.Floor(pos.Y * inv), (int)MathF.Floor(pos.Z * inv), mask);
+            int kEnd = bucketStart[bucket + 1];
+            for (int k = bucketStart[bucket]; k < kEnd; k++)
+            {
+                int t = bucketItems[k];
+                if (stamp[t] == tag)
                     continue;
-                int ia = _tris[3 * t], ib = _tris[3 * t + 1], ic = _tris[3 * t + 2];
-                if (_invMass[p] == 0 && _invMass[ia] == 0 && _invMass[ib] == 0 && _invMass[ic] == 0)
+                stamp[t] = tag;
+
+                var lo = triMin[t];
+                var hi = triMax[t];
+                if (pos.X < lo.X || pos.X > hi.X || pos.Y < lo.Y || pos.Y > hi.Y || pos.Z < lo.Z || pos.Z > hi.Z)
                     continue;
-                var q = SdfGrid.ClosestPointOnTriangle(pos, x[ia], x[ib], x[ic]);
+
+                if (triPiece[t] == pPiece && Vector2.DistanceSquared(triRest[t], pRest) < samePieceSq)
+                    continue;
+
+                int t3 = 3 * t;
+                int ia = tris[t3], ib = tris[t3 + 1], ic = tris[t3 + 2];
+                if (mp == 0f && invMass[ia] == 0f && invMass[ib] == 0f && invMass[ic] == 0f)
+                    continue;
+
+                var xa = x[ia];
+                var xb = x[ib];
+                var xc = x[ic];
+                var q = SdfGrid.ClosestPointOnTriangle(pos, xa, xb, xc);
                 var r = pos - q;
                 float distance2 = r.LengthSquared();
                 if (distance2 > reach)
                     continue;
-                var normal = Vector3.Cross(x[ib] - x[ia], x[ic] - x[ia]);
+                var normal = Vector3.Cross(xb - xa, xc - xa);
                 float area = normal.Length();
                 if (area < 1e-12f)
                     continue;
@@ -258,16 +385,22 @@ public sealed partial class ClothSolver
                 // Remember which face of the triangle the particle is on; it has to stay there for as long as the
                 // pair remains close, even if it gets pushed through for a moment.
                 long key = (long)p * triCount + t;
-                if (!_sides.TryGetValue(key, out float side))
-                    side = height >= 0 ? 1f : -1f;
-                _sidesNext[key] = side;
-                if (_contactCount == _contacts.Length)
-                    Array.Resize(ref _contacts, Math.Max(1024, _contacts.Length * 2));
-                _contacts[_contactCount++] = new Contact { Particle = p, Triangle = t, Side = side };
+                if (!sides.TryGetValue(key, out float side))
+                    side = height >= 0f ? 1f : -1f;
+                var contact = new Contact { Particle = p, Triangle = t, Side = side };
+                if (output != null)
+                {
+                    output.Add(contact);
+                }
+                else
+                {
+                    _sidesNext[key] = side;
+                    if (_contactCount == _contacts.Length)
+                        Array.Resize(ref _contacts, Math.Max(1024, _contacts.Length * 2));
+                    _contacts[_contactCount++] = contact;
+                }
             }
         }
-        (_sides, _sidesNext) = (_sidesNext, _sides);
-        FindHemContacts(margin);
     }
 
     private void FindHemContacts(float margin)
@@ -352,6 +485,48 @@ public sealed partial class ClothSolver
         }
         c1 = p1 + d1 * s;
         c2 = p2 + d2 * t;
+    }
+
+    /// <summary>Packs the current broadphase contacts into compact blittable structs for GPU upload.</summary>
+    private ContactBroadphaseResult PackGpuContacts()
+    {
+        if (_gpuPtContacts.Length < _contactCount)
+            _gpuPtContacts = new GpuPtContact[Math.Max(1024, _contactCount + _contactCount / 2)];
+        for (int i = 0; i < _contactCount; i++)
+        {
+            ref var c = ref _contacts[i];
+            int t3 = 3 * c.Triangle;
+            _gpuPtContacts[i] = new GpuPtContact
+            {
+                Particle = c.Particle,
+                Ia = _tris[t3],
+                Ib = _tris[t3 + 1],
+                Ic = _tris[t3 + 2],
+                Side = c.Side,
+            };
+        }
+
+        if (_gpuHemContacts.Length < _hemContactCount)
+            _gpuHemContacts = new GpuHemContact[Math.Max(128, _hemContactCount + _hemContactCount / 2)];
+        for (int k = 0; k < _hemContactCount; k++)
+        {
+            var (e1, e2) = _hemContacts[k];
+            _gpuHemContacts[k] = new GpuHemContact
+            {
+                A1 = _hemA[e1],
+                B1 = _hemB[e1],
+                A2 = _hemA[e2],
+                B2 = _hemB[e2],
+            };
+        }
+
+        return new ContactBroadphaseResult
+        {
+            PtContacts = _gpuPtContacts,
+            PtCount = _contactCount,
+            HemContacts = _gpuHemContacts,
+            HemCount = _hemContactCount,
+        };
     }
 
     /// <summary>Every substep: pushes particles and triangles apart where they are closer than the fabrics allow.</summary>

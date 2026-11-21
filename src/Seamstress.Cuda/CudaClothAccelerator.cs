@@ -24,6 +24,10 @@ public struct Float3
     public static Float3 operator -(Float3 a, Float3 b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
     public static Float3 operator *(Float3 a, float s) => new(a.X * s, a.Y * s, a.Z * s);
     public static float Dot(Float3 a, Float3 b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+    public static Float3 Cross(Float3 a, Float3 b) => new(
+        a.Y * b.Z - a.Z * b.Y,
+        a.Z * b.X - a.X * b.Z,
+        a.X * b.Y - a.Y * b.X);
 }
 
 public readonly struct SdfParams
@@ -91,6 +95,17 @@ internal sealed class CudaRuntime
     public Action<Index1D, ArrayView<Float3>, ArrayView<Float3>, ArrayView<Float3>,
         ArrayView<float>, ArrayView<float>, float> UpdateVelocityKernel { get; }
 
+    public Action<Index1D, ArrayView<Float3>, ArrayView<Float3>, ArrayView<float>,
+        ArrayView<float>, ArrayView<float>, ArrayView<GpuPtContact>,
+        ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>> SolvePointTriangleContactsKernel { get; }
+
+    public Action<Index1D, ArrayView<Float3>, ArrayView<float>, ArrayView<float>,
+        ArrayView<GpuHemContact>,
+        ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>> SolveHemContactsKernel { get; }
+
+    public Action<Index1D, ArrayView<Float3>, ArrayView<float>,
+        ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>> ApplyContactDeltasKernel { get; }
+
     private CudaRuntime(Context context, Accelerator accelerator)
     {
         Context = context;
@@ -129,6 +144,20 @@ internal sealed class CudaRuntime
         UpdateVelocityKernel = accelerator.LoadAutoGroupedStreamKernel<
             Index1D, ArrayView<Float3>, ArrayView<Float3>, ArrayView<Float3>,
             ArrayView<float>, ArrayView<float>, float>(Kernels.UpdateVelocity);
+
+        SolvePointTriangleContactsKernel = accelerator.LoadAutoGroupedStreamKernel<
+            Index1D, ArrayView<Float3>, ArrayView<Float3>, ArrayView<float>,
+            ArrayView<float>, ArrayView<float>, ArrayView<GpuPtContact>,
+            ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>>(Kernels.SolvePointTriangleContacts);
+
+        SolveHemContactsKernel = accelerator.LoadAutoGroupedStreamKernel<
+            Index1D, ArrayView<Float3>, ArrayView<float>, ArrayView<float>,
+            ArrayView<GpuHemContact>,
+            ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>>(Kernels.SolveHemContacts);
+
+        ApplyContactDeltasKernel = accelerator.LoadAutoGroupedStreamKernel<
+            Index1D, ArrayView<Float3>, ArrayView<float>,
+            ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>>(Kernels.ApplyContactDeltas);
     }
 
     public static string? LastError { get; private set; }
@@ -161,6 +190,111 @@ internal sealed class CudaRuntime
     private static class Kernels
     {
         private const float MaxSpeed = 8f;
+        private const float ContactGap = 0.0015f;
+
+        private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
+
+        private static Float3 ClosestPointOnTriangle(
+            Float3 p, Float3 a, Float3 b, Float3 c,
+            out float wa, out float wb, out float wc)
+        {
+            var ab = b - a;
+            var ac = c - a;
+            var ap = p - a;
+            float d1 = Float3.Dot(ab, ap), d2 = Float3.Dot(ac, ap);
+            if (d1 <= 0f && d2 <= 0f) { wa = 1f; wb = 0f; wc = 0f; return a; }
+
+            var bp = p - b;
+            float d3 = Float3.Dot(ab, bp), d4 = Float3.Dot(ac, bp);
+            if (d3 >= 0f && d4 <= d3) { wa = 0f; wb = 1f; wc = 0f; return b; }
+
+            float vc = d1 * d4 - d3 * d2;
+            if (vc <= 0f && d1 >= 0f && d3 <= 0f)
+            {
+                float v = d1 / (d1 - d3);
+                wa = 1f - v; wb = v; wc = 0f;
+                return a + ab * v;
+            }
+
+            var cp = p - c;
+            float d5 = Float3.Dot(ab, cp), d6 = Float3.Dot(ac, cp);
+            if (d6 >= 0f && d5 <= d6) { wa = 0f; wb = 0f; wc = 1f; return c; }
+
+            float vb = d5 * d2 - d1 * d6;
+            if (vb <= 0f && d2 >= 0f && d6 <= 0f)
+            {
+                float w = d2 / (d2 - d6);
+                wa = 1f - w; wb = 0f; wc = w;
+                return a + ac * w;
+            }
+
+            float va = d3 * d6 - d5 * d4;
+            if (va <= 0f && (d4 - d3) >= 0f && (d5 - d6) >= 0f)
+            {
+                float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+                wa = 0f; wb = 1f - w; wc = w;
+                return b + (c - b) * w;
+            }
+
+            float denom = 1f / (va + vb + vc);
+            float bv = vb * denom, bw = vc * denom;
+            wa = 1f - bv - bw; wb = bv; wc = bw;
+            return a + ab * bv + ac * bw;
+        }
+
+        private static void ClosestPointsOnSegments(
+            Float3 p1, Float3 q1, Float3 p2, Float3 q2,
+            out float s, out float t, out Float3 c1, out Float3 c2)
+        {
+            var d1 = q1 - p1;
+            var d2 = q2 - p2;
+            var r = p1 - p2;
+            float a = Float3.Dot(d1, d1);
+            float e = Float3.Dot(d2, d2);
+            float f = Float3.Dot(d2, r);
+            if (a <= 1e-12f && e <= 1e-12f)
+            {
+                s = t = 0f;
+                c1 = p1; c2 = p2;
+                return;
+            }
+            if (a <= 1e-12f)
+            {
+                s = 0f;
+                t = Clamp01(f / e);
+            }
+            else
+            {
+                float c = Float3.Dot(d1, r);
+                if (e <= 1e-12f)
+                {
+                    t = 0f;
+                    s = Clamp01(-c / a);
+                }
+                else
+                {
+                    float b = Float3.Dot(d1, d2);
+                    float denom = a * e - b * b;
+                    s = denom > 1e-12f ? Clamp01((b * f - c * e) / denom) : 0f;
+                    t = (b * s + f) / e;
+                    if (t < 0f) { t = 0f; s = Clamp01(-c / a); }
+                    else if (t > 1f) { t = 1f; s = Clamp01((b - c) / a); }
+                }
+            }
+            c1 = p1 + d1 * s;
+            c2 = p2 + d2 * t;
+        }
+
+        private static void AccumulateDelta(
+            int idx, Float3 delta,
+            ArrayView<float> deltaX, ArrayView<float> deltaY, ArrayView<float> deltaZ,
+            ArrayView<int> contactHits)
+        {
+            Atomic.Add(ref deltaX[idx], delta.X);
+            Atomic.Add(ref deltaY[idx], delta.Y);
+            Atomic.Add(ref deltaZ[idx], delta.Z);
+            Atomic.Add(ref contactHits[idx], 1);
+        }
 
         public static void Integrate(
             Index1D i,
@@ -424,6 +558,138 @@ internal sealed class CudaRuntime
             vel[i] = v;
             speedSq[i] = v.LengthSquared();
         }
+
+        public static void SolvePointTriangleContacts(
+            Index1D k,
+            ArrayView<Float3> pos,
+            ArrayView<Float3> prev,
+            ArrayView<float> invMass,
+            ArrayView<float> clothThick,
+            ArrayView<float> friction,
+            ArrayView<GpuPtContact> contacts,
+            ArrayView<float> deltaX,
+            ArrayView<float> deltaY,
+            ArrayView<float> deltaZ,
+            ArrayView<int> contactHits)
+        {
+            var c = contacts[k];
+            int p = c.Particle;
+            int ia = c.Ia, ib = c.Ib, ic = c.Ic;
+            var xp = pos[p];
+            var xa = pos[ia];
+            var xb = pos[ib];
+            var xc = pos[ic];
+
+            var normal = Float3.Cross(xb - xa, xc - xa);
+            float area = normal.Length();
+            if (area < 1e-12f)
+                return;
+            normal = normal * (c.Side / area);
+
+            var q = ClosestPointOnTriangle(xp, xa, xb, xc, out float wa, out float wb, out float wc);
+            var r = xp - q;
+            float height = Float3.Dot(r, normal);
+            float separation = 0.5f * (clothThick[p] + (clothThick[ia] + clothThick[ib] + clothThick[ic]) / 3f) + ContactGap;
+            var beside = r - normal * height;
+            if (beside.LengthSquared() > separation * separation)
+                return;
+            float depth = XMath.Min(separation - height, separation);
+            if (depth <= 0f)
+                return;
+
+            float mp = invMass[p], ma = invMass[ia], mb = invMass[ib], mc = invMass[ic];
+            float w = mp + wa * wa * ma + wb * wb * mb + wc * wc * mc;
+            if (w == 0f)
+                return;
+
+            var push = normal * (depth / w);
+            var corr = push;
+
+            // Coulomb fabric-on-fabric tangent friction (normal push projects out of tangent slide).
+            var slide = (xp - prev[p])
+                      - ((xa - prev[ia]) * wa + (xb - prev[ib]) * wb + (xc - prev[ic]) * wc);
+            slide = slide - normal * Float3.Dot(slide, normal);
+            float sliding = slide.Length();
+            if (sliding >= 1e-9f)
+            {
+                float grip = 0.5f * (friction[p] + (friction[ia] + friction[ib] + friction[ic]) / 3f) * depth;
+                var cancel = slide * ((sliding <= grip ? 1f : grip / sliding) / w);
+                corr = push - cancel;
+            }
+
+            if (mp > 0f)
+                AccumulateDelta(p, corr * mp, deltaX, deltaY, deltaZ, contactHits);
+            if (wa > 0f && ma > 0f)
+                AccumulateDelta(ia, corr * (-wa * ma), deltaX, deltaY, deltaZ, contactHits);
+            if (wb > 0f && mb > 0f)
+                AccumulateDelta(ib, corr * (-wb * mb), deltaX, deltaY, deltaZ, contactHits);
+            if (wc > 0f && mc > 0f)
+                AccumulateDelta(ic, corr * (-wc * mc), deltaX, deltaY, deltaZ, contactHits);
+        }
+
+        public static void SolveHemContacts(
+            Index1D k,
+            ArrayView<Float3> pos,
+            ArrayView<float> invMass,
+            ArrayView<float> clothThick,
+            ArrayView<GpuHemContact> hemContacts,
+            ArrayView<float> deltaX,
+            ArrayView<float> deltaY,
+            ArrayView<float> deltaZ,
+            ArrayView<int> contactHits)
+        {
+            var c = hemContacts[k];
+            int a1 = c.A1, b1 = c.B1, a2 = c.A2, b2 = c.B2;
+            ClosestPointsOnSegments(pos[a1], pos[b1], pos[a2], pos[b2], out float s, out float t, out var c1, out var c2);
+            var diff = c1 - c2;
+            float dist = diff.Length();
+            float sep = 0.25f * (clothThick[a1] + clothThick[b1] + clothThick[a2] + clothThick[b2]);
+            if (dist >= sep || dist < 1e-9f)
+                return;
+            var normal = diff * (1f / dist);
+            float depth = XMath.Min(sep - dist, sep * 0.5f);
+            float w1a = 1f - s, w1b = s, w2a = 1f - t, w2b = t;
+            float m1a = invMass[a1], m1b = invMass[b1], m2a = invMass[a2], m2b = invMass[b2];
+            float w = w1a * w1a * m1a + w1b * w1b * m1b + w2a * w2a * m2a + w2b * w2b * m2b;
+            if (w == 0f)
+                return;
+            var push = normal * (depth / w);
+            if (w1a > 0f && m1a > 0f)
+                AccumulateDelta(a1, push * (w1a * m1a), deltaX, deltaY, deltaZ, contactHits);
+            if (w1b > 0f && m1b > 0f)
+                AccumulateDelta(b1, push * (w1b * m1b), deltaX, deltaY, deltaZ, contactHits);
+            if (w2a > 0f && m2a > 0f)
+                AccumulateDelta(a2, push * (-w2a * m2a), deltaX, deltaY, deltaZ, contactHits);
+            if (w2b > 0f && m2b > 0f)
+                AccumulateDelta(b2, push * (-w2b * m2b), deltaX, deltaY, deltaZ, contactHits);
+        }
+
+        public static void ApplyContactDeltas(
+            Index1D i,
+            ArrayView<Float3> pos,
+            ArrayView<float> invMass,
+            ArrayView<float> deltaX,
+            ArrayView<float> deltaY,
+            ArrayView<float> deltaZ,
+            ArrayView<int> contactHits)
+        {
+            int hits = contactHits[i];
+            if (hits <= 0)
+                return;
+            if (invMass[i] != 0f)
+            {
+                float inv = 1f / hits;
+                var p = pos[i];
+                pos[i] = new Float3(
+                    p.X + deltaX[i] * inv,
+                    p.Y + deltaY[i] * inv,
+                    p.Z + deltaZ[i] * inv);
+            }
+            deltaX[i] = 0f;
+            deltaY[i] = 0f;
+            deltaZ[i] = 0f;
+            contactHits[i] = 0;
+        }
     }
 }
 
@@ -441,6 +707,7 @@ public sealed class CudaClothAccelerator : IClothAccelerator
     private readonly MemoryBuffer1D<Float3, Stride1D.Dense> _vel;
     private readonly MemoryBuffer1D<float, Stride1D.Dense> _invMass;
     private readonly MemoryBuffer1D<float, Stride1D.Dense> _thickness;
+    private readonly MemoryBuffer1D<float, Stride1D.Dense> _clothThickness;
     private readonly MemoryBuffer1D<float, Stride1D.Dense> _friction;
     private readonly MemoryBuffer1D<float, Stride1D.Dense> _drag;
     private readonly MemoryBuffer1D<byte, Stride1D.Dense> _stitched;
@@ -454,6 +721,17 @@ public sealed class CudaClothAccelerator : IClothAccelerator
     private readonly MemoryBuffer1D<float, Stride1D.Dense> _shiftY;
     private readonly MemoryBuffer1D<float, Stride1D.Dense> _shiftZ;
     private readonly MemoryBuffer1D<int, Stride1D.Dense> _stitchCount;
+
+    private readonly MemoryBuffer1D<float, Stride1D.Dense> _contactDeltaX;
+    private readonly MemoryBuffer1D<float, Stride1D.Dense> _contactDeltaY;
+    private readonly MemoryBuffer1D<float, Stride1D.Dense> _contactDeltaZ;
+    private readonly MemoryBuffer1D<int, Stride1D.Dense> _contactHits;
+    private MemoryBuffer1D<GpuPtContact, Stride1D.Dense>? _ptContacts;
+    private int _ptCapacity;
+    private int _ptCount;
+    private MemoryBuffer1D<GpuHemContact, Stride1D.Dense>? _hemContacts;
+    private int _hemCapacity;
+    private int _hemCount;
 
     private readonly ColoredConstraints _distColors;
     private readonly MemoryBuffer1D<int, Stride1D.Dense>? _ca, _cb;
@@ -471,7 +749,8 @@ public sealed class CudaClothAccelerator : IClothAccelerator
 
     private readonly Float3[] _hostPos;
     private readonly float[] _hostSpeedSq;
-    private Vector3[]? _syncPos, _syncPrev; // CPU copies for the self-collision callback, made on first use
+    private Vector3[]? _syncPos; // CPU copy used only on broadphase refresh substeps
+    private bool _hostPosValid;
 
     public string Name => _rt.DeviceName;
 
@@ -494,6 +773,7 @@ public sealed class CudaClothAccelerator : IClothAccelerator
 
         _invMass = acc.Allocate1D(data.InvMass);
         _thickness = acc.Allocate1D(data.Thickness);
+        _clothThickness = acc.Allocate1D(data.ClothThickness);
         _friction = acc.Allocate1D(data.Friction);
         _drag = acc.Allocate1D(data.Drag);
 
@@ -511,6 +791,16 @@ public sealed class CudaClothAccelerator : IClothAccelerator
         _shiftY = acc.Allocate1D<float>(_pieceCount);
         _shiftZ = acc.Allocate1D<float>(_pieceCount);
         _stitchCount = acc.Allocate1D<int>(_pieceCount);
+
+        _contactDeltaX = acc.Allocate1D<float>(_n);
+        _contactDeltaY = acc.Allocate1D<float>(_n);
+        _contactDeltaZ = acc.Allocate1D<float>(_n);
+        _contactHits = acc.Allocate1D<int>(_n);
+        _contactDeltaX.MemSetToZero();
+        _contactDeltaY.MemSetToZero();
+        _contactDeltaZ.MemSetToZero();
+        _contactHits.MemSetToZero();
+        _hostPosValid = true;
 
         _distColors = ColoredConstraints.Build(_n, data.Ca, data.Cb, data.Rest, data.Compliance);
         if (_distColors.A.Length > 0)
@@ -555,11 +845,20 @@ public sealed class CudaClothAccelerator : IClothAccelerator
     {
         Upload(_pos, positions);
         Upload(_vel, velocities);
+        _hostPosValid = false;
     }
 
-    public void DownloadPositions(Vector3[] positions) => Download(_pos, positions);
+    public void DownloadPositions(Vector3[] positions)
+    {
+        Download(_pos, positions);
+        _hostPosValid = true;
+    }
 
-    public void DownloadVelocities(Vector3[] velocities) => Download(_vel, velocities);
+    public void DownloadVelocities(Vector3[] velocities)
+    {
+        Download(_vel, velocities);
+        _hostPosValid = false;
+    }
 
     private void Upload(MemoryBuffer1D<Float3, Stride1D.Dense> buffer, Vector3[] source)
     {
@@ -575,7 +874,7 @@ public sealed class CudaClothAccelerator : IClothAccelerator
             target[i] = _hostPos[i].ToVector3();
     }
 
-    public float StepFrame(in ClothStepParams p, Action<Vector3[], Vector3[], bool>? onSelfCollisionSubstep = null)
+    public float StepFrame(in ClothStepParams p, Func<Vector3[], ContactBroadphaseResult>? onBroadphase = null)
     {
         if (p.Sewing.Length > 0)
             _sewing.CopyFromCPU(p.Sewing);
@@ -587,15 +886,30 @@ public sealed class CudaClothAccelerator : IClothAccelerator
         float closing = SeamClosingSpeed * h;
         int ground = p.GroundPlane ? 1 : 0;
 
-        bool cpuContacts = p.SelfCollision && onSelfCollisionSubstep != null;
-        if (cpuContacts)
-        {
+        bool gpuContacts = p.SelfCollision && onBroadphase != null;
+        if (gpuContacts)
             _syncPos ??= new Vector3[_n];
-            _syncPrev ??= new Vector3[_n];
-        }
 
         for (int step = 0; step < p.Substeps; step++)
         {
+            if (gpuContacts && step % p.SearchEvery == 0)
+            {
+                if (_hostPosValid)
+                {
+                    for (int i = 0; i < _n; i++)
+                        _syncPos![i] = _hostPos[i].ToVector3();
+                }
+                else
+                {
+                    _rt.Accelerator.Synchronize();
+                    Download(_pos, _syncPos!);
+                }
+                var result = onBroadphase!(_syncPos!);
+                UploadContacts(result);
+            }
+
+            _hostPosValid = false;
+
             _rt.IntegrateKernel(_n, _pos.View, _prev.View, _vel.View, _invMass.View, _drag.View,
                 _pieceOf.View, _garmentOfPiece.View, _sewing.View, p.GravityY, h);
 
@@ -604,16 +918,8 @@ public sealed class CudaClothAccelerator : IClothAccelerator
             SolveSeamHingesGpu(invH2);
             SolveSeamsGpu(closing, assist: false);
 
-            if (cpuContacts)
-            {
-                // Cloth-on-cloth contacts are still solved on the CPU. Friction there is measured against where
-                // each particle was at the start of this substep, so those positions go along as well.
-                _rt.Accelerator.Synchronize();
-                Download(_pos, _syncPos!);
-                Download(_prev, _syncPrev!);
-                onSelfCollisionSubstep!(_syncPos!, _syncPrev!, step % p.SearchEvery == 0);
-                Upload(_pos, _syncPos!);
-            }
+            if (gpuContacts)
+                SolveContactsGpu();
 
             _rt.SolveBodyKernel(_n, _pos.View, _prev.View, _invMass.View, _thickness.View, _friction.View,
                 _openStitch.View, _sdfData.View, _sdfParams, ground);
@@ -630,6 +936,56 @@ public sealed class CudaClothAccelerator : IClothAccelerator
                 peakSq = _hostSpeedSq[i];
         }
         return MathF.Sqrt(peakSq);
+    }
+
+    private void UploadContacts(in ContactBroadphaseResult result)
+    {
+        _ptCount = result.PtCount;
+        if (_ptCount > 0)
+        {
+            if (_ptContacts == null || _ptCapacity < _ptCount)
+            {
+                _ptContacts?.Dispose();
+                _ptCapacity = Math.Max(1024, _ptCount + _ptCount / 2);
+                _ptContacts = _rt.Accelerator.Allocate1D<GpuPtContact>(_ptCapacity);
+            }
+            _ptContacts.View.SubView(0, _ptCount).CopyFromCPU(ref result.PtContacts[0], _ptCount);
+        }
+
+        _hemCount = result.HemCount;
+        if (_hemCount > 0)
+        {
+            if (_hemContacts == null || _hemCapacity < _hemCount)
+            {
+                _hemContacts?.Dispose();
+                _hemCapacity = Math.Max(128, _hemCount + _hemCount / 2);
+                _hemContacts = _rt.Accelerator.Allocate1D<GpuHemContact>(_hemCapacity);
+            }
+            _hemContacts.View.SubView(0, _hemCount).CopyFromCPU(ref result.HemContacts[0], _hemCount);
+        }
+    }
+
+    private void SolveContactsGpu()
+    {
+        if (_ptCount == 0 && _hemCount == 0)
+            return;
+
+        if (_ptCount > 0 && _ptContacts != null)
+        {
+            _rt.SolvePointTriangleContactsKernel(_ptCount, _pos.View, _prev.View, _invMass.View,
+                _clothThickness.View, _friction.View, _ptContacts.View,
+                _contactDeltaX.View, _contactDeltaY.View, _contactDeltaZ.View, _contactHits.View);
+        }
+
+        if (_hemCount > 0 && _hemContacts != null)
+        {
+            _rt.SolveHemContactsKernel(_hemCount, _pos.View, _invMass.View,
+                _clothThickness.View, _hemContacts.View,
+                _contactDeltaX.View, _contactDeltaY.View, _contactDeltaZ.View, _contactHits.View);
+        }
+
+        _rt.ApplyContactDeltasKernel(_n, _pos.View, _invMass.View,
+            _contactDeltaX.View, _contactDeltaY.View, _contactDeltaZ.View, _contactHits.View);
     }
 
     private void SolveDistancesGpu(float invH2)
@@ -695,6 +1051,7 @@ public sealed class CudaClothAccelerator : IClothAccelerator
         _vel.Dispose();
         _invMass.Dispose();
         _thickness.Dispose();
+        _clothThickness.Dispose();
         _friction.Dispose();
         _drag.Dispose();
         _stitched.Dispose();
@@ -707,6 +1064,12 @@ public sealed class CudaClothAccelerator : IClothAccelerator
         _shiftY.Dispose();
         _shiftZ.Dispose();
         _stitchCount.Dispose();
+        _contactDeltaX.Dispose();
+        _contactDeltaY.Dispose();
+        _contactDeltaZ.Dispose();
+        _contactHits.Dispose();
+        _ptContacts?.Dispose();
+        _hemContacts?.Dispose();
         _ca?.Dispose();
         _cb?.Dispose();
         _rest?.Dispose();
