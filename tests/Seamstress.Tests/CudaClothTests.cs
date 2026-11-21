@@ -151,4 +151,118 @@ public class CudaClothTests
         _output.WriteLine($"Falling at {falling:F2} m/s on the CPU, {after:F2} m/s on the first GPU frame");
         Assert.True(after > 0.8f * falling, $"The cloth lost its speed when the GPU took over: {falling:F2} -> {after:F2} m/s");
     }
+
+    private static PatternPiece HorizontalSheet(string name, float size, float height)
+    {
+        var piece = new PatternPiece { Name = name };
+        piece.Points.Add(new PatternPoint(0, 0));
+        piece.Points.Add(new PatternPoint(size, 0));
+        piece.Points.Add(new PatternPoint(size, size));
+        piece.Points.Add(new PatternPoint(0, size));
+        piece.Placement = new Placement { Position = new Vector3(0, height, 0), Rotation = new Vector3(-90, 0, 0) };
+        return piece;
+    }
+
+    [Fact]
+    public void CudaSelfCollisionKeepsLayeredClothSeparated()
+    {
+        if (!CudaClothBackend.Register())
+        {
+            _output.WriteLine($"CUDA error: {CudaClothBackend.LastError}");
+            return; // Graceful skip on non-NVIDIA machines
+        }
+
+        var table = new Garment { Name = "Table", ParticleDistance = 3 };
+        table.Pieces.Add(HorizontalSheet("Table", 80, 0.60f));
+        var cloth = new Garment { Name = "Cloth", ParticleDistance = 2 };
+        cloth.Pieces.Add(HorizontalSheet("Cloth", 40, 0.70f));
+
+        var tableMesh = Mesher.Build(table);
+        var clothMesh = Mesher.Build(cloth);
+        var settings = new SimulationSettings { Substeps = 16, SelfCollision = true };
+
+        ClothAcceleration.Enabled = true;
+        using var solver = ClothSolver.Create(new[] { clothMesh }, new[] { tableMesh }, null, settings);
+        Assert.StartsWith("CUDA", solver.BackendName);
+
+        for (int i = 0; i < 150; i++)
+            solver.Step();
+
+        var clothPiece = solver.Pieces[0];
+        float lowest = float.MaxValue, highest = float.MinValue;
+        for (int i = 0; i < clothPiece.Mesh.VertexCount; i++)
+        {
+            var p = solver.Positions[clothPiece.Offset + i];
+            Assert.False(float.IsNaN(p.X) || float.IsNaN(p.Y) || float.IsNaN(p.Z));
+            Assert.False(float.IsInfinity(p.X) || float.IsInfinity(p.Y) || float.IsInfinity(p.Z));
+            lowest = MathF.Min(lowest, p.Y);
+            highest = MathF.Max(highest, p.Y);
+        }
+
+        _output.WriteLine($"CUDA layered cloth ({solver.BackendName}): Y in [{lowest:F4}, {highest:F4}] m, active contacts={solver.ContactCount}");
+        Assert.InRange(lowest, 0.601f, 0.620f);
+        Assert.InRange(highest, 0.601f, 0.620f);
+    }
+
+    [Fact]
+    public void CudaHighDensitySelfCollisionBenchmark()
+    {
+        if (!CudaClothBackend.Register())
+        {
+            _output.WriteLine($"CUDA error: {CudaClothBackend.LastError}");
+            return; // Graceful skip on non-NVIDIA machines
+        }
+
+        var avatar = Avatar.CreateMannequin();
+        var doc = new Document();
+        var shirt = Templates.Create("T-Shirt", doc);
+        shirt.ParticleDistance = 1.0f;
+        doc.Garments.Add(shirt);
+        var mesh = Mesher.Build(shirt);
+        var settings = new SimulationSettings { Substeps = 16, SelfCollision = true };
+        const int warmupFrames = 60;
+        const int benchFrames = 60;
+
+        ClothAcceleration.Enabled = true;
+        using var gpuSolver = ClothSolver.Create(new[] { mesh }, Array.Empty<GarmentMesh>(), avatar.Sdf, settings);
+        Assert.StartsWith("CUDA", gpuSolver.BackendName);
+        for (int i = 0; i < warmupFrames; i++)
+            gpuSolver.Step(); // warm-up CUDA JIT & close initial seams into active draping
+        var swGpu = Stopwatch.StartNew();
+        for (int i = 0; i < benchFrames; i++)
+            gpuSolver.Step();
+        swGpu.Stop();
+
+        foreach (var p in gpuSolver.Positions)
+        {
+            Assert.False(float.IsNaN(p.X) || float.IsNaN(p.Y) || float.IsNaN(p.Z));
+            Assert.False(float.IsInfinity(p.X) || float.IsInfinity(p.Y) || float.IsInfinity(p.Z));
+        }
+        Assert.True(gpuSolver.SeamGap < 0.05f, $"Expected seams to close, got SeamGap={gpuSolver.SeamGap:F4} m");
+
+        ClothAcceleration.Enabled = false;
+        try
+        {
+            using var cpuSolver = ClothSolver.Create(new[] { mesh }, Array.Empty<GarmentMesh>(), avatar.Sdf, settings);
+            Assert.Equal("CPU", cpuSolver.BackendName);
+            for (int i = 0; i < warmupFrames; i++)
+                cpuSolver.Step();
+            var swCpu = Stopwatch.StartNew();
+            for (int i = 0; i < benchFrames; i++)
+                cpuSolver.Step();
+            swCpu.Stop();
+
+            double gpuMs = swGpu.Elapsed.TotalMilliseconds / benchFrames;
+            double cpuMs = swCpu.Elapsed.TotalMilliseconds / benchFrames;
+            double speedup = cpuMs / Math.Max(gpuMs, 1e-6);
+            _output.WriteLine($"High-density T-Shirt (ParticleDistance=1.0cm, SelfCollision=true): {gpuSolver.ParticleCount} particles, {gpuSolver.ConstraintCount} constraints, {gpuSolver.ContactCount} contacts");
+            _output.WriteLine($"GPU ({gpuSolver.BackendName}): {gpuMs:F2} ms/frame ({swGpu.ElapsedMilliseconds} ms / {benchFrames} frames), PeakSpeed={gpuSolver.PeakSpeed:F3} m/s, SeamGap={gpuSolver.SeamGap:F4}m");
+            _output.WriteLine($"CPU: {cpuMs:F2} ms/frame ({swCpu.ElapsedMilliseconds} ms / {benchFrames} frames), PeakSpeed={cpuSolver.PeakSpeed:F3} m/s, SeamGap={cpuSolver.SeamGap:F4}m");
+            _output.WriteLine($"Speedup: {speedup:F2}x");
+        }
+        finally
+        {
+            ClothAcceleration.Enabled = true;
+        }
+    }
 }

@@ -33,7 +33,7 @@ public sealed partial class ClothSolver : IDisposable
     private IClothAccelerator? _accelerator;
     private byte[] _openStitchBytes = Array.Empty<byte>();
     private bool _gpuDirty;
-    private Action<Vector3[], Vector3[], bool>? _acceleratorContacts;
+    private Func<Vector3[], ContactBroadphaseResult>? _acceleratorBroadphase;
 
     /// <summary>Human-readable compute backend currently driving this solver (e.g. "CUDA (...)" or "CPU").</summary>
     public string BackendName => _accelerator?.Name ?? "CPU";
@@ -438,7 +438,7 @@ public sealed partial class ClothSolver : IDisposable
                 OpenStitch = _openStitchBytes,
             };
             PeakSpeed = _accelerator.StepFrame(stepParams,
-                Settings.SelfCollision ? _acceleratorContacts ??= SolveContactsForAccelerator : null);
+                Settings.SelfCollision ? _acceleratorBroadphase ??= FindContactsForAccelerator : null);
             _accelerator.DownloadPositions(x);
             return;
         }
@@ -489,18 +489,14 @@ public sealed partial class ClothSolver : IDisposable
     }
 
     /// <summary>
-    /// One substep of cloth-on-cloth contacts for an accelerator, which solves everything else itself.
-    /// <paramref name="previous"/> holds the positions at the start of the substep, which friction is measured against.
+    /// Runs CPU broadphase contact discovery for an accelerator on broadphase refresh substeps and packs the active
+    /// point-triangle and hem edge-edge contacts for GPU-side resolution.
     /// </summary>
-    private void SolveContactsForAccelerator(Vector3[] positions, Vector3[] previous, bool search)
+    private ContactBroadphaseResult FindContactsForAccelerator(Vector3[] positions)
     {
-        var x = Positions;
-        Array.Copy(positions, x, x.Length);
-        Array.Copy(previous, _previous, x.Length);
-        if (search)
-            FindContacts();
-        SolveContacts();
-        Array.Copy(x, positions, x.Length);
+        Array.Copy(positions, Positions, Positions.Length);
+        FindContacts();
+        return PackGpuContacts();
     }
 
     private void SolveDistances(float h)
