@@ -96,7 +96,7 @@ public sealed class ExportScene
             var pieceMesh = garmentMesh.Pieces[i];
             var piece = garment.FindPiece(pieceMesh.PieceId)!;
             Mesher.CurrentPositions(piece, pieceMesh).CopyTo(raw, offsets[i]);
-            layout.Map(piece, pieceMesh).CopyTo(uvs, offsets[i]);
+            layout.MapMaterial(piece, pieceMesh, document.FindMaterial(piece.MaterialId)).CopyTo(uvs, offsets[i]);
         }
 
         // Union the vertices joined by stitches; each set becomes one exported position.

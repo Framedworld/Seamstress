@@ -30,10 +30,15 @@ Pane {
     }
 
     // "--view propsbottom" (used when capturing documentation screenshots) starts scrolled to the end.
+    // "--view propsat40" starts scrolled 40% of the way down, to capture the sections in the middle.
     Timer {
         interval: 2000
-        running: App.startupView.indexOf("propsbottom") >= 0
-        onTriggered: scroll.ScrollBar.vertical.position = 1 - scroll.ScrollBar.vertical.size
+        running: /props(bottom|at\d+)/.test(App.startupView)
+        onTriggered: {
+            const at = /propsat(\d+)/.exec(App.startupView)
+            const end = 1 - scroll.ScrollBar.vertical.size
+            scroll.ScrollBar.vertical.position = Math.max(0, at ? Math.min(end, end * Number(at[1]) / 100) : end)
+        }
     }
 
     component Section: Rectangle {
@@ -115,9 +120,15 @@ Pane {
         property real step: 1
         property real from: -1e9
         property string suffix: ""
+        // Shown when the pointer rests on the row.
+        property string tip: ""
         signal edited(real value)
         Layout.fillWidth: true
         spacing: 6
+        HoverHandler { id: numberHover }
+        ToolTip.visible: numberRow.tip !== "" && numberHover.hovered
+        ToolTip.delay: 500
+        ToolTip.text: numberRow.tip
         Label { text: numberRow.label; Layout.preferredWidth: 112; elide: Text.ElideRight; font.pixelSize: 12; color: palette.windowText; opacity: 0.82 }
         NumberField {
             Layout.fillWidth: true
@@ -141,9 +152,15 @@ Pane {
         property int decimals: 0
         property string suffix: ""
         property int valueWidth: 54
+        // Shown when the pointer rests on the row.
+        property string tip: ""
         signal edited(real value)
         Layout.fillWidth: true
         spacing: 6
+        HoverHandler { id: sliderHover }
+        ToolTip.visible: sliderRow.tip !== "" && sliderHover.hovered
+        ToolTip.delay: 500
+        ToolTip.text: sliderRow.tip
         onValueChanged: if (!slider.pressed) slider.value = value
         Label { text: sliderRow.label; Layout.preferredWidth: 112; elide: Text.ElideRight; font.pixelSize: 12; color: palette.windowText; opacity: 0.82 }
         Slider {
@@ -420,6 +437,51 @@ Pane {
                 }
             }
 
+            // ---- Layering ------------------------------------------------------------
+            // Which garment is worn over which, and the room an outer garment leaves for the ones under it.
+            Section {
+                id: layering
+                title: tr("Layering")
+                visible: !!root.sel.garment && root.sel.kind !== "reference"
+                readonly property int garmentLayer: root.sel.garment && root.sel.garment.layer !== undefined ? root.sel.garment.layer : 0
+                readonly property var wornOver: root.sel.garment && root.sel.garment.wornOver ? root.sel.garment.wornOver : []
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    HoverHandler { id: layerHover }
+                    ToolTip.visible: layerHover.hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: tr("Which layer of clothing this garment is. 0 is worn next to the skin; a garment with a higher number is worn over the ones with lower numbers, and the simulation keeps it on their outside so they cannot poke through.")
+                    Label { text: tr("Worn as layer"); Layout.preferredWidth: 112; elide: Text.ElideRight; font.pixelSize: 12; color: palette.windowText; opacity: 0.82 }
+                    NumberField {
+                        Layout.fillWidth: true
+                        implicitHeight: 24
+                        from: 0; to: App.maxGarmentLayer
+                        decimals: 0; step: 1
+                        value: layering.garmentLayer
+                        onEdited: (v) => App.setGarmentLayer(root.sel.garment.id, Math.round(v))
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    opacity: 0.55
+                    font.pixelSize: 11
+                    text: layering.garmentLayer === 0 ? tr("0 = next to the skin. Give a garment worn over this one a higher number.")
+                        : layering.wornOver.length > 0 ? tr("Worn over: %1").arg(layering.wornOver.join(", "))
+                        : tr("No garment has a lower layer yet, so nothing is worn under this one.")
+                }
+                SliderRow {
+                    label: tr("Room underneath")
+                    from: 0; to: root.imperial ? 1.2 : 30
+                    stepSize: root.imperial ? 0.02 : 0.5; decimals: root.imperial ? 2 : 1
+                    suffix: root.imperial ? " in" : " mm"
+                    value: (root.sel.garment && root.sel.garment.bodyOffset !== undefined ? root.sel.garment.bodyOffset : 0) / root.mmUnit
+                    onEdited: (v) => App.setGarmentBodyOffset(root.sel.garment.id, v * root.mmUnit)
+                    tip: tr("Room for layers underneath: how far this garment stays from the skin, on top of its own thickness, to leave space for what is worn under it. A jacket over a T-shirt needs the T-shirt's thickness plus a little air.")
+                }
+            }
+
             // ---- Seam ----------------------------------------------------------------
             Section {
                 title: tr("Seam")
@@ -523,6 +585,27 @@ Pane {
                     value: (root.sel.physics ? root.sel.physics.thickness : 3) / root.mmUnit
                     onEdited: (v) => App.setPieceValue("thickness", v * root.mmUnit)
                 }
+                SliderRow {
+                    label: tr("Elastic across")
+                    from: 0.5; to: 1.5; stepSize: 0.01; decimals: 2; suffix: "×"
+                    value: root.sel.physics && root.sel.physics.shrinkWeft !== undefined ? root.sel.physics.shrinkWeft : 1
+                    onEdited: (v) => App.setPieceValue("shrinkWeft", v)
+                    tip: tr("Elastic / shrink across: the width the piece pulls itself to when simulated, as a multiple of its drawn width. 1.00 is as drawn; 0.88 gathers a waistband or cuff by 12%; above 1 lets it grow.")
+                }
+                SliderRow {
+                    label: tr("Elastic along")
+                    from: 0.5; to: 1.5; stepSize: 0.01; decimals: 2; suffix: "×"
+                    value: root.sel.physics && root.sel.physics.shrinkWarp !== undefined ? root.sel.physics.shrinkWarp : 1
+                    onEdited: (v) => App.setPieceValue("shrinkWarp", v)
+                    tip: tr("Elastic / shrink along: the same for the piece's height in the 2D pattern. 1.00 is as drawn.")
+                }
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    opacity: 0.55
+                    font.pixelSize: 11
+                    text: tr("Elastic: 1.00 leaves the piece its drawn size. Below 1 it pulls together like elastic, across its width or along its height in the 2D pattern.")
+                }
             }
 
             // ---- Material ------------------------------------------------------------
@@ -606,7 +689,41 @@ Pane {
                         onClicked: App.setMaterialTexture("")
                     }
                 }
-                SliderRow { label: tr("Texture repeat"); from: 0.25; to: 20; stepSize: 0.25; decimals: 2; suffix: "×"; value: root.sel.material ? root.sel.material.repeat : 1; onEdited: (v) => App.setMaterialValue("repeat", v) }
+                CheckBox {
+                    id: fitImage
+                    text: tr("Fit image to piece")
+                    visible: !!root.sel.material && root.sel.material.textureName !== ""
+                    checked: !!root.sel.material && root.sel.material.repeat <= 0
+                    onClicked: App.setMaterialValue("repeat", checked ? 0 : 1)
+                }
+                SliderRow {
+                    id: repeatRow
+                    readonly property bool tiled: !!root.sel.material && root.sel.material.tileSize > 0
+                    visible: !fitImage.visible || !fitImage.checked || tiled
+                    enabled: !tiled
+                    opacity: tiled ? 0.45 : 1
+                    label: tr("Texture repeat"); from: 0.25; to: 20; stepSize: 0.25; decimals: 2; suffix: "×"
+                    value: root.sel.material ? root.sel.material.repeat : 1
+                    onEdited: (v) => App.setMaterialValue("repeat", v)
+                }
+                NumberRow {
+                    label: tr("Tile size"); suffix: root.lengthName
+                    decimals: root.imperial ? 2 : 1; step: root.imperial ? 0.25 : 0.5; from: 0
+                    value: (root.sel.material && root.sel.material.tileSize !== undefined ? root.sel.material.tileSize : 0) / root.cmUnit
+                    onEdited: (v) => App.setMaterialValue("tileSize", v * root.cmUnit)
+                    tip: tr("How much fabric one copy of the texture covers. With a tile size the texture repeats at that real size on every garment, whatever the size of its pattern, and Texture repeat is not used. 0 turns it off.")
+                }
+                Label {
+                    visible: repeatRow.tiled
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    opacity: 0.55
+                    font.pixelSize: 11
+                    text: root.sel.material && root.sel.material.textureName === ""
+                        ? tr("The tile size applies once the material has a texture.")
+                        : tr("The texture repeats every %1 %2 of fabric; Texture repeat is not used. Set the tile size to 0 to use it again.")
+                              .arg(root.sel.material ? (root.sel.material.tileSize / root.cmUnit).toFixed(root.imperial ? 2 : 1) : "").arg(root.lengthName)
+                }
                 SliderRow { label: tr("Roughness"); from: 0; to: 1; stepSize: 0.01; decimals: 2; value: root.sel.material ? root.sel.material.roughness : 0.8; onEdited: (v) => App.setMaterialValue("roughness", v) }
                 SliderRow { label: tr("Metallic"); from: 0; to: 1; stepSize: 0.01; decimals: 2; value: root.sel.material ? root.sel.material.metallic : 0; onEdited: (v) => App.setMaterialValue("metallic", v) }
                 SliderRow { label: tr("Opacity"); from: 0; to: 1; stepSize: 0.01; decimals: 2; value: root.sel.material ? root.sel.material.opacity : 1; onEdited: (v) => App.setMaterialValue("opacity", v) }

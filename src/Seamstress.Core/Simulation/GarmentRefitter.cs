@@ -627,7 +627,7 @@ public static class GarmentRefitter
         {
             var piece = garment.FindPiece(pm.PieceId);
             float clearance = piece != null
-                ? MathF.Max(garment.EffectiveThicknessMm(piece), 0.1f) * 0.001f + SolverSkinOffset
+                ? (MathF.Max(garment.EffectiveThicknessMm(piece), 0.1f) + MathF.Max(garment.BodyOffset, 0f)) * 0.001f + SolverSkinOffset
                 : 0.005f;
             for (int i = 0; i < pm.VertexCount; i++)
             {

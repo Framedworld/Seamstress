@@ -40,6 +40,8 @@ Item {
     property bool showNormals: false
     property string avatarSource: ""
     property string threadSource: ""
+    // Threads of surface stitches (a patch edge sewn onto a line inside another piece) that are not closed yet.
+    property string stitchSource: ""
     property string pinSource: ""
     property string pinSelectionSource: ""
 
@@ -79,6 +81,7 @@ Item {
         const data = JSON.parse(App.viewportModels())
         avatarSource = data.avatar
         threadSource = data.seams
+        stitchSource = data.stitches || ""
         wireSource = data.wire
         pinSource = data.pins
         pinSelectionSource = data.pinSelection
@@ -154,6 +157,48 @@ Item {
         return picked.length
     }
 
+    // ---- Picture of the view (File ▸ Save 3D View as Image) ----
+    // Set while a picture is taken: the selection highlight is left out, and with a transparent background the
+    // ground grid is too, so only the avatar and the garments are in the picture.
+    property bool capturing: false
+    property bool captureTransparent: false
+
+    // The size a picture at this multiple of the view's size comes out at, in pixels: 1 is the view as it is on
+    // screen, pixel for pixel (on a display scaled to 125% that is 1.25 times its size in the window's own units).
+    function imageSize(multiple) {
+        const perUnit = multiple * Screen.devicePixelRatio
+        return Qt.size(Math.max(1, Math.round(view.width * perUnit)), Math.max(1, Math.round(view.height * perUnit)))
+    }
+
+    // Writes the 3D scene (not the buttons and hints drawn over it) to a PNG. The scene is rendered again at the
+    // picture's size rather than scaled up, so a larger multiple gives more detail. "done" is called with
+    // (saved, width, height) when given; otherwise the result is reported in the status bar.
+    function saveImage(path, multiple, transparent, done) {
+        if (capturing)
+            return false
+        multiple = Math.max(0.25, Math.min(8, multiple))
+        const size = imageSize(multiple)
+        const finish = (saved) => {
+            view.explicitTextureWidth = 0
+            view.explicitTextureHeight = 0
+            capturing = false
+            captureTransparent = false
+            if (done) done(saved, size.width, size.height)
+            else App.imageSaved(path, saved)
+        }
+        captureTransparent = transparent
+        capturing = true
+        // The scene is drawn into a texture of the picture's size; the grab below is given the size in the window's
+        // units and multiplies by the display's scale itself.
+        view.explicitTextureWidth = size.width
+        view.explicitTextureHeight = size.height
+        const requested = view.grabToImage(function(result) { finish(result.saveToFile(path)) },
+                                           Qt.size(view.width * multiple, view.height * multiple))
+        if (!requested)
+            finish(false)
+        return requested
+    }
+
     function setView(newYaw, newPitch) {
         yaw = newYaw
         pitch = newPitch
@@ -221,6 +266,16 @@ Item {
         if (App.startupView.indexOf("front") >= 0) { yaw = 0; pitch = -2; distance = 4.35; target = Qt.vector3d(0, 0.92, 0) }
         if (App.startupView.indexOf("back") >= 0) { yaw = 180; pitch = -2; distance = 4.35; target = Qt.vector3d(0, 0.92, 0) }
         if (App.startupView.indexOf("closeup") >= 0) { yaw = 0; pitch = -3; distance = 1.65; target = Qt.vector3d(0, 1.32, 0) }
+        if (App.startupView.indexOf("side") >= 0) { yaw = 90; pitch = -2; distance = 4.35; target = Qt.vector3d(0, 0.92, 0) }
+        if (App.startupView.indexOf("threequarter") >= 0) { yaw = 35; pitch = -6; distance = 4.35; target = Qt.vector3d(0, 0.92, 0) }
+        // "--camera yaw,pitch,distance,targetX,targetY,targetZ" puts the camera anywhere; it wins over the named views.
+        if (App.startupCamera !== "") {
+            const c = JSON.parse(App.startupCamera)
+            yaw = c[0]
+            pitch = Math.max(-89, Math.min(89, c[1]))
+            if (c.length > 2) distance = Math.max(0.25, Math.min(25, c[2]))
+            if (c.length > 5) target = Qt.vector3d(c[3], c[4], c[5])
+        }
         if (App.startupView.indexOf("clean") >= 0) showThreads = false
         if (App.startupView.indexOf("checker") >= 0) displayMode = "checker"
         if (App.startupView.indexOf("wire") >= 0) wireframe = true
@@ -258,7 +313,7 @@ Item {
 
         environment: SceneEnvironment {
             clearColor: App.startupView.indexOf("garment") >= 0 ? "#242830" : App.themeViewerBg
-            backgroundMode: SceneEnvironment.Color
+            backgroundMode: root.captureTransparent ? SceneEnvironment.Transparent : SceneEnvironment.Color
             lightProbe: Texture { source: "assets/studio_env.hdr" }
             probeExposure: 0.76
             antialiasingMode: SceneEnvironment.MSAA
@@ -273,6 +328,7 @@ Item {
             InfiniteGrid {
                 gridInterval: App.gridSizeCm / 100
                 gridAxes: false
+                visible: !root.captureTransparent
             }
         }
 
@@ -357,7 +413,7 @@ Item {
                     opacity: pieceItem.alpha
                     alphaMode: pieceItem.alpha < 0.999 ? PrincipledMaterial.Blend : PrincipledMaterial.Opaque
                     cullMode: Material.NoCulling
-                    emissiveFactor: pieceItem.sel ? Qt.vector3d(0.16, 0.12, 0.02) : Qt.vector3d(0, 0, 0)
+                    emissiveFactor: pieceItem.sel && !root.capturing ? Qt.vector3d(0.16, 0.12, 0.02) : Qt.vector3d(0, 0, 0)
                 }
                 // Normal direction: this model draws only the front of each face, the one inside only the back.
                 // A little glow keeps the shape readable where the light falls on the other side.
@@ -433,6 +489,14 @@ Item {
             visible: root.showThreads && root.threadSource !== ""
             source: root.threadSource
             materials: PrincipledMaterial { baseColor: "#ff5a5f"; lighting: PrincipledMaterial.NoLighting }
+        }
+
+        // The same for surface stitches (patch pockets, flaps, belt loops): from the patch's edge to the line on the
+        // host piece it is sewn onto, in the amber the 2D view draws them with.
+        Model {
+            visible: root.showThreads && root.stitchSource !== ""
+            source: root.stitchSource
+            materials: PrincipledMaterial { baseColor: "#f59e0b"; lighting: PrincipledMaterial.NoLighting }
         }
 
         // Pinned vertices stay where they are; the brush selection is a brighter, temporary highlight.

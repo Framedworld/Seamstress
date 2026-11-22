@@ -105,6 +105,13 @@ public sealed class Garment
     /// </summary>
     public int Layer { get; set; }
 
+    /// <summary>
+    /// Extra distance in millimetres this garment keeps from the avatar's skin, on top of its fabric thickness: the
+    /// room taken by what is worn under it. A jacket over a tee gets the tee's thickness plus a little air, so the
+    /// two never share the same surface, without making the jacket's own cloth thicker.
+    /// </summary>
+    public float BodyOffset { get; set; }
+
     public List<LayerGroup> Groups { get; set; } = new();
     public List<PatternPiece> Pieces { get; set; } = new();
     public List<Seam> Seams { get; set; } = new();
@@ -133,6 +140,7 @@ public sealed class Garment
         Topology = Topology,
         MakeHumanZDepth = MakeHumanZDepth,
         Layer = Layer,
+        BodyOffset = BodyOffset,
         Groups = Groups.Select(g => g.Clone()).ToList(),
         Pieces = Pieces.Select(p => p.Clone()).ToList(),
         Seams = Seams.Select(s => s.Clone()).ToList(),
@@ -235,6 +243,12 @@ public sealed class PatternPoint
 
     /// <summary>Quadratic Bezier control point for the edge from this point to the next, or null for a straight edge.</summary>
     public Vector2? Curve { get; set; }
+
+    /// <summary>
+    /// Optional name of the edge that starts at this point ("side", "hem", "armhole"...), so seams can be described
+    /// by name rather than by an edge number that changes when the outline is mirrored or edited.
+    /// </summary>
+    public string? EdgeName { get; set; }
 
     public PatternPoint() { }
     public PatternPoint(float x, float y) => Position = new Vector2(x, y);
@@ -375,6 +389,19 @@ public sealed class PatternPiece
                 return (loop, start);
         }
         throw new ArgumentOutOfRangeException(nameof(index), index, "No such point.");
+    }
+
+    /// <summary>The edge with this name (case does not matter), or -1.</summary>
+    public int EdgeNamed(string name)
+    {
+        int index = 0;
+        foreach (var point in AllPoints())
+        {
+            if (string.Equals(point.EdgeName, name, StringComparison.OrdinalIgnoreCase))
+                return index;
+            index++;
+        }
+        return -1;
     }
 
     public PatternPoint PointAt(int index)
@@ -565,6 +592,17 @@ public sealed class FabricMaterial
 
     /// <summary>How many times the texture repeats across the UV square.</summary>
     public float Repeat { get; set; } = 1f;
+
+    /// <summary>
+    /// Width in centimetres of fabric that one copy of the texture covers, or 0 to use <see cref="Repeat"/>. With a
+    /// tile size the fabric looks the same on every garment, whatever the size of its 2D layout.
+    /// </summary>
+    public float TileSizeCm { get; set; }
+
+    public bool FitsTextureToPiece => !string.IsNullOrEmpty(Texture) && Repeat <= 0 && TileSizeCm <= 0;
+
+    /// <summary>Texture repeat applied on top of the UVs; 1 when the tile size is already built into them.</summary>
+    public float TextureScale => TileSizeCm > 0 ? 1f : Repeat > 0 ? Repeat : 1f;
 
     public float Roughness { get; set; } = 0.8f;
     public float Metallic { get; set; }

@@ -79,6 +79,7 @@ public partial class AppController : INotifyPropertyChanged
             TrySaveSettings();
         InitTheme();
         ApplyStartupOptions();
+        InitRecovery();
         EnsureAvatar();
     }
 
@@ -605,7 +606,11 @@ public partial class AppController : INotifyPropertyChanged
 
     // ---------------------------------------------------------------- 3D viewport
 
-    public string ViewportModels() => _viewport.Sync(_workspace, _avatar);
+    public string ViewportModels()
+    {
+        _viewport.PinToolActive = _pinBrush;
+        return _viewport.Sync(_workspace, _avatar);
+    }
 
     public void SelectIn3D(string pieceId, bool additive)
     {
@@ -857,6 +862,7 @@ public partial class AppController : INotifyPropertyChanged
     /// <summary>Called by a UI timer: applies the newest simulation frame and finishes background avatar loading.</summary>
     public void Tick()
     {
+        RecoveryTick();
         if (_avatarTask is { IsCompleted: true } task)
         {
             _avatarTask = null;
@@ -934,9 +940,17 @@ public partial class AppController : INotifyPropertyChanged
             AvatarKind.MakeHuman => File.Exists(baseMesh)
                 ? Avatar.FromMakeHumanBase(baseMesh, wanted)
                 : throw new FileNotFoundException(Lang.T("The MakeHuman base mesh was not found. Set its location in Preferences.")),
-            _ => Avatar.FromObj(wanted.Path ?? throw new FileNotFoundException(Lang.T("No avatar file is set.")), wanted.Scale),
+            // A body of the user's own: OBJ, FBX or glTF/GLB, whichever the file is.
+            _ => Avatar.FromFile(wanted.Path ?? throw new FileNotFoundException(Lang.T("No avatar file is set.")), wanted.Scale),
         });
     }
+
+    /// <summary>The file patterns of the bodies Avatar ▸ Load body reads, for the file dialog: "*.obj *.fbx *.glb *.gltf".</summary>
+    public string AvatarFilePatterns => string.Join(" ", Avatar.MeshExtensions.Select(e => "*" + e));
+
+    /// <summary>True when a file (path or URL) is one of the body formats, by its extension.</summary>
+    public bool IsAvatarFile(string fileUrl)
+        => Avatar.MeshExtensions.Contains(Path.GetExtension(LocalPath(fileUrl)).ToLowerInvariant());
 
     public string AvatarType => _workspace.Document.Avatar.Kind.ToString();
 
@@ -1116,6 +1130,14 @@ public partial class AppController : INotifyPropertyChanged
     public void SetGarmentThicknessEnabled(string garmentId, bool enabled) => _workspace.SetGarmentThicknessEnabled(garmentId, enabled);
     public void SetGarmentThickness(string garmentId, double millimetres) => _workspace.SetGarmentThickness(garmentId, (float)millimetres);
 
+    /// <summary>Which layer of clothing a garment is: 0 next to the skin, higher numbers worn over lower ones.</summary>
+    public void SetGarmentLayer(string garmentId, int layer) => _workspace.SetGarmentLayer(garmentId, layer);
+    public int MaxGarmentLayer => Workspace.MaxGarmentLayer;
+
+    /// <summary>Room in millimetres a garment keeps from the skin for the garments worn under it.</summary>
+    public void SetGarmentBodyOffset(string garmentId, double millimetres) => _workspace.SetGarmentBodyOffset(garmentId, (float)millimetres);
+    public double MaxBodyOffsetMm => Workspace.MaxBodyOffsetMm;
+
     public void SetTopology(string topology)
     {
         if (_workspace.ActiveGarment is { } garment)
@@ -1201,6 +1223,8 @@ public partial class AppController : INotifyPropertyChanged
 
     public void NewDocument()
     {
+        // The window asked about unsaved changes before this, so whatever was not saved is given up on purpose.
+        ForgetRecovery();
         _workspace.New();
         StatusText = Lang.T("New project");
     }
@@ -1212,6 +1236,7 @@ public partial class AppController : INotifyPropertyChanged
         try
         {
             _workspace.Open(path);
+            ForgetRecovery();
             _settings.AddRecent(path);
             TrySaveSettings();
             StatusText = Lang.F("Opened {0}", Path.GetFileName(path));
@@ -1238,6 +1263,7 @@ public partial class AppController : INotifyPropertyChanged
             if (_simulation.IsRunning)
                 StopSimulation();
             _workspace.Save(path);
+            ForgetRecovery();
             _settings.AddRecent(path);
             TrySaveSettings();
             StatusText = Lang.F("Saved {0}", Path.GetFileName(path));
@@ -1571,6 +1597,8 @@ public partial class AppController : INotifyPropertyChanged
     public void Shutdown()
     {
         AppLog.Write("Seamstress closed.");
+        // Closed properly: what was not saved was given up on purpose, so there is nothing to recover.
+        ForgetRecovery();
         _simulation.Dispose();
         _viewport.Dispose();
         _referenceImages.Dispose();

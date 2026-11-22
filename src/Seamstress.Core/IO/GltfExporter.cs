@@ -111,10 +111,10 @@ public static class GltfExporter
                     textures.Add($"{{\"source\":{image},\"sampler\":0}}");
                 }
                 sb.Append($",\"baseColorTexture\":{{\"index\":{image}");
-                if (MathF.Abs(material.Repeat - 1) > 1e-4f)
+                if (MathF.Abs(material.TextureScale - 1) > 1e-4f)
                 {
                     usesTransform = true;
-                    sb.Append($",\"extensions\":{{\"KHR_texture_transform\":{{\"scale\":[{F(material.Repeat)},{F(material.Repeat)}]}}}}");
+                    sb.Append($",\"extensions\":{{\"KHR_texture_transform\":{{\"scale\":[{F(material.TextureScale)},{F(material.TextureScale)}]}}}}");
                 }
                 sb.Append('}');
             }

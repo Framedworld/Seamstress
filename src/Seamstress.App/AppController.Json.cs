@@ -138,6 +138,10 @@ public partial class AppController
             sb.Append(",\"faces\":").Append(mesh?.FaceCount ?? 0).Append(",\"vertices\":").Append(mesh?.VertexCount ?? 0);
             sb.Append(",\"quads\":").Append(mesh?.QuadCount ?? 0).Append(",\"topology\":\"").Append(garment.Topology).Append('"');
             sb.Append(",\"pieces\":").Append(garment.Pieces.Count).Append(",\"seams\":").Append(garment.Seams.Count);
+            sb.Append(",\"layer\":").Append(garment.Layer).Append(",\"bodyOffset\":").Append(N(garment.BodyOffset));
+            // The garments this one is worn over (lower layers) by name, innermost first, for the panel's hint.
+            sb.Append(",\"wornOver\":[").Append(string.Join(",", doc.Garments.Where(g => g != garment && g.Layer < garment.Layer)
+                .OrderBy(g => g.Layer).Select(g => Q(g.Name)))).Append(']');
             sb.Append(",\"simulateWithOthers\":").Append(B(garment.SimulateWithOthers)).Append('}');
         }
 
@@ -179,7 +183,8 @@ public partial class AppController
             sb.Append(",\"physics\":{\"preset\":").Append(Q(ph.Preset));
             sb.Append(",\"density\":").Append(N(ph.Density)).Append(",\"stretch\":").Append(N(ph.Stretch)).Append(",\"shear\":").Append(N(ph.Shear));
             sb.Append(",\"bend\":").Append(N(ph.Bend)).Append(",\"damping\":").Append(N(ph.Damping)).Append(",\"friction\":").Append(N(ph.Friction));
-            sb.Append(",\"thickness\":").Append(N(ph.Thickness)).Append('}');
+            sb.Append(",\"thickness\":").Append(N(ph.Thickness));
+            sb.Append(",\"shrinkWeft\":").Append(N(ph.ShrinkWeft)).Append(",\"shrinkWarp\":").Append(N(ph.ShrinkWarp)).Append('}');
 
             if (material != null)
             {
@@ -187,7 +192,8 @@ public partial class AppController
                 sb.Append(",\"color\":").Append(Q(material.Color)).Append(",\"texture\":").Append(Q(material.Texture));
                 sb.Append(",\"textureName\":").Append(Q(material.Texture == null ? "" : Path.GetFileName(material.Texture)));
                 sb.Append(",\"textureMissing\":").Append(B(material.Texture != null && !File.Exists(material.Texture)));
-                sb.Append(",\"repeat\":").Append(N(material.Repeat)).Append(",\"roughness\":").Append(N(material.Roughness));
+                sb.Append(",\"repeat\":").Append(N(material.Repeat)).Append(",\"tileSize\":").Append(N(material.TileSizeCm));
+                sb.Append(",\"roughness\":").Append(N(material.Roughness));
                 sb.Append(",\"metallic\":").Append(N(material.Metallic)).Append(",\"opacity\":").Append(N(material.Opacity));
                 sb.Append(",\"users\":").Append(doc.AllPieces().Count(p => p.MaterialId == material.Id)).Append('}');
             }

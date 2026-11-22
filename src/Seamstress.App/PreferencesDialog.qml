@@ -50,6 +50,9 @@ AppDialog {
         language.currentIndex = Math.max(0, languages.findIndex(l => l.code === App.settingLanguage))
         units.currentIndex = App.settingUnits === "imperial" ? 1 : 0
         sensitivity.value = Math.round(App.mouseSensitivity * 100)
+        // An interval that is not in the list (set by hand in the file) is shown as the nearest one.
+        autosave.currentIndex = autosaveMinutes.reduce((best, m, i) =>
+            Math.abs(m - App.autosaveMinutes) < Math.abs(autosaveMinutes[best] - App.autosaveMinutes) ? i : best, 0)
         shownImperial = units.currentIndex === 1
         showLength(gridSize, App.gridSizeCm)
         showLength(snapStep, App.snapStepCm)
@@ -88,7 +91,10 @@ AppDialog {
                             languages[language.currentIndex].code, sensitivity.value / 100)
         App.saveKeyBindings(JSON.stringify(keyboard.chosen()))
         App.saveTheme(themeChoice)
+        App.setAutosaveMinutes(autosaveMinutes[Math.max(0, autosave.currentIndex)])
     }
+    // The choices for how often a recovery copy is written, in minutes; 0 is never.
+    readonly property var autosaveMinutes: [0, 1, 2, 3, 5, 10, 15, 30]
 
     component Note: Label {
         Layout.fillWidth: true
@@ -166,6 +172,26 @@ AppDialog {
                         Note {
                             Layout.columnSpan: 2
                             text: tr("Changes the units shown and typed in the interface. Garment files and exports are not affected.")
+                        }
+                    }
+                }
+                GroupBox {
+                    title: tr("Crash Recovery")
+                    Layout.fillWidth: true
+                    GridLayout {
+                        anchors.fill: parent
+                        columns: 2
+                        columnSpacing: 8
+                        rowSpacing: 8
+                        Label { text: tr("Save a recovery copy") }
+                        ComboBox {
+                            id: autosave
+                            Layout.fillWidth: true
+                            model: root.autosaveMinutes.map(m => m === 0 ? tr("Never") : m === 1 ? tr("Every minute") : tr("Every %1 minutes").arg(m))
+                        }
+                        Note {
+                            Layout.columnSpan: 2
+                            text: tr("While a project has unsaved changes, a copy is kept in Seamstress's own data folder, at this interval and after every simulation; your file is not touched. If Seamstress does not close properly, it offers to restore the copy at the next start.")
                         }
                     }
                 }

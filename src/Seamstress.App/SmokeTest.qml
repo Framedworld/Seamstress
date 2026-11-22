@@ -6,6 +6,13 @@ QtObject {
     id: smoke
     property string folder: ""
     property int failures: 0
+    // Set at the very end, so a run that stopped half-way (a script error) is not taken for one that passed.
+    property bool finished: false
+    // The picture of the 3D view asked for in run(): what was expected and what the view reported.
+    property size imageExpected: Qt.size(0, 0)
+    property bool imageSaved: false
+    property int imageWidth: 0
+    property int imageHeight: 0
 
     function check(what, ok) {
         if (!ok) failures++
@@ -96,6 +103,39 @@ QtObject {
         check("undo restores garment thickness", Math.abs(selection().garment.thickness - 10) < 1e-4)
         App.redo()
         check("redo clears garment thickness", selection().garment.thickness === null)
+
+        // Layering, elastic and tile size: stored, shown in Properties and undone like their neighbours.
+        check("garment starts on layer 0 with no room underneath", selection().garment.layer === 0 && selection().garment.bodyOffset === 0)
+        App.setGarmentLayer(garmentId, 2)
+        check("garment layer set", selection().garment.layer === 2 && App.undoText === "Undo Change garment layer")
+        App.undo()
+        check("garment layer undone", selection().garment.layer === 0)
+        App.setGarmentBodyOffset(garmentId, 4)
+        check("room underneath set", Math.abs(selection().garment.bodyOffset - 4) < 1e-4)
+        App.undo()
+        check("room underneath undone", selection().garment.bodyOffset === 0)
+        check("elastic starts at 1", selection().physics.shrinkWeft === 1 && selection().physics.shrinkWarp === 1)
+        App.setPieceValue("shrinkWeft", 0.88)
+        App.setPieceValue("shrinkWarp", 9)
+        check("elastic set and kept in range", Math.abs(selection().physics.shrinkWeft - 0.88) < 1e-4 && selection().physics.shrinkWarp === 1.5)
+        App.setPreset("Cotton")
+        check("a fabric preset keeps the elastic", selection().physics.preset === "Cotton" && Math.abs(selection().physics.shrinkWeft - 0.88) < 1e-4)
+        App.undo(); App.undo(); App.undo()
+        check("elastic undone", selection().physics.shrinkWeft === 1 && selection().physics.shrinkWarp === 1 && selection().physics.preset === "Custom")
+        const tiledPiece = selection().piece.id
+        const meshOf = (id) => JSON.parse(App.viewportModels()).models.find(m => m.id === id).source
+        App.setMaterialTexture(App.checkerTexture)
+        const untiled = meshOf(tiledPiece)
+        App.setMaterialValue("tileSize", 12)
+        check("tile size stored", selection().material.tileSize === 12 && App.undoText === "Undo Change material")
+        const tiled = meshOf(tiledPiece)
+        check("tile size rebuilds the piece's UVs", tiled !== untiled)
+        App.setMaterialValue("tileSize", 6)
+        check("another tile size rebuilds them again", meshOf(tiledPiece) !== tiled)
+        App.setMaterialValue("tileSize", 0)
+        check("tile size off", selection().material.tileSize === 0)
+        App.undo(); App.undo()
+        check("tile size and texture undone", selection().material.tileSize === 0 && selection().material.textureName === "")
 
         // Topology, and moving a piece with the 3D handles.
         const triangles = selection().garment.faces
@@ -323,12 +363,22 @@ QtObject {
         check("shortcut registry", bindings.length > 40 && App.keyText("tool.ruler") !== "" && bindings.every(b => window.commands[b.id] !== undefined))
         check("shortcut conflicts reported", JSON.parse(App.keyConflicts(JSON.stringify({ "tool.select": ["M"], "tool.ruler": ["m"] }))).length === 1)
 
+        check("no surface stitches drawn for a project without any", patternView.stitches.length === 0)
+
         // Templates, a second garment and per-garment simulation.
         App.addTemplate("Skirt")
         rows = JSON.parse(App.layers())
         const garments = rows.filter(r => r.kind === "garment")
         check("second garment added and active", garments.length === 2 && garments[1].active)
         App.toggleSimulation()
+    }
+
+    // Runs once the window is on screen (a picture can only be taken of a window that is being drawn): asks for a
+    // picture of the 3D view at twice its size with a transparent background; finish() looks at the result.
+    function picture() {
+        imageExpected = viewport.imageSize(2)
+        check("picture of the 3D view requested", viewport.saveImage(App.imagePath(folder + "/smoke-view.png"), 2, true,
+              (saved, width, height) => { imageSaved = saved; imageWidth = width; imageHeight = height }))
     }
 
     // Runs after the simulation had a moment to work.
@@ -381,6 +431,37 @@ QtObject {
         check("avatar body setting stored", Math.abs(JSON.parse(App.avatarShape()).gender - 0.9) < 1e-6)
         App.resetAvatarShape()
         check("avatar body reset", JSON.parse(App.avatarShape()).gender === 0.5)
+
+        // What artists share: the picture asked for in run(), rendered at twice the view's size, and the pattern as SVG.
+        check("picture of the 3D view saved", imageSaved && imageWidth === imageExpected.width && imageHeight === imageExpected.height && imageWidth > 0)
+        // Twice the view as it is on screen, give or take the rounding of a display scaled to 125% or 150%.
+        const written = App.imageDimensions(folder + "/smoke-view.png").split("x").map(Number)
+        check("the picture has the size asked for", written.length === 2 && Math.abs(written[0] - imageWidth) <= 2 && Math.abs(written[1] - imageHeight) <= 2)
+        check("pattern exported as SVG", App.exportPatternSvg(base + ".svg", true, true))
+
+        // Crash recovery. The copies go to this check's own folder. A copy is written for unsaved work, dropped when
+        // the work is undone or saved, and restored as unsaved changes.
+        const copies = () => JSON.parse(App.recoveryCopies())
+        App.newDocument()
+        check("no recovery copy without unsaved changes", !App.dirty && copies().length === 0)
+        App.addTemplate("Skirt")
+        check("recovery copy written for unsaved work", App.dirty && App.writeRecoveryCopy() && copies().length === 1)
+        check("a project that was never saved is offered by name", copies()[0].file === "" && copies()[0].name !== "")
+        App.undo()
+        App.tick()
+        check("undoing back to the saved state drops the copy", !App.dirty && copies().length === 0)
+        App.redo()
+        App.writeRecoveryCopy()
+        const lost = copies()[0]
+        check("restored as unsaved changes", lost !== undefined && App.restoreRecovery(lost.key) && App.dirty && scene().pieces.length === 2
+              && App.undoText === "Undo Restore recovered work")
+        check("saving removes the recovery copy", App.saveAs(base + "-recovered.garment.json") && copies().length === 0)
+        App.addTemplate("Skirt")
+        App.writeRecoveryCopy()
+        check("the copy of a saved project names it", copies().length === 1 && /smoke-recovered\.garment\.json$/.test(copies()[0].file))
+        App.newDocument()
+        check("closing the project on purpose removes its copy", copies().length === 0)
         App.log(failures === 0 ? "smoke test passed" : "smoke test FAILED: " + failures)
+        finished = true
     }
 }

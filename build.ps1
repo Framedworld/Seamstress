@@ -545,7 +545,7 @@ switch ($Command) {
         Add-Content (Join-Path $staging 'NOTICE') "`nBuilt with Qt $qtVersion."
         # Nothing is published unless the result really can start: the program checks the same things at launch.
         foreach ($required in 'Seamstress.exe', 'Qt6Core.dll', 'Qt6Quick3D.dll', 'qml\QtQuick3D\qmldir',
-            'Application\Main.qml', 'NOTICE', 'README.txt', 'LICENSES\GPL-3.0-only.txt') {
+            'Application\Main.qml', 'Application\assets\studio_env.hdr', 'NOTICE', 'README.txt', 'LICENSES\GPL-3.0-only.txt') {
             if (-not (Test-Path (Join-Path $staging $required))) { Fail "The package would be incomplete: $required is missing" }
         }
         $zip = "$stage.zip"

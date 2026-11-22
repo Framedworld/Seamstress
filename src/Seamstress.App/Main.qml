@@ -50,6 +50,8 @@ ApplicationWindow {
     function tr(text) { App.languageRevision; return App.tr(text) }
 
     onFrameSwapped: {
+        if (App.startupAutomated)
+            App.frameDrawn()
         if (!viewportConfirmed) {
             viewportConfirmed = true
             App.viewportReady()
@@ -90,27 +92,82 @@ ApplicationWindow {
         exportOptions.open()
     }
 
+    function startSvgExport() {
+        svgDialog.currentFile = svgDialog.currentFolder + "/" + App.suggestedFileName(".svg")
+        svgDialog.open()
+    }
+
+    // Files dropped on the window: a project is opened (after asking about unsaved changes), a body becomes the
+    // avatar, a picture becomes a reference image behind the pattern. Returns how many files were used.
+    function openDropped(urls) {
+        let used = 0, project = ""
+        for (const dropped of urls) {
+            const url = dropped.toString()
+            const name = url.toLowerCase()
+            if (name.endsWith(".garment.json") || name.endsWith(".json")) {
+                if (project === "") project = url
+            } else if (App.isAvatarFile(url)) {
+                App.setAvatar("CustomObj", url, 1)
+                used++
+            } else if (/\.(png|jpe?g|gif|webp|bmp)$/.test(name)) {
+                patternView.addReferenceImage(url)
+                used++
+            }
+        }
+        if (project !== "") {
+            window.guard(() => App.open(project))
+            used++
+        }
+        return used
+    }
+
     // Applies the newest simulation frame about 30 times a second; cheap when nothing is running.
     Timer { interval: 33; running: true; repeat: true; onTriggered: App.tick() }
 
-    // Used by automated runs: capture the window, then quit.
+    // Used by automated runs: capture the window, then quit. Every way this can go wrong ends the run with a reason
+    // on standard error (App.automationFailed); a run that never gets here is ended by the watchdog in Program.cs.
     Timer {
         interval: App.startupSmoke ? 6000 : 5000
         running: App.startupScreenshot !== ""
         onTriggered: {
+            App.automationStep("the capture timer fired")
+            if (App.startupSmoke && !(smokeLoader.item && smokeLoader.item.finished)) {
+                App.automationFailed("the smoke test did not run to its end")
+                return
+            }
+            if (App.startupSmoke && smokeLoader.item.failures > 0) {
+                App.automationFailed("the smoke test failed: " + smokeLoader.item.failures + " check(s)")
+                return
+            }
             // "--view prefs|export|makehuman|garment" captures that dialog or the 3D garment viewport directly.
             const view = App.startupView
             const dialog = view.indexOf("prefs") >= 0 ? preferences : view.indexOf("export") >= 0 ? exportOptions
                          : view.indexOf("makehuman") >= 0 ? makeHumanDialog
-                         : view.indexOf("bodyshape") >= 0 ? bodyShape : null
+                         : view.indexOf("bodyshape") >= 0 ? bodyShape
+                         : view.indexOf("saveimage") >= 0 ? imageOptions
+                         : view.indexOf("recovery") >= 0 ? recoveryDialog : null
             const target = dialog ? dialog.contentItem.parent
                          : view.indexOf("contextmenu") >= 0 ? contextMenu.contentItem.parent
-                         : view.indexOf("garment") >= 0 ? viewport : rootLayout
-            target.grabToImage(function(result) {
-                result.saveToFile(App.startupScreenshot)
+                         : view.indexOf("garment") >= 0 ? viewport
+                         : view.indexOf("pattern") >= 0 ? patternView
+                         : view.indexOf("properties") >= 0 ? propertiesPanel : rootLayout
+            if (!target || target.width <= 0 || target.height <= 0) {
+                App.automationFailed("there is nothing to capture for --view \"" + view + "\" (it is not open or has no size)")
+                return
+            }
+            const requested = target.grabToImage(function(result) {
+                if (!result.saveToFile(App.startupScreenshot)) {
+                    App.automationFailed("could not write the screenshot " + App.startupScreenshot)
+                    return
+                }
+                App.automationDone()
                 window.closing = true
                 Qt.quit()
             })
+            if (requested)
+                App.automationStep("the capture was requested and waits for the next frame")
+            else
+                App.automationFailed("the capture could not be started for --view \"" + view + "\"")
         }
     }
 
@@ -125,6 +182,9 @@ ApplicationWindow {
             if (view.indexOf("export") >= 0) { window.pendingExport = "fbx"; exportOptions.open() }
             if (view.indexOf("makehuman") >= 0) makeHumanDialog.open()
             if (view.indexOf("bodyshape") >= 0) bodyShape.open()
+            if (view.indexOf("saveimage") >= 0) imageOptions.open()
+            // "--drop <file>" (once per file) does what dropping those files on the window does.
+            if (App.startupDrops !== "") window.openDropped(App.startupDrops.split("|"))
         }
     }
 
@@ -136,9 +196,11 @@ ApplicationWindow {
         onLoaded: {
             item.folder = App.startupFolderUrl
             item.run()
+            smokePicture.start()
             smokeFinish.start()
         }
     }
+    Timer { id: smokePicture; interval: 1500; onTriggered: smokeLoader.item.picture() }
     Timer { id: smokeFinish; interval: 4000; onTriggered: smokeLoader.item.finish() }
 
     Connections {
@@ -291,8 +353,11 @@ ApplicationWindow {
                     MenuItem { text: tr("&glTF 2.0 (.glb / .gltf)…"); onTriggered: window.startExport("gltf") }
                     MenuItem { text: tr("&FBX…"); onTriggered: window.startExport("fbx") }
                     MenuSeparator {}
+                    MenuItem { text: tr("Export Pattern as &SVG…"); onTriggered: window.startSvgExport() }
+                    MenuSeparator {}
                     MenuItem { text: tr("Send to &MakeHuman"); onTriggered: makeHumanDialog.open() }
                 }
+                MenuItem { text: tr("Save 3D View as &Image…"); onTriggered: imageOptions.open() }
                 MenuSeparator {}
                 KeyMenuItem { text: tr("&Preferences…"); command: "file.preferences"; onTriggered: preferences.open() }
                 MenuSeparator {}
@@ -330,6 +395,10 @@ ApplicationWindow {
                 MenuSeparator {}
                 KeyMenuItem { text: tr("Reset Arrangement"); command: "sim.reset"; onTriggered: App.resetArrangement() }
                 MenuSeparator {}
+                // The pin actions of the 3D pin brush's right-click menu (PinMenu.qml), for the vertices chosen with it.
+                MenuItem { text: tr("Pin Selected Vertices"); enabled: App.pinSelectionCount > 0; onTriggered: App.pinSelectedVertices() }
+                MenuItem { text: tr("Unpin Selected Vertices"); enabled: App.pinSelectionCount > 0; onTriggered: App.unpinSelectedVertices() }
+                MenuItem { text: tr("Clear Vertex Selection"); enabled: App.pinSelectionCount > 0; onTriggered: App.clearPinSelection() }
                 MenuItem { text: tr("Unpin All on Selected Garments"); onTriggered: App.unpinAll() }
             }
             Menu {
@@ -337,7 +406,7 @@ ApplicationWindow {
                 MenuItem { text: tr("Mannequin"); checkable: true; checked: App.avatarType === "Mannequin"; onTriggered: App.setAvatar("Mannequin", "", 1) }
                 MenuItem { text: tr("MakeHuman Base Mesh"); checkable: true; checked: App.avatarType === "MakeHuman"; onTriggered: App.setAvatar("MakeHuman", "", 1) }
                 MenuItem { text: tr("MakeHuman Body Shape…"); enabled: App.avatarType === "MakeHuman"; onTriggered: bodyShape.open() }
-                MenuItem { text: tr("Load OBJ…"); checkable: true; checked: App.avatarType === "CustomObj"; onTriggered: avatarDialog.open() }
+                MenuItem { text: tr("Load Body (OBJ, FBX, glTF)…"); checkable: true; checked: App.avatarType === "CustomObj"; onTriggered: avatarDialog.open() }
                 MenuItem { text: tr("None"); checkable: true; checked: App.avatarType === "None"; onTriggered: App.setAvatar("None", "", 1) }
             }
             Menu {
@@ -646,7 +715,8 @@ ApplicationWindow {
                     id: viewport
                     onContextMenuRequested: contextMenu.popup()
                     onPinMenuRequested: pinMenu.popup()
-                    SplitView.preferredWidth: 520
+                    // "--view wide3d" (automated captures) gives the 3D view all the room the other panels can spare.
+                    SplitView.preferredWidth: App.startupView.indexOf("wide3d") >= 0 ? Math.max(520, window.width - 750) : 520
                     SplitView.minimumWidth: 200
                 }
                 PatternView {
@@ -740,6 +810,22 @@ ApplicationWindow {
         onAccepted: App.exportTo(window.pendingExport, selectedFile, weldBox.checked, scopeBox.currentIndex === 1)
     }
     FileDialog {
+        id: svgDialog
+        title: tr("Export Pattern as SVG")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [tr("SVG drawing") + " (*.svg)"]
+        currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        onAccepted: App.exportPatternSvg(selectedFile, true, true)
+    }
+    FileDialog {
+        id: imageDialog
+        title: tr("Save 3D View as Image")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [tr("PNG image") + " (*.png)"]
+        currentFolder: StandardPaths.writableLocation(StandardPaths.PicturesLocation)
+        onAccepted: viewport.saveImage(App.imagePath(selectedFile), imageOptions.multiple, transparentBox.checked)
+    }
+    FileDialog {
         id: textureDialog
         title: tr("Choose Texture")
         nameFilters: [tr("Images") + " (*.png *.jpg *.jpeg *.webp *.bmp)", tr("All files") + " (*)"]
@@ -755,8 +841,10 @@ ApplicationWindow {
     }
     FileDialog {
         id: avatarDialog
-        title: tr("Load Avatar (OBJ, in metres)")
-        nameFilters: ["Wavefront OBJ (*.obj)"]
+        title: tr("Load Body (OBJ, FBX or glTF)")
+        // OBJ files are taken to be in metres; FBX and glTF say what their units are.
+        nameFilters: [tr("3D bodies") + " (" + App.avatarFilePatterns + ")", "Wavefront OBJ (*.obj)", "Autodesk FBX (*.fbx)",
+                      "glTF (*.glb *.gltf)", tr("All files") + " (*)"]
         currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
         onAccepted: App.setAvatar("CustomObj", selectedFile, 1)
     }
@@ -806,6 +894,145 @@ ApplicationWindow {
                                      : [tr("glTF binary") + " (*.glb)", tr("glTF separate") + " (*.gltf)"]
             exportDialog.currentFile = exportDialog.currentFolder + "/" + App.suggestedFileName(ext)
             exportDialog.open()
+        }
+    }
+
+    // File ▸ Save 3D View as Image: how large, and with or without the background.
+    AppDialog {
+        id: imageOptions
+        title: tr("Save 3D View as Image")
+        modal: true
+        anchors.centerIn: parent
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        okText: tr("Choose File…")
+        readonly property var multiples: [1, 2, 3, 4]
+        // Which of them is chosen; kept here because the list is rebuilt (and its choice reset) when the view is resized.
+        property int choice: 1
+        readonly property real multiple: multiples[choice]
+        ColumnLayout {
+            spacing: 10
+            RowLayout {
+                Label { text: tr("Size") }
+                ComboBox {
+                    id: sizeBox
+                    implicitWidth: 300
+                    onModelChanged: currentIndex = imageOptions.choice
+                    Component.onCompleted: currentIndex = imageOptions.choice
+                    onActivated: (index) => imageOptions.choice = index
+                    // "2× the view (1040 × 1600 pixels)": the picture is rendered at that size, not scaled up.
+                    model: imageOptions.multiples.map(m => {
+                        const size = viewport.imageSize(m)
+                        return tr("%1× the view (%2 × %3 pixels)").arg(m).arg(size.width).arg(size.height)
+                    })
+                }
+            }
+            CheckBox {
+                id: transparentBox
+                text: tr("Transparent background")
+            }
+            Label {
+                Layout.preferredWidth: 400
+                wrapMode: Text.WordWrap
+                opacity: 0.65
+                font.pixelSize: 11
+                text: tr("Saves what the 3D view shows from where the camera is now, as a PNG, without the buttons and hints. With a transparent background the ground grid is left out too, so the picture can be placed on any backdrop.")
+            }
+        }
+        onAccepted: {
+            imageDialog.currentFile = imageDialog.currentFolder + "/" + App.suggestedFileName(".png")
+            imageDialog.open()
+        }
+    }
+
+    // Asked at startup when unsaved work of a session that did not close properly was found.
+    AppDialog {
+        id: recoveryDialog
+        title: tr("Restore Unsaved Work?")
+        modal: true
+        anchors.centerIn: parent
+        standardButtons: Dialog.Ok | Dialog.Discard | Dialog.Cancel
+        okText: tr("Restore")
+        discardText: tr("Delete Recovery Copy")
+        closePolicy: Popup.CloseOnEscape
+        // The copy being asked about ({key, name, file, saved}) and how many others wait behind it.
+        property var copy: ({ key: "", name: "", file: "", saved: "" })
+        property int others: 0
+        function offer() {
+            const copies = JSON.parse(App.recoveryCopies())
+            if (copies.length === 0)
+                return
+            copy = copies[0]
+            others = copies.length - 1
+            open()
+        }
+        ColumnLayout {
+            spacing: 8
+            Label { text: tr("Seamstress did not close properly last time."); font.bold: true }
+            Label {
+                Layout.preferredWidth: 460
+                wrapMode: Text.WordWrap
+                text: recoveryDialog.copy.file !== ""
+                    ? tr("A recovery copy of “%1” from %2 is newer than the saved project.").arg(App.fileName(recoveryDialog.copy.file)).arg(recoveryDialog.copy.saved)
+                    : tr("A recovery copy of the unsaved project “%1” from %2 was found.").arg(recoveryDialog.copy.name).arg(recoveryDialog.copy.saved)
+            }
+            Label {
+                visible: recoveryDialog.copy.file !== ""
+                Layout.preferredWidth: 460
+                elide: Text.ElideMiddle
+                opacity: 0.7
+                font.pixelSize: 11
+                text: recoveryDialog.copy.file
+            }
+            Label {
+                Layout.preferredWidth: 460
+                wrapMode: Text.WordWrap
+                opacity: 0.65
+                font.pixelSize: 11
+                text: tr("Restore opens it as unsaved changes: save to keep them, or undo to go back to the saved project. Cancel keeps the copy and asks again next time.")
+            }
+            Label {
+                visible: recoveryDialog.others > 0
+                Layout.preferredWidth: 460
+                wrapMode: Text.WordWrap
+                opacity: 0.65
+                font.pixelSize: 11
+                text: tr("%1 more recovery copies will be offered afterwards.").arg(recoveryDialog.others)
+            }
+        }
+        onAccepted: App.restoreRecovery(copy.key)
+        onDiscarded: {
+            close()
+            App.discardRecovery(copy.key)
+            Qt.callLater(offer)
+        }
+    }
+    Timer { interval: 600; running: App.recoveryPending; onTriggered: recoveryDialog.offer() }
+
+    // Files dragged onto the window from the file manager.
+    DropArea {
+        id: dropArea
+        anchors.fill: parent
+        onEntered: (drag) => { drag.accepted = drag.hasUrls }
+        onDropped: (drop) => {
+            if (drop.hasUrls && window.openDropped(drop.urls) > 0)
+                drop.accept()
+        }
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 6
+            visible: dropArea.containsDrag
+            color: Qt.alpha(palette.highlight, 0.10)
+            border.color: palette.highlight
+            border.width: 2
+            radius: 8
+            Label {
+                anchors.centerIn: parent
+                padding: 14
+                font.pixelSize: 15
+                font.weight: Font.DemiBold
+                text: tr("Drop a project to open it, a body (OBJ, FBX, glTF) to use as the avatar, or a picture to trace")
+                background: Rectangle { color: Qt.alpha(palette.window, 0.92); radius: 6; border.color: palette.highlight; border.width: 1 }
+            }
         }
     }
 

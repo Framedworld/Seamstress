@@ -28,6 +28,8 @@ public static class Program
         var tools = new McpToolRegistry(session);
 
         Console.Error.WriteLine($"[Seamstress.Mcp] Started. Compute backend: {session.ComputeBackend}");
+        if (BuildInfo.StaleWarning() is { } staleAtStart)
+            Console.Error.WriteLine($"[Seamstress.Mcp] WARNING: {staleAtStart}");
 
         string? line;
         while ((line = Console.ReadLine()) != null)
@@ -62,8 +64,13 @@ public static class Program
                         ["serverInfo"] = new JsonObject
                         {
                             ["name"] = "seamstress-mcp",
-                            ["version"] = "0.1.0",
+                            ["version"] = $"0.1.0+{BuildInfo.BuiltUtc:yyyyMMdd.HHmm}",
                         },
+                        ["instructions"] = (BuildInfo.StaleWarning() is { } stale ? "WARNING: " + stale + " Tell the user. " : "")
+                            + "Seamstress drafts 2D pattern pieces, sews them and drapes them on an avatar. Start with load_avatar "
+                            + "(it returns tape measurements), draft with add_piece naming the edges, sew with sew_named, then simulate "
+                            + "and read openSeams. Use add_patch, add_tube and add_hardware for pockets, sleeves and snaps. Give each "
+                            + "garment worn over another a bodyOffsetMm instead of a large thickness.",
                     },
                     "ping" => new JsonObject(),
                     "tools/list" => new JsonObject

@@ -51,8 +51,19 @@
     <None Include="*.qml" />
     <QtResource Include="icons/seamstress.svg" />
     <QtResource Include="icons/tools/*.svg" />
-    <QtResource Include="assets/studio_env.hdr" />
+    <!-- Files the QML loads by a path relative to itself (the studio light probe of the 3D view). -->
+    <SeamstressAsset Include="assets/**/*" />
+    <None Include="@(SeamstressAsset)" />
   </ItemGroup>
+
+  <!-- The bridge deploys the QML files as files, into the "Application" folder next to the program, and Qt Quick 3D
+       loads the light probe from a path relative to Viewport3D.qml. A QtResource would only put the file into the
+       resource pack (qrc), where that relative path does not find it, so the assets are copied next to the QML. This
+       runs after every build, and the packages are made from the build output, so they carry the files too. -->
+  <Target Name="SeamstressDeployAssets" AfterTargets="Build" Condition="'@(SeamstressAsset)' != ''">
+    <Copy SourceFiles="@(SeamstressAsset)" DestinationFolder="$(OutDir)Application/assets/%(RecursiveDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
 
   <!-- The bridge generates the native host's main.cpp itself, so the two things it does not offer are patched here.
        First, .NET gets about one second to start, then the host quits with ".NET host not ready after timeout"; a

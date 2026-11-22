@@ -212,7 +212,7 @@ public static class FbxExporter
                 var tp = texture.Add("Properties70");
                 tp.P("UVSet", "KString", "", "", "UVMap");
                 tp.P("UseMaterial", "bool", "", "", 1);
-                tp.P("Scaling", "Vector", "", "A", (double)material.Repeat, (double)material.Repeat, 1.0);
+                tp.P("Scaling", "Vector", "", "A", (double)material.TextureScale, (double)material.TextureScale, 1.0);
                 texture.Add("Media", textureName + "\0\u0001Video");
                 texture.Add("FileName", absolute);
                 texture.Add("RelativeFilename", relative);

@@ -66,8 +66,8 @@ public static class ObjExporter
             if (texture != null)
             {
                 mtl.Append("map_Kd ");
-                if (MathF.Abs(material.Repeat - 1) > 1e-4f)
-                    mtl.Append(inv, $"-s {material.Repeat:0.####} {material.Repeat:0.####} 1 ");
+                if (MathF.Abs(material.TextureScale - 1) > 1e-4f)
+                    mtl.Append(inv, $"-s {material.TextureScale:0.####} {material.TextureScale:0.####} 1 ");
                 mtl.Append(texture).Append('\n');
             }
         }

@@ -431,6 +431,13 @@ Selecting a seam shows it in Properties:
 In the 3D view, seams that are not yet closed appear as red threads between the pieces. They disappear as
 simulation pulls each stitch shut.
 
+**Surface stitches** sew an edge of one piece onto a line *inside* another piece instead of onto an edge: a
+patch pocket, a flap, a knee pad, a belt loop. They are made through the MCP server or by editing the project
+file (`surfaceStitches`); the interface shows them but has no tool to draw them yet. In the 2D view each one is
+drawn in its own colour: the **patch's edge highlighted**, the **line it is sewn onto dashed on the host piece**,
+a dotted thread joining the two, and a dot (on the edge) and a ring (on the line) at the ends that meet. In the
+3D view, stitches that are not closed yet appear as amber threads when **View ▸ 3D: Show Sewing Threads** is on.
+
 ---
 
 ## The 3D view
@@ -618,6 +625,14 @@ the inner one first (the skirt), then select the outer one (the shirt) and simul
 the shirt drapes over it. Simulating both together also works when the outer garment starts further from the
 body, as the built-in garments do.
 
+The **Layering** section of Properties (shown for the active garment) tells the simulation which garment is
+worn over which, so it does not depend on where the pieces start:
+
+| Setting | Meaning |
+| --- | --- |
+| **Worn as layer** | 0 is worn next to the skin. A garment with a higher number is worn over the ones with lower numbers, and is kept on their outside so the inner ones cannot poke through. A tee is 0, a shirt over it 1, a jacket 2. The line below names the garments this one is worn over. |
+| **Room underneath** | How far the garment stays from the skin on top of its own thickness, to leave room for what is worn under it. A jacket over a tee needs the tee's thickness plus a little air: 3–5 mm. 0 for the innermost garment. |
+
 ### Simulation settings
 
 At the bottom of the Properties panel, under **Simulation**:
@@ -703,6 +718,7 @@ a new one; the arrow keys step it up and down.
 | **Damping** | How quickly motion dies out. |
 | **Friction** | Grip against the avatar and other cloth. |
 | **Thickness** | Collision thickness in millimetres: how far the cloth sits off the body and other layers. It only affects the simulation; the 3D view draws the cloth as a flat sheet unless Garment Thickness is enabled. A garment-wide thickness overrides it. |
+| **Elastic across / Elastic along** | The size the piece pulls itself to when simulated, as a multiple of its drawn size: *across* is its width in the 2D pattern, *along* its height. 1.00 leaves it as drawn; 0.88 across gathers a waistband or a cuff by 12%; values above 1 let it grow. From 0.50 to 1.50. Elastic is not part of the fabric preset: choosing a preset keeps it. |
 
 With several pieces selected, a change applies to all of them.
 
@@ -750,6 +766,7 @@ Each piece uses one material; pieces can share one.
 | **Colour** | Click the swatch to pick a colour. |
 | **Texture** | **…** chooses an image (PNG, JPEG, WebP, BMP); **✕** removes it. |
 | **Texture repeat** | How many times the image tiles across the UV square. |
+| **Tile size** | How much fabric one copy of the image covers, in centimetres (or inches). With a tile size the texture repeats at that real size on every garment, whatever the size of its pattern, so the same denim looks the same on a pocket and on a coat; **Texture repeat** is then greyed out and not used. 0 turns it off. |
 | **Roughness / Metallic / Opacity** | Surface appearance, also written to glTF and FBX. |
 
 A note under the sliders tells you when a material is shared, since changes then affect every piece using it.
@@ -780,7 +797,7 @@ The **Avatar** menu chooses what garments are draped on:
 | **Mannequin**             | The built-in figure, about 1.67 m tall. It has the proportions of the MakeHuman base mesh.                                                    |
 | **MakeHuman Base Mesh**   | Making clothes for MakeHuman characters. Requires the base mesh to be linked in Preferences. Starts as MakeHuman's neutral default character. |
 | **MakeHuman Body Shape…** | Change that character's gender, age, muscle, weight, height and proportions (see below).                                                      |
-| **Load OBJ…**             | Your own character. The OBJ must be in metres, Y up, facing +Z; it is stood on the ground automatically.                                      |
+| **Load Body (OBJ, FBX, glTF)…** | Your own character, from an OBJ, a binary FBX or a glTF/GLB file. An OBJ must be in metres, Y up, facing +Z; FBX and glTF say what their units and axes are. The body is stood on the ground automatically. |
 | **None**                  | Simulating cloth with nothing to collide with but the ground.                                                                                 |
 
 Loading an avatar takes a second or two while its collision data is prepared. If you press Simulate during
@@ -845,6 +862,26 @@ The file is plain JSON meant to be readable and editable by hand:
 
 A complete example is in [`samples/tshirt-and-skirt.garment.json`](../samples/tshirt-and-skirt.garment.json).
 
+You can also **drag files onto the window**: a `.garment.json` project is opened (after asking about unsaved
+changes), a body (OBJ, FBX, glTF) becomes the avatar, and a picture becomes a reference image behind the pattern.
+
+### Autosave and crash recovery
+
+While a project has unsaved changes, Seamstress keeps a **recovery copy** of it: every three minutes, and after
+each simulation. The copy goes to Seamstress's own data folder (`recovery` next to the settings file), never to
+your project file, and it does not touch the undo history. Saving, or closing the project properly, removes it.
+
+If Seamstress did not close properly (a crash, a power cut), the next start finds the copy and, when it is newer
+than the saved project, asks **Restore Unsaved Work?**
+
+- **Restore** opens the copy as unsaved changes to that project: save to keep them, or undo once to go back to
+  the project as it was last saved.
+- **Delete Recovery Copy** throws the copy away.
+- **Cancel** leaves it where it is and asks again at the next start.
+
+**Preferences ▸ General ▸ Crash Recovery** sets how often the copy is written, or *Never*. A recovery copy is an
+ordinary `.garment.json` file, so it can also be opened by hand.
+
 ---
 
 ## Exporting
@@ -866,6 +903,17 @@ A complete example is in [`samples/tshirt-and-skirt.garment.json`](../samples/ts
 All formats export the garment as it currently looks in the 3D view, with Y up. OBJ and glTF are in metres; FBX
 is in centimetres, which is that format's convention, so it imports at the right size. Textures are copied next
 to the exported file (or embedded, for `.glb`). Hidden garments and pieces are left out.
+
+Two more exports are for showing your work rather than for other 3D programs:
+
+- **File ▸ Export ▸ Export Pattern as SVG…** writes the pattern pieces of the visible garments as a drawing at
+  1:1 in centimetres, with their names, a grid and colour-coded seam guides. It opens in a browser, Inkscape or
+  Illustrator, and can be printed.
+- **File ▸ Save 3D View as Image…** saves what the 3D view shows, from where the camera is now, as a PNG without
+  the buttons and hints. **Size** is a multiple of the view as it is on screen (1× to 4×); the scene is rendered
+  again at that size, so a larger picture has more detail, not just more pixels. **Transparent background**
+  leaves out the backdrop and the ground grid, so the picture can be placed on anything. The selection highlight
+  is left out; sewing threads, wireframe and pins are in the picture if they are shown.
 
 ---
 
@@ -944,6 +992,7 @@ MakeHuman's body.
 | --- | --- | --- |
 | General | **Interface language** | English, Español, Português (Brasil), Français, 中文（简体） or 日本語. See [Language](#language) below. |
 | General | **Measurements** | *Metric* shows centimetres, metres, millimetres and g/m². *Imperial* shows inches, oz/yd² and feet and inches for the avatar height, and the grids change to 4 in squares with a stronger line every foot. Only the interface changes: garment files and exports are the same either way. |
+| General | **Crash Recovery** | How often a recovery copy of unsaved work is written (every 1 to 30 minutes, 3 by default), or *Never*. See [Autosave and crash recovery](#autosave-and-crash-recovery). |
 | General | **Session Logs** | Show where logs are written and open the folder. A log is kept for every session. See [Logs](#logs) below. |
 | Themes | **Preset** | The colour scheme of the whole interface: *Default* (the dark grey Seamstress has always used), *Light*, *High Contrast Dark* or *High Contrast Light*. See [Themes](#themes) below. |
 | Themes | **Save Theme… / Load Theme…** | Save the current colours to a file, or load a theme file. A loaded theme is remembered as *Custom*. |
@@ -1148,6 +1197,15 @@ drag that part of the cloth to where it should sit.
 choose *CPU* under **Preferences ▸ Viewport ▸ Renderer**. If that does not help, open the newest file in the
 [logs folder](#logs): it records the startup details and any error, and is the best thing to attach to a bug
 report.
+
+**Taking screenshots from a script.** `Seamstress project.garment.json --screenshot picture.png` opens the
+project, captures the window after five seconds and quits. `--view garment` captures only the 3D view (`pattern`
+the 2D view, `properties` the panel); `--view front`, `side`, `back`, `threequarter` or `closeup` choose the camera,
+and `--camera yaw,pitch,distance,targetX,targetY,targetZ` puts it anywhere (degrees and metres; yaw 0 is the
+front, 90 the side, 180 the back; the distance and the target may be left out). `--size 1600x1000` sets the window
+size. The exit code is 0 once the picture is written. A run that cannot write it ends with a one-line reason on
+standard error and a non-zero code instead of waiting: 1 when the capture failed, 3 when it was not done within
+`--timeout` seconds (120 unless given). These runs do not need the monitor to be awake.
 
 ---
 

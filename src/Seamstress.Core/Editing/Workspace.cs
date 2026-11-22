@@ -166,6 +166,45 @@ public sealed class Workspace
         History.MarkSaved();
     }
 
+    /// <summary>
+    /// Opens work recovered from an autosave as an unsaved change to the project it belongs to: the project is opened
+    /// as it is on disk (an empty one when it was never saved, or cannot be read any more) and the recovered document
+    /// replaces its content as one undoable step, so the result counts as changed and Undo goes back to the saved state.
+    /// </summary>
+    public void Restore(Document recovered, string? originalPath)
+    {
+        Document baseline = new();
+        string? path = null;
+        if (originalPath != null && File.Exists(originalPath))
+        {
+            path = originalPath;
+            try
+            {
+                baseline = GarmentFile.Load(originalPath);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+            {
+                // The saved project cannot be read; the recovered work then stands on its own.
+            }
+        }
+        FilePath = path;
+        _meshes.Clear();
+        ClearSelectionState();
+        History.Reset(baseline);
+        var content = recovered.Clone();
+        History.Execute(Lang.T("Restore recovered work"), doc =>
+        {
+            doc.Name = content.Name;
+            doc.Garments = content.Garments;
+            doc.Materials = content.Materials;
+            doc.Simulation = content.Simulation;
+            doc.Avatar = content.Avatar;
+            doc.References = content.References;
+        });
+        ActiveGarmentId = Document.Garments.FirstOrDefault()?.Id;
+        SelectionChanged?.Invoke();
+    }
+
     // ---------------------------------------------------------------- selection
 
     private void ClearSelectionState()
@@ -2171,6 +2210,7 @@ public sealed class Workspace
         "damping" => Lang.T("Change damping"),
         "friction" => Lang.T("Change friction"),
         "thickness" => Lang.T("Change thickness"),
+        "shrinkWeft" or "shrinkWarp" => Lang.T("Change elastic"),
         _ => Lang.T("Change piece"),
     };
 
@@ -2200,6 +2240,10 @@ public sealed class Workspace
             case "damping": physics.Damping = Math.Clamp(value, 0, 100); isPhysics = true; break;
             case "friction": physics.Friction = Math.Clamp(value, 0, 100); isPhysics = true; break;
             case "thickness": physics.Thickness = Math.Clamp(value, 0.1f, 50); isPhysics = true; break;
+            // Elastic is how the piece is made up (a waistband, a cuff), not a property of the cloth: it leaves the
+            // fabric preset as it is, and choosing a preset leaves it alone (see SetPhysicsPreset).
+            case "shrinkWeft": physics.ShrinkWeft = Math.Clamp(value, MinShrink, MaxShrink); break;
+            case "shrinkWarp": physics.ShrinkWarp = Math.Clamp(value, MinShrink, MaxShrink); break;
         }
         if (isPhysics)
             physics.Preset = "Custom";
@@ -2216,8 +2260,50 @@ public sealed class Workspace
         History.Execute(Lang.T("Apply fabric preset"), doc =>
         {
             foreach (var piece in doc.AllPieces().Where(p => ids.Contains(p.Id)))
-                piece.Physics = FabricPhysics.FromPreset(preset);
+            {
+                var physics = FabricPhysics.FromPreset(preset);
+                physics.ShrinkWeft = piece.Physics.ShrinkWeft;
+                physics.ShrinkWarp = piece.Physics.ShrinkWarp;
+                piece.Physics = physics;
+            }
         });
+    }
+
+    /// <summary>The range of <see cref="FabricPhysics.ShrinkWeft"/> and ShrinkWarp the interface offers: half to one and a half times the drawn size.</summary>
+    public const float MinShrink = 0.5f, MaxShrink = 1.5f;
+
+    /// <summary>The highest <see cref="Garment.Layer"/> the interface offers; 0 is worn next to the skin.</summary>
+    public const int MaxGarmentLayer = 20;
+
+    /// <summary>The most room, in millimetres, a garment can keep from the skin for what is worn under it.</summary>
+    public const float MaxBodyOffsetMm = 50f;
+
+    /// <summary>Sets which layer of clothing the garment is: 0 next to the skin, higher numbers worn over lower ones.</summary>
+    public void SetGarmentLayer(string garmentId, int layer)
+    {
+        layer = Math.Clamp(layer, 0, MaxGarmentLayer);
+        if (Document.FindGarment(garmentId) is not { } garment || garment.Layer == layer)
+            return;
+        History.Execute(Lang.T("Change garment layer"), doc =>
+        {
+            if (doc.FindGarment(garmentId) is { } changed)
+                changed.Layer = layer;
+        }, "garment-layer:" + garmentId);
+    }
+
+    /// <summary>Sets the room in millimetres the garment keeps from the skin for the garments worn under it.</summary>
+    public void SetGarmentBodyOffset(string garmentId, float millimetres)
+    {
+        if (float.IsNaN(millimetres) || float.IsInfinity(millimetres))
+            return;
+        float offset = Math.Clamp(millimetres, 0f, MaxBodyOffsetMm);
+        if (Document.FindGarment(garmentId) is not { } garment || MathF.Abs(garment.BodyOffset - offset) < 1e-4f)
+            return;
+        History.Execute(Lang.T("Change room for layers underneath"), doc =>
+        {
+            if (doc.FindGarment(garmentId) is { } changed)
+                changed.BodyOffset = offset;
+        }, "garment-body-offset:" + garmentId);
     }
 
     public void SetGarmentParticleDistance(string garmentId, float value)
@@ -2539,7 +2625,9 @@ public sealed class Workspace
             var m = EditableMaterial(doc, ids)!;
             switch (key)
             {
-                case "repeat": m.Repeat = Math.Clamp(value, 0.01f, 1000); break;
+                case "repeat": m.Repeat = value <= 0 ? 0 : Math.Clamp(value, 0.01f, 1000); break;
+                // 0 turns the tile size off, and Repeat applies again.
+                case "tileSize": m.TileSizeCm = value <= 0 ? 0 : Math.Clamp(value, 0.1f, 1000); break;
                 case "roughness": m.Roughness = Math.Clamp(value, 0, 1); break;
                 case "metallic": m.Metallic = Math.Clamp(value, 0, 1); break;
                 case "opacity": m.Opacity = Math.Clamp(value, 0, 1); break;

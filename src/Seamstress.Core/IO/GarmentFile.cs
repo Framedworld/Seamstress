@@ -53,7 +53,7 @@ public static class GarmentFile
             w.WriteStartObject("avatar");
             w.WriteString("kind", doc.Avatar.Kind.ToString());
             if (doc.Avatar.Path != null)
-                w.WriteString("path", doc.Avatar.Path);
+                w.WriteString("path", Relativize(doc.Avatar.Path, baseFolder));
             w.WriteNumber("scale", doc.Avatar.Scale);
             if (doc.Avatar.Kind == AvatarKind.MakeHuman)
             {
@@ -98,6 +98,8 @@ public static class GarmentFile
                 if (m.Texture != null)
                     w.WriteString("texture", Relativize(m.Texture, baseFolder));
                 w.WriteNumber("repeat", m.Repeat);
+                if (m.TileSizeCm > 0)
+                    w.WriteNumber("tileSizeCm", m.TileSizeCm);
                 w.WriteNumber("roughness", m.Roughness);
                 w.WriteNumber("metallic", m.Metallic);
                 w.WriteNumber("opacity", m.Opacity);
@@ -121,6 +123,8 @@ public static class GarmentFile
                     w.WriteNumber("makeHumanZDepth", g.MakeHumanZDepth);
                 if (g.Layer != 0)
                     w.WriteNumber("layer", g.Layer);
+                if (g.BodyOffset != 0)
+                    w.WriteNumber("bodyOffset", g.BodyOffset);
 
                 w.WriteStartArray("groups");
                 foreach (var group in g.Groups)
@@ -192,9 +196,13 @@ public static class GarmentFile
         w.WriteRawValue(V(p.Origin));
 
         // One outline point per line; "curve" is the control point bending the edge that leaves the point.
-        static string Point(PatternPoint point) => point.Curve is { } c
-            ? $"{{ \"at\": {V(point.Position)}, \"curve\": {V(c)} }}"
-            : $"{{ \"at\": {V(point.Position)} }}";
+        static string Point(PatternPoint point)
+        {
+            string name = string.IsNullOrEmpty(point.EdgeName) ? "" : $", \"edge\": {JsonSerializer.Serialize(point.EdgeName)}";
+            return point.Curve is { } c
+                ? $"{{ \"at\": {V(point.Position)}, \"curve\": {V(c)}{name} }}"
+                : $"{{ \"at\": {V(point.Position)}{name} }}";
+        }
         w.WritePropertyName("points");
         w.WriteRawValue(Lines(p.Points.Select(Point), 6));
         if (p.Holes.Count > 0)
@@ -294,7 +302,7 @@ public static class GarmentFile
         {
             if (Enum.TryParse<AvatarKind>(Str(avatar, "kind"), true, out var kind))
                 doc.Avatar.Kind = kind;
-            doc.Avatar.Path = Str(avatar, "path");
+            doc.Avatar.Path = Resolve(Str(avatar, "path"), baseFolder);
             doc.Avatar.Scale = Num(avatar, "scale", 1f);
             if (avatar.TryGetProperty("shape", out var shape) && shape.ValueKind == JsonValueKind.Object)
             {
@@ -332,6 +340,7 @@ public static class GarmentFile
             material.Color = Str(m, "color") ?? material.Color;
             material.Texture = Resolve(Str(m, "texture"), baseFolder);
             material.Repeat = Num(m, "repeat", material.Repeat);
+            material.TileSizeCm = MathF.Max(0, Num(m, "tileSizeCm", 0));
             material.Roughness = Num(m, "roughness", material.Roughness);
             material.Metallic = Num(m, "metallic", material.Metallic);
             material.Opacity = Num(m, "opacity", material.Opacity);
@@ -352,6 +361,7 @@ public static class GarmentFile
             garment.MakeHumanZDepth = Math.Clamp((int)MathF.Round(Num(g, "makeHumanZDepth", Garment.DefaultMakeHumanZDepth)),
                 0, Garment.MaxMakeHumanZDepth);
             garment.Layer = (int)MathF.Round(Num(g, "layer", 0));
+            garment.BodyOffset = Math.Clamp(Num(g, "bodyOffset", 0), 0, 100);
             foreach (var gr in Items(g, "groups"))
             {
                 var group = new LayerGroup();
@@ -514,6 +524,8 @@ public static class GarmentFile
         else if (pt.ValueKind == JsonValueKind.Object)
         {
             point.Position = Vec2(pt, "at", Vector2.Zero);
+            if (pt.TryGetProperty("edge", out var edgeName) && edgeName.ValueKind == JsonValueKind.String)
+                point.EdgeName = edgeName.GetString();
             if (pt.TryGetProperty("curve", out var curve) && curve.ValueKind == JsonValueKind.Array)
                 point.Curve = ToVec2(curve, Vector2.Zero);
         }

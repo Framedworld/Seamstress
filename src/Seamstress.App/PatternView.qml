@@ -50,8 +50,13 @@ Item {
     Keys.onPressed: (e) => { if (e.key === Qt.Key_Shift) App.constrain = true }
     Keys.onReleased: (e) => { if (e.key === Qt.Key_Shift) App.constrain = false }
 
+    // Surface stitches: a patch's edge sewn onto a line inside another piece (a patch pocket, a flap, a belt loop).
+    // Each is {color, edge: the patch edge as a polyline, line: [x0, y0, x1, y1] on the host piece}. Shown, not edited.
+    property var stitches: []
+
     function refresh() {
         scene = JSON.parse(App.patternScene())
+        stitches = JSON.parse(App.surfaceStitches())
         refreshBody()
         loadReferenceImages()
         // Re-frame when switching between pattern and UV space, and the first time there is something to show.
@@ -326,6 +331,31 @@ Item {
                 for (const end of [[seam.a[0], seam.a[1]], [bx, by]]) {
                     ctx.beginPath(); ctx.arc(root.sx(end[0]), root.sy(end[1]), seam.selected ? 6 : 4.5, 0, Math.PI * 2); ctx.fill()
                 }
+            }
+
+            // Surface stitches, drawn the way seams are: the patch's edge highlighted, the line it is sewn onto dashed
+            // on the host piece, a faint thread between their middles, and a dot on the two ends that meet.
+            for (const stitch of root.stitches) {
+                const line = stitch.line
+                ctx.globalAlpha = stitch.active ? 1 : 0.55
+                ctx.strokeStyle = stitch.color
+                ctx.lineWidth = 3
+                ctx.setLineDash([])
+                trace(ctx, stitch.edge, false); ctx.stroke()
+                ctx.lineWidth = 2.4
+                ctx.setLineDash([7, 4])
+                trace(ctx, line, false); ctx.stroke()
+                const from = middle(stitch.edge), onto = [(line[0] + line[2]) / 2, (line[1] + line[3]) / 2]
+                ctx.lineWidth = 1
+                ctx.setLineDash([2, 4])
+                ctx.beginPath(); ctx.moveTo(root.sx(from[0]), root.sy(from[1])); ctx.lineTo(root.sx(onto[0]), root.sy(onto[1])); ctx.stroke()
+                ctx.setLineDash([])
+                // The edge's start is sewn to the line's start: a filled dot on the edge, a ring on the host.
+                ctx.fillStyle = stitch.color
+                ctx.beginPath(); ctx.arc(root.sx(stitch.edge[0]), root.sy(stitch.edge[1]), 4, 0, Math.PI * 2); ctx.fill()
+                ctx.lineWidth = 1.6
+                ctx.beginPath(); ctx.arc(root.sx(line[0]), root.sy(line[1]), 4, 0, Math.PI * 2); ctx.stroke()
+                ctx.globalAlpha = 1
             }
 
             if (s.sewSelection) {

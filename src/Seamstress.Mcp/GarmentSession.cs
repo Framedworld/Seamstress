@@ -15,30 +15,62 @@ namespace Seamstress.Mcp;
 /// </summary>
 public sealed class GarmentSession
 {
-    public Workspace Workspace { get; } = new();
+    public Workspace Workspace { get; private set; } = new();
     public BodyLibrary BodyLibrary { get; } = new();
-    public Avatar Avatar { get; private set; }
+    public Avatar? ActiveAvatar { get; private set; }
+    public Avatar Avatar => ActiveAvatar ?? throw new InvalidOperationException("This project has no avatar.");
     public bool CudaAvailable { get; }
     public string ComputeBackend => ClothAcceleration.RegisteredDeviceName ?? "CPU";
 
     public GarmentSession()
     {
         CudaAvailable = CudaClothBackend.Register();
-        Avatar = Avatar.CreateMannequin();
+        ResetMannequinAvatar();
     }
 
     public Document Doc => Workspace.Document;
 
-    public void SetAvatar(Avatar avatar) => Avatar = avatar;
+    public void SetAvatar(Avatar avatar) => ActiveAvatar = avatar;
 
-    public void LoadObjAvatar(string path, float scale = 1f)
+    public void LoadObjAvatar(string path, float scale = 1f) => LoadAvatar(path, scale, null);
+
+    /// <summary>Loads an OBJ, FBX or glTF body; returns which of the file's meshes were used and which were left out.</summary>
+    public (List<string> Used, List<string> Skipped) LoadAvatar(string path, float scale, HashSet<string>? meshes)
     {
-        Avatar = Avatar.FromObj(path, scale);
+        var used = new List<string>();
+        var skipped = new List<string>();
+        Func<string, bool>? include = meshes == null ? null : meshes.Contains;
+        string ext = Path.GetExtension(path).ToLowerInvariant();
+        if (ext != ".obj")
+        {
+            var file = ext == ".fbx" ? FbxMeshReader.Load(path, include) : GltfMeshReader.Load(path, include);
+            used.AddRange(file.Parts.Select(p => $"{p.Name} ({p.Positions.Length} vertices)"));
+            skipped.AddRange(file.Skipped);
+        }
+        ActiveAvatar = Avatar.FromFile(path, scale, include);
+        Workspace.SetAvatar(AvatarKind.CustomObj, path, scale);
+        return (used, skipped);
     }
 
     public void ResetMannequinAvatar()
     {
-        Avatar = Avatar.CreateMannequin();
+        ActiveAvatar = Avatar.CreateMannequin();
+    }
+
+    public void OpenProject(string path)
+    {
+        var next = new Workspace();
+        next.Open(path);
+        var settings = next.Document.Avatar;
+        var avatar = settings.Kind switch
+        {
+            AvatarKind.None => null,
+            AvatarKind.Mannequin => Avatar.CreateMannequin(),
+            AvatarKind.MakeHuman => Avatar.FromMakeHumanBase(Seamstress.Core.AppSettings.Load().MakeHumanBaseMesh, settings),
+            _ => Avatar.FromFile(settings.Path ?? throw new InvalidDataException("The saved project is missing its avatar path."), settings.Scale),
+        };
+        Workspace = next;
+        ActiveAvatar = avatar;
     }
 
     /// <summary>Computes anatomical cross-section measurements of the active avatar for pattern drafting.</summary>
@@ -102,7 +134,48 @@ public sealed class GarmentSession
                 MeasureSlice("knee", 0.28f),
                 MeasureSlice("ankle", 0.06f),
             },
+            tape = TapeMeasurements(),
             placementTips = "Pattern units are centimetres (Y up, counter-clockwise outlines). 3D placement is metres (Y up, avatar faces +Z, torso center Z ~ 0.045m). Front pieces usually sit at Z=+0.22..0.25 with Rotation=[0,0,0]; Back pieces at Z=-0.18..-0.22 with Rotation=[0,180,0].",
+        };
+    }
+
+    /// <summary>Per-limb tape measurements, arm axes and the shoulder ridge of the active avatar.</summary>
+    public object TapeMeasurements()
+    {
+        var m = BodyMeasurements.Measure(Avatar.Mesh);
+        static float R(float v) => MathF.Round(v, 1);
+        static float[] V(Vector3 v) => new[] { MathF.Round(v.X, 3), MathF.Round(v.Y, 3), MathF.Round(v.Z, 3) };
+        object Section(TapeSection s) => new
+        {
+            name = s.Name,
+            circumferenceCm = R(s.CircumferenceCm),
+            widthCm = R(s.WidthCm),
+            depthCm = R(s.DepthCm),
+            centreMetres = V(s.Centre),
+        };
+        return new
+        {
+            note = "Circumferences are tape measurements round the convex outline, one limb at a time. Left is the avatar's left (+X).",
+            heightCm = R(m.HeightCm),
+            crotchHeightCm = R(m.CrotchHeightCm),
+            armpitHeightCm = R(m.ArmpitHeightCm),
+            neckHeightCm = R(m.NeckHeightCm),
+            shoulderWidthCm = R(m.ShoulderWidthCm),
+            torso = m.Torso.Select(Section),
+            leftLeg = m.LeftLeg.Select(Section),
+            rightLeg = m.RightLeg.Select(Section),
+            arms = m.Arms.Select(a => new
+            {
+                side = a.Side,
+                shoulderMetres = V(a.Shoulder),
+                wristMetres = V(a.Wrist),
+                axis = V(a.Axis),
+                droopDegrees = R(a.DroopDegrees),
+                lengthCm = R(a.LengthCm),
+                sections = a.Sections.Select(Section),
+            }),
+            shoulderRidge = m.ShoulderRidge.Select(p => new { xCm = R(p.XCm), topYCm = R(p.TopYCm), zCm = R(p.ZCm) }),
+            shoulderRidgeNote = "A seam over the shoulder must be drafted above topYCm at each x, plus the garment's thickness and body offset.",
         };
     }
 
@@ -133,7 +206,7 @@ public sealed class GarmentSession
         ClothAcceleration.Enabled = useGpu;
         try
         {
-            using var solver = ClothSolver.Create(simMeshes, obsMeshes, Avatar.Sdf, settings);
+            using var solver = ClothSolver.Create(simMeshes, obsMeshes, ActiveAvatar?.Sdf, settings);
             var sw = Stopwatch.StartNew();
             for (int f = 0; f < frames; f++)
                 solver.Step();
@@ -160,7 +233,11 @@ public sealed class GarmentSession
                 seamGapMetres = MathF.Round(solver.SeamGap, 4),
                 peakSpeedMetresPerSec = MathF.Round(solver.PeakSpeed, 3),
                 settled = solver.PeakSpeed < 0.08f && solver.SeamGap < 0.015f,
-                fit = InspectFit(garmentId),
+                openSeams = targets.SelectMany(g => SeamReport.OpenSeams(Doc, Workspace.MeshFor, g)).Take(12).ToList(),
+                advice = solver.SeamGap > 0.015f && solver.PeakSpeed > 0.3f
+                    ? "The cloth was still moving and seams were still closing when the frames ran out: simulate again before judging the open seams."
+                    : null,
+                fit = InspectFit(garmentId, includeSeams: false),
             };
         }
         finally
@@ -169,7 +246,7 @@ public sealed class GarmentSession
         }
     }
 
-    public object InspectFit(string? garmentId = null)
+    public object InspectFit(string? garmentId = null, bool includeSeams = true)
     {
         var garments = garmentId != null
             ? Doc.Garments.Where(g => g.Id == garmentId).ToList()
@@ -196,7 +273,7 @@ public sealed class GarmentSession
                 {
                     bmin = Vector3.Min(bmin, p);
                     bmax = Vector3.Max(bmax, p);
-                    float d = Avatar.Sdf.Sample(p, out _);
+                    float d = ActiveAvatar?.Sdf.Sample(p, out _) ?? 0f;
                     if (d < 0f)
                     {
                         penetratedVerts++;
@@ -205,7 +282,7 @@ public sealed class GarmentSession
                 }
             }
 
-            foreach (var s in g.Seams)
+            foreach (var s in includeSeams ? g.Seams : Enumerable.Empty<Seam>())
             {
                 var pa = g.FindPiece(s.A.PieceId);
                 var pb = g.FindPiece(s.B.PieceId);
@@ -239,7 +316,8 @@ public sealed class GarmentSession
             maxPenetrationMm = MathF.Round(maxPenetrationMm, 2),
             boundsMin = totalVerts > 0 ? new[] { MathF.Round(bmin.X, 3), MathF.Round(bmin.Y, 3), MathF.Round(bmin.Z, 3) } : null,
             boundsMax = totalVerts > 0 ? new[] { MathF.Round(bmax.X, 3), MathF.Round(bmax.Y, 3), MathF.Round(bmax.Z, 3) } : null,
-            seams = seamReports,
+            openSeams = includeSeams ? garments.SelectMany(g => SeamReport.OpenSeams(Doc, Workspace.MeshFor, g)).ToList() : null,
+            seams = includeSeams ? seamReports : null,
         };
     }
 
@@ -247,116 +325,11 @@ public sealed class GarmentSession
     /// Renders a headless 3-view (Front, Side, Back) shaded software PNG of the avatar and all visible garments
     /// using <see cref="PngWriter"/> — no GPU/Qt window required.
     /// </summary>
-    public void RenderDrapePreviewPng(string outputPath, int width = 960, int height = 480)
+    public void RenderDrapePreviewPng(string outputPath, int width = 960, int height = 480,
+        IReadOnlyList<PreviewView>? views = null, Vector3? focus = null, float? spanMetres = null, bool showBody = true)
     {
-        var rgba = new byte[width * height * 4];
-        // Dark studio background
-        for (int i = 0; i < width * height; i++)
-        {
-            rgba[4 * i] = 26;
-            rgba[4 * i + 1] = 29;
-            rgba[4 * i + 2] = 36;
-            rgba[4 * i + 3] = 255;
-        }
-        var zbuf = new float[width * height];
-        Array.Fill(zbuf, float.NegativeInfinity);
-
-        var (amin, amax) = Avatar.Mesh.Bounds();
-        var center = (amin + amax) * 0.5f;
-        float spanY = MathF.Max(0.5f, amax.Y - amin.Y) * 1.15f;
-
-        // Collect garment meshes + colors
-        var garmentDraws = new List<(Vector3[] Pos, int[] Tris, (byte R, byte G, byte B) Color)>();
-        foreach (var g in Doc.Garments.Where(g => g.Visible))
-        {
-            var gm = Workspace.MeshFor(g);
-            foreach (var pm in gm.Pieces)
-            {
-                var piece = g.FindPiece(pm.PieceId)!;
-                var mat = Doc.FindMaterial(piece.MaterialId);
-                var col = ParseHex(mat?.Color ?? "#4F8FD9");
-                garmentDraws.Add((Mesher.CurrentPositions(piece, pm), pm.Triangles, col));
-            }
-        }
-
-        int panelW = width / 3;
-        float scale = height / spanY;
-        float[] angles = { 0f, MathF.PI * 0.5f, MathF.PI }; // Front (+Z), Side (+X), Back (-Z)
-
-        for (int view = 0; view < 3; view++)
-        {
-            int xOff = view * panelW;
-            float cos = MathF.Cos(angles[view]);
-            float sin = MathF.Sin(angles[view]);
-
-            Vector3 Project(Vector3 p)
-            {
-                var q = p - center;
-                float rx = q.X * cos - q.Z * sin;
-                float rz = q.X * sin + q.Z * cos;
-                return new Vector3(
-                    xOff + panelW * 0.5f + rx * scale,
-                    height * 0.5f - q.Y * scale,
-                    rz);
-            }
-
-            void DrawMesh(Vector3[] positions, int[] triangles, (byte R, byte G, byte B) baseColor, float zBias)
-            {
-                var lightDir = Vector3.Normalize(new Vector3(0.35f, 0.65f, 0.7f));
-                for (int t = 0; t < triangles.Length; t += 3)
-                {
-                    var p0 = Project(positions[triangles[t]]);
-                    var p1 = Project(positions[triangles[t + 1]]);
-                    var p2 = Project(positions[triangles[t + 2]]);
-                    var n = Vector3.Cross(p1 - p0, p2 - p0);
-                    float nl = n.Length();
-                    if (nl < 1e-6f) continue;
-                    n /= nl;
-                    float ndl = MathF.Abs(Vector3.Dot(n, lightDir));
-                    float shade = 0.30f + 0.70f * ndl;
-                    byte r = (byte)Math.Clamp(baseColor.R * shade, 0, 255);
-                    byte g = (byte)Math.Clamp(baseColor.G * shade, 0, 255);
-                    byte b = (byte)Math.Clamp(baseColor.B * shade, 0, 255);
-
-                    int minX = Math.Max(xOff, (int)MathF.Floor(MathF.Min(p0.X, MathF.Min(p1.X, p2.X))));
-                    int maxX = Math.Min(xOff + panelW - 1, (int)MathF.Ceiling(MathF.Max(p0.X, MathF.Max(p1.X, p2.X))));
-                    int minY = Math.Max(0, (int)MathF.Floor(MathF.Min(p0.Y, MathF.Min(p1.Y, p2.Y))));
-                    int maxY = Math.Min(height - 1, (int)MathF.Ceiling(MathF.Max(p0.Y, MathF.Max(p1.Y, p2.Y))));
-
-                    float denom = (p1.Y - p2.Y) * (p0.X - p2.X) + (p2.X - p1.X) * (p0.Y - p2.Y);
-                    if (MathF.Abs(denom) < 1e-6f) continue;
-                    float invDenom = 1f / denom;
-
-                    for (int py = minY; py <= maxY; py++)
-                    {
-                        for (int px = minX; px <= maxX; px++)
-                        {
-                            float w0 = ((p1.Y - p2.Y) * (px - p2.X) + (p2.X - p1.X) * (py - p2.Y)) * invDenom;
-                            float w1 = ((p2.Y - p0.Y) * (px - p2.X) + (p0.X - p2.X) * (py - p2.Y)) * invDenom;
-                            float w2 = 1f - w0 - w1;
-                            if (w0 < -1e-4f || w1 < -1e-4f || w2 < -1e-4f) continue;
-                            float z = w0 * p0.Z + w1 * p1.Z + w2 * p2.Z + zBias;
-                            int idx = py * width + px;
-                            if (z > zbuf[idx])
-                            {
-                                zbuf[idx] = z;
-                                rgba[4 * idx] = r;
-                                rgba[4 * idx + 1] = g;
-                                rgba[4 * idx + 2] = b;
-                                rgba[4 * idx + 3] = 255;
-                            }
-                        }
-                    }
-                }
-            }
-
-            DrawMesh(Avatar.Mesh.Positions, Avatar.Mesh.Triangles, (145, 148, 158), 0f);
-            foreach (var (pos, tris, col) in garmentDraws)
-                DrawMesh(pos, tris, col, 0.002f);
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
-        PngWriter.WriteRgba(outputPath, width, height, rgba);
+        views ??= new[] { PreviewRenderer.Named["front"], PreviewRenderer.Named["side"], PreviewRenderer.Named["back"] };
+        PreviewRenderer.Render(Doc, Workspace.MeshFor, ActiveAvatar?.Mesh, outputPath, width, height, views, focus, spanMetres, showBody);
     }
 
     private static (byte R, byte G, byte B) ParseHex(string hex)

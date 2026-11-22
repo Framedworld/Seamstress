@@ -66,6 +66,28 @@ public sealed class Avatar
     }
 
     /// <summary>Loads any OBJ as an avatar, scaled to metres and stood on the ground plane.</summary>
+    /// <summary>File types <see cref="FromFile"/> reads, lower case with the dot.</summary>
+    public static readonly string[] MeshExtensions = { ".obj", ".fbx", ".glb", ".gltf" };
+
+    /// <summary>
+    /// Loads a body mesh from an OBJ, binary FBX or glTF/GLB file. <paramref name="scale"/> is metres per file unit
+    /// for OBJ; FBX and glTF carry their own units and axes, and <paramref name="scale"/> multiplies the result.
+    /// </summary>
+    public static Avatar FromFile(string path, float scale = 1f, Func<string, bool>? includeMesh = null)
+    {
+        string ext = Path.GetExtension(path).ToLowerInvariant();
+        if (ext == ".obj")
+            return FromObj(path, scale);
+        var mesh = ext switch
+        {
+            ".fbx" => IO.FbxMeshReader.Load(path, includeMesh).ToTriMesh(scale),
+            ".glb" or ".gltf" => IO.GltfMeshReader.Load(path, includeMesh).ToTriMesh(scale),
+            _ => throw new InvalidDataException($"Cannot read a body from a '{ext}' file. Use OBJ, FBX or glTF/GLB."),
+        };
+        mesh = Ground(mesh, out _);
+        return new Avatar { Name = Path.GetFileNameWithoutExtension(path), Mesh = mesh, Sdf = SdfGrid.FromMesh(mesh) };
+    }
+
     public static Avatar FromObj(string path, float scale)
     {
         var obj = ObjFile.Load(path);

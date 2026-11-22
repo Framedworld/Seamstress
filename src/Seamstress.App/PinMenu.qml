@@ -1,7 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 
-// Right-click menu of the 3D pin brush, and the same actions under the Simulation menu.
+// Right-click menu of the 3D pin brush. The Simulation menu in Main.qml lists the same pin actions (all but "Turn Off
+// Pin Brush", which the View menu and the Pin button have); keep the two in step.
 Menu {
     function tr(text) { App.languageRevision; return App.tr(text) }
     MenuItem {

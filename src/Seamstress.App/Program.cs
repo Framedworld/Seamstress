@@ -26,6 +26,14 @@ internal sealed class StartupOptions
     public int Width { get; set; }
     public int Height { get; set; }
     public string? SelectPiece { get; set; }
+    /// <summary>"--camera yaw,pitch,distance,targetX,targetY,targetZ": where the 3D camera starts, as a JSON array.</summary>
+    public string Camera { get; set; } = "";
+    /// <summary>"--timeout": seconds an automated run ("--screenshot", "--smoke") may take before it is stopped.</summary>
+    public int TimeoutSeconds { get; set; } = 120;
+    /// <summary>"--recover": restore a recovery file found at startup without asking (for automated checks).</summary>
+    public bool Recover { get; set; }
+    /// <summary>"--drop": files handed to the window as if they had been dragged onto it (for automated checks).</summary>
+    public List<string> Drops { get; } = new();
     public bool AllowLaunch { get; set; } = true;
     /// <summary>Which renderer is in use, in English; the interface shows it translated.</summary>
     public string RendererDescription { get; set; } = "GPU";
@@ -85,6 +93,84 @@ public static class Program
     /// <summary>How long the interface has to draw its first frame before the launch counts as failed.</summary>
     private const int StartupTimeoutSeconds = 60;
 
+    /// <summary>Exit codes of automated runs: the capture or check failed, or it did not finish in time.</summary>
+    internal const int ExitFailed = 1, ExitTimedOut = 3;
+
+    /// <summary>
+    /// Ends the process with an exit code from any thread. Qt's own shutdown can wait on a render thread that is
+    /// stuck, so a second thread ends the process outright if the orderly exit has not finished after a few seconds.
+    /// </summary>
+    internal static void ExitNow(int code)
+    {
+        try { Console.Error.Flush(); }
+        catch (IOException) { }
+        AppLog.Stop();
+        var hard = new Thread(() =>
+        {
+            Thread.Sleep(3000);
+            TerminateNow(code);
+        })
+        {
+            IsBackground = true,
+            Name = "exit watchdog",
+        };
+        hard.Start();
+        Environment.Exit(code);
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll")]
+    private static extern bool TerminateProcess(IntPtr process, uint exitCode);
+
+    /// <summary>Ends the process without running any shutdown code, keeping the exit code where the system allows it.</summary>
+    private static void TerminateNow(int code)
+    {
+        if (OperatingSystem.IsWindows())
+            TerminateProcess(GetCurrentProcess(), (uint)code);
+        Process.GetCurrentProcess().Kill();
+    }
+
+    /// <summary>
+    /// Stops an automated run ("--screenshot", "--smoke") that has not finished in time, with the reason on standard
+    /// error, so that a script waiting for the picture gets an answer instead of a process that never ends. The
+    /// capture is started by a timer in the interface, and those timers only advance while the window is being
+    /// drawn: a run whose window stops rendering would otherwise wait for ever without a word.
+    /// </summary>
+    private static void WatchAutomation(StartupOptions options)
+    {
+        var started = Stopwatch.StartNew();
+        var watchdog = new Thread(() =>
+        {
+            while (started.Elapsed.TotalSeconds < options.TimeoutSeconds && !AppController.AutomationFinished)
+                Thread.Sleep(200);
+            if (AppController.AutomationFinished)
+            {
+                // The job is done and the window has been asked to close. Qt's shutdown can itself wait for ever on
+                // its render thread (seen about once in fifteen captures); this thread dies with the process when
+                // the exit is orderly, and ends the process when it is not, so the caller is never left waiting.
+                Thread.Sleep(8000);
+                ExitNow(0);
+                return;
+            }
+            string what = options.Screenshot != null
+                ? $"the screenshot {options.Screenshot} was not written"
+                : "the automated run did not finish";
+            string stage = !AppController.InterfaceDrawn
+                ? "the window never drew a frame"
+                : $"the window drew {AppController.FramesDrawn} frame(s); last step: {AppController.AutomationStage}";
+            Console.Error.WriteLine($"error: {what} within {options.TimeoutSeconds} seconds ({stage}). "
+                + "Use --timeout <seconds> to allow more time.");
+            ExitNow(ExitTimedOut);
+        })
+        {
+            IsBackground = true,
+            Name = "automation watchdog",
+        };
+        watchdog.Start();
+    }
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int MessageBoxW(IntPtr parent, string text, string caption, uint type);
 
@@ -94,11 +180,11 @@ public static class Program
     /// first frame is the only sign that the interface really came up, so without this the process would stay in
     /// the task manager with nothing on screen.
     /// </summary>
-    private static void WatchStartup(bool automated)
+    private static void WatchStartup(bool automated, int limit)
     {
         var watchdog = new Thread(() =>
         {
-            for (int quarter = 0; quarter < StartupTimeoutSeconds * 4; quarter++)
+            for (int quarter = 0; quarter < limit * 4; quarter++)
             {
                 if (AppController.InterfaceDrawn)
                     return;
@@ -107,12 +193,14 @@ public static class Program
             if (AppController.InterfaceDrawn)
                 return;
             string log = AppLog.FilePath ?? "(this run keeps no log file)";
-            AppLog.Write($"No window after {StartupTimeoutSeconds} seconds: the interface did not load. The most "
+            AppLog.Write($"No window after {limit} seconds: the interface did not load. The most "
                 + "likely cause is a Qt QML module missing from this installation (the 3D viewport needs Qt Quick 3D).");
             AppLog.Stop();
-            ReportStartupFailure($"The Seamstress window did not appear within {StartupTimeoutSeconds} seconds.\n\n"
+            ReportStartupFailure($"The Seamstress window did not appear within {limit} seconds.\n\n"
                 + "The interface could not be loaded. The most likely cause is a missing Qt Quick 3D module "
                 + "(the 3D viewport needs it) or a graphics driver that did not start.", automated, log);
+            if (automated)
+                ExitNow(ExitFailed);
             Environment.Exit(1);
         })
         {
@@ -245,6 +333,36 @@ public static class Program
                         options.Gender = g;
                     break;
                 case "--select": options.SelectPiece = Next(); break;
+                case "--recover": options.Recover = true; break;
+                case "--drop": options.Drops.Add(new Uri(Path.GetFullPath(Next())).AbsoluteUri); break;
+                case "--camera":
+                    {
+                        // yaw,pitch[,distance[,targetX,targetY,targetZ]] in degrees and metres; what is left out
+                        // keeps the view's usual value.
+                        string text = Next();
+                        var numbers = new List<float>();
+                        bool valid = true;
+                        foreach (string part in text.Split(','))
+                        {
+                            if (float.TryParse(part.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float n)
+                                && float.IsFinite(n))
+                                numbers.Add(n);
+                            else
+                                valid = false;
+                        }
+                        if (!valid || numbers.Count is not (2 or 3 or 6))
+                        {
+                            Console.Error.WriteLine("error: --camera expects yaw,pitch,distance,targetX,targetY,targetZ "
+                                + $"(degrees and metres; the distance and the target may be left out), not \"{text}\".");
+                            Environment.Exit(2);
+                        }
+                        options.Camera = "[" + string.Join(",", numbers.Select(n => n.ToString("R", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+                        break;
+                    }
+                case "--timeout":
+                    if (int.TryParse(Next(), out int seconds) && seconds > 0)
+                        options.TimeoutSeconds = seconds;
+                    break;
                 case "--size":
                     {
                         var parts = Next().Split('x');
@@ -263,7 +381,14 @@ public static class Program
                         + "  --cpu   render the 3D viewport on the CPU (software rasterizer)\n"
                         + "  --gpu   render on the GPU even if the last GPU start failed\n"
                         + "  --no-cuda  simulate cloth on the CPU even when an NVIDIA GPU is available\n"
-                        + "  --lang  interface language for this run: " + string.Join(", ", Lang.Languages.Select(l => l.Code)));
+                        + "  --lang  interface language for this run: " + string.Join(", ", Lang.Languages.Select(l => l.Code)) + "\n"
+                        + "Automation:\n"
+                        + "  --screenshot <png>  capture the window after 5 seconds, then quit (exit code 0 once the file is written)\n"
+                        + "  --view <names>      what to capture or open: garment, front, side, back, threequarter, closeup, prefs, export...\n"
+                        + "  --camera yaw,pitch,distance,targetX,targetY,targetZ\n"
+                        + "                      where the 3D camera starts, in degrees and metres (yaw 0 front, 90 side, 180 back)\n"
+                        + "  --size <W>x<H>      window size\n"
+                        + "  --timeout <seconds> stop an automated run that has not finished by then (default 120; exit code 3)");
                     return;
                 default:
                     if (!args[i].StartsWith("--", StringComparison.Ordinal) && System.IO.File.Exists(args[i]))
@@ -347,6 +472,14 @@ public static class Program
             StartupOptions.WriteCrashMarker();
             AppLog.Write("GPU startup marker written.");
         }
+        if (automated && Environment.GetEnvironmentVariable("QT_D3D_NO_VBLANK_THREAD") == null)
+        {
+            // Qt (6.9 and later) paces a Direct3D window with a thread that waits for the monitor's vertical blank.
+            // With the display asleep (an unattended PC), switched off or absent, that blank never comes: the window
+            // draws one frame and then no more, and because the interface's timers advance with the frames, the
+            // timer that takes the screenshot never fires. Automated runs must not depend on a monitor being awake.
+            SetNativeEnvironment("QT_D3D_NO_VBLANK_THREAD", "1");
+        }
         SetNativeEnvironment("QT_QUICK_CONTROLS_STYLE", "Fusion");
         // Qt's file dialogs need this to list local files when they run inside QML.
         SetNativeEnvironment("QML_XHR_ALLOW_FILE_READ", "1");
@@ -369,7 +502,13 @@ public static class Program
         Qt.Application.DisplayName = "Seamstress";
         Qt.Application.SetWindowIcon("qrc:/assemblies/Seamstress/icons/seamstress.svg");
         // Started before the QML load, which reports nothing when the interface cannot be built.
-        WatchStartup(automated);
+        // "--simulate" runs its frames before the window exists, so such a run gets its whole time allowance to
+        // show the first frame; any other automated run that has no window after a minute has failed to load.
+        WatchStartup(automated, !automated ? StartupTimeoutSeconds
+            : options.SimulateFrames > 0 ? Math.Max(StartupTimeoutSeconds, options.TimeoutSeconds)
+            : Math.Min(StartupTimeoutSeconds, options.TimeoutSeconds));
+        if (automated)
+            WatchAutomation(options);
         Qml.LoadFromRootModule("Main");
         Qml.WaitForExit();
     }

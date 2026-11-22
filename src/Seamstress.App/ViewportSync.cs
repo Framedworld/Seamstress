@@ -49,6 +49,23 @@ internal sealed class ViewportSync : IDisposable
     private string _pinSelectionUrl = "";
     private int _pinSelectionHash;
 
+    /// <summary>
+    /// Where on its host piece each vertex of a surface-stitched edge is sewn: a triangle of the host's mesh and the
+    /// weights of its corners. Finding them searches the host's triangles, so they are kept for as long as both
+    /// meshes and the stitch stay the same; following the cloth while it is simulated then costs next to nothing.
+    /// </summary>
+    private sealed class StitchAnchors
+    {
+        public string SourceKey = "", HostKey = "";
+        public int Edge;
+        public Vector2 Start, End;
+        public (int A, int B, int C, float Wa, float Wb, float Wc)[] Anchors = Array.Empty<(int, int, int, float, float, float)>();
+    }
+
+    private readonly Dictionary<string, StitchAnchors> _stitchAnchors = new();
+    private readonly Queue<string> _stitchFiles = new();
+    private string _stitchUrl = "";
+
     public ViewportSync()
     {
         string root = OperatingSystem.IsLinux() && Directory.Exists("/dev/shm") ? "/dev/shm" : Path.GetTempPath();
@@ -180,6 +197,9 @@ internal sealed class ViewportSync : IDisposable
         return _avatarUrl = ToUrl(file);
     }
 
+    /// <summary>True while the Pin tool is on: every pin is then marked, also on pieces that are pinned in full.</summary>
+    public bool PinToolActive { get; set; }
+
     /// <summary>Writes whatever changed and returns the list of models the viewport should display, as JSON.</summary>
     public string Sync(Workspace workspace, Avatar? avatar)
     {
@@ -193,6 +213,9 @@ internal sealed class ViewportSync : IDisposable
         var wireLines = ShowWire ? new List<Vector3>() : null;
         var pins = new List<Vector3>();
         var pinSelection = new List<Vector3>();
+        // Where the vertices of every shown piece are now, for the surface stitches drawn after the pieces.
+        bool anyStitches = doc.Garments.Any(g => g.Visible && g.SurfaceStitches.Count > 0);
+        var shownPositions = anyStitches ? new Dictionary<string, Vector3[]>() : null;
 
         foreach (var garment in doc.Garments)
         {
@@ -207,6 +230,8 @@ internal sealed class ViewportSync : IDisposable
                 var piece = garment.FindPiece(mesh.Pieces[i].PieceId)!;
                 positions[i] = Mesher.CurrentPositions(piece, mesh.Pieces[i]);
                 normals[i] = Mesher.ComputeNormals(positions[i], mesh.Pieces[i].ShownTriangles(piece.FlipNormals));
+                if (shownPositions != null)
+                    shownPositions[piece.Id] = positions[i];
             }
             // Shade across closed seams as one surface; draw a thread for stitches that are still apart.
             foreach (var stitch in mesh.Stitches)
@@ -251,7 +276,9 @@ internal sealed class ViewportSync : IDisposable
                     continue;
                 seen.Add(piece.Id);
                 float halfThickness = garment.ShownThicknessMm * 0.0005f;
-                if (piece.PinKey == pieceMesh.Key)
+                // A piece pinned in full is a hard part (a snap, a pen, a held cuff): marking every one of its points
+                // would bury it in markers, so it shows its pins only while the Pin tool is in use.
+                if (piece.PinKey == pieceMesh.Key && (PinToolActive || piece.Pins.Count < pieceMesh.VertexCount))
                 {
                     foreach (int index in piece.Pins)
                     {
@@ -298,7 +325,7 @@ internal sealed class ViewportSync : IDisposable
                     _entries[piece.Id] = entry = new Entry();
 
                 var material = doc.FindMaterial(piece.MaterialId) ?? Seamstress.Core.IO.ExportScene.DefaultMaterial;
-                bool fitPieceUv = !string.IsNullOrEmpty(material.Texture) && material.Repeat <= 0f;
+                bool fitPieceUv = material.FitsTextureToPiece;
                 var hash = new HashCode();
                 hash.Add(piece.Placement.Position);
                 hash.Add(piece.Placement.Rotation);
@@ -312,13 +339,16 @@ internal sealed class ViewportSync : IDisposable
                 hash.Add(piece.FlipNormals);
                 hash.Add(halfThickness);
                 hash.Add(fitPieceUv);
+                // A tile size is built into the UVs (UvLayout.MapMaterial), so changing it, or adding or removing the
+                // texture it needs, rewrites the mesh; without a tile size the repeat is applied by the material.
+                hash.Add(!string.IsNullOrEmpty(material.Texture) && material.TileSizeCm > 0 ? material.TileSizeCm : 0f);
                 bool usesDrape = piece.Drape != null && piece.DrapeKey == pieceMesh.Key;
                 int signature = hash.ToHashCode();
                 if (entry.Url.Length == 0 || entry.Key != pieceMesh.Key || entry.Hash != signature
                     || !ReferenceEquals(entry.Drape, usesDrape ? piece.Drape : null))
                 {
                     string file = NextFile("p" + piece.Id, entry.Files);
-                    Vector2[] uvs = fitPieceUv ? FitPieceUvs(pieceMesh) : layout.Map(piece, pieceMesh);
+                    Vector2[] uvs = layout.MapMaterial(piece, pieceMesh, material);
                     var shell = Mesher.BuildShell(positions[i], normals[i], uvs,
                         pieceMesh.ShownTriangles(piece.FlipNormals), halfThickness * 2f);
                     QtMesh.WriteTriangles(file, shell.Positions, shell.Normals, shell.Uvs, shell.Triangles);
@@ -342,7 +372,7 @@ internal sealed class ViewportSync : IDisposable
                 sb.Append(",\"normalMap\":").Append(System.Text.Json.JsonSerializer.Serialize(normalMap));
                 sb.Append(",\"roughMap\":").Append(System.Text.Json.JsonSerializer.Serialize(roughMap));
                 sb.Append(",\"metalMap\":").Append(System.Text.Json.JsonSerializer.Serialize(metalMap));
-                float shownRepeat = fitPieceUv ? 1f : material.Repeat;
+                float shownRepeat = material.TextureScale;
                 sb.Append(inv, $",\"repeat\":{shownRepeat:0.####},\"roughness\":{material.Roughness:0.###},\"metallic\":{material.Metallic:0.###},\"opacity\":{material.Opacity:0.###}");
                 sb.Append(",\"selected\":").Append(workspace.SelectedPieces.Contains(piece.Id) ? "true" : "false");
                 sb.Append('}');
@@ -374,6 +404,21 @@ internal sealed class ViewportSync : IDisposable
             }
         }
 
+        var stitchLines = shownPositions == null ? new List<Vector3>() : SurfaceStitchThreads(workspace, shownPositions);
+        if (anyChanged || (_stitchUrl.Length == 0) != (stitchLines.Count == 0))
+        {
+            if (stitchLines.Count == 0)
+            {
+                _stitchUrl = "";
+            }
+            else
+            {
+                string file = NextFile("stitches", _stitchFiles);
+                QtMesh.WriteLines(file, stitchLines.ToArray());
+                _stitchUrl = ToUrl(file);
+            }
+        }
+
         if (wireLines == null || wireLines.Count == 0)
         {
             _wireUrl = "";
@@ -389,6 +434,7 @@ internal sealed class ViewportSync : IDisposable
         WriteMarkers("pin_selection", pinSelection, _pinSelectionFiles, ref _pinSelectionHash, ref _pinSelectionUrl);
 
         sb.Append("],\"seams\":\"").Append(_seamUrl).Append('"');
+        sb.Append(",\"stitches\":\"").Append(_stitchUrl).Append('"');
         sb.Append(",\"wire\":\"").Append(_wireUrl).Append('"');
         sb.Append(",\"pins\":\"").Append(_pinUrl).Append('"');
         sb.Append(",\"pinSelection\":\"").Append(_pinSelectionUrl).Append('"');
@@ -397,6 +443,113 @@ internal sealed class ViewportSync : IDisposable
         sb.Append(",\"avatar\":\"").Append(AvatarUrl(avatar)).Append('"');
         sb.Append('}');
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Threads for the surface stitches that have not been pulled together yet: from each vertex of the patch edge to
+    /// the place on the host piece it is sewn to. A stitch that is closed (the patch lies on its host, a cloth's
+    /// thickness away) draws nothing, like a closed seam.
+    /// </summary>
+    private List<Vector3> SurfaceStitchThreads(Workspace workspace, Dictionary<string, Vector3[]> shownPositions)
+    {
+        var doc = workspace.Document;
+        var lines = new List<Vector3>();
+        var seen = new HashSet<string>();
+        foreach (var garment in doc.Garments)
+        {
+            if (!garment.Visible || garment.SurfaceStitches.Count == 0 || garment.Pieces.Count == 0)
+                continue;
+            var mesh = workspace.MeshFor(garment);
+            foreach (var stitch in garment.SurfaceStitches)
+            {
+                var source = garment.FindPiece(stitch.SourcePieceId);
+                // The host may be a piece of another garment (a pocket in its own garment, sewn onto trousers).
+                var hostGarment = doc.GarmentOfPiece(stitch.TargetPieceId);
+                var host = hostGarment?.FindPiece(stitch.TargetPieceId);
+                if (source == null || host == null || hostGarment == null || !hostGarment.Visible
+                    || !Workspace.IsEffectivelyVisible(garment, source) || !Workspace.IsEffectivelyVisible(hostGarment, host))
+                    continue;
+                var sourceMesh = mesh.Find(source.Id);
+                var hostMesh = workspace.MeshFor(hostGarment).Find(host.Id);
+                if (sourceMesh == null || hostMesh == null || hostMesh.TriangleCount == 0
+                    || stitch.SourceEdge < 0 || stitch.SourceEdge >= sourceMesh.EdgeChains.Length
+                    || !shownPositions.TryGetValue(source.Id, out var from) || !shownPositions.TryGetValue(host.Id, out var onto))
+                    continue;
+                int[] chain = sourceMesh.EdgeChains[stitch.SourceEdge];
+                if (chain.Length == 0)
+                    continue;
+                seen.Add(stitch.Id);
+                if (!_stitchAnchors.TryGetValue(stitch.Id, out var anchors) || anchors.SourceKey != sourceMesh.Key
+                    || anchors.HostKey != hostMesh.Key || anchors.Edge != stitch.SourceEdge
+                    || anchors.Start != stitch.TargetStart || anchors.End != stitch.TargetEnd || anchors.Anchors.Length != chain.Length)
+                {
+                    anchors = new StitchAnchors
+                    {
+                        SourceKey = sourceMesh.Key, HostKey = hostMesh.Key, Edge = stitch.SourceEdge,
+                        Start = stitch.TargetStart, End = stitch.TargetEnd,
+                        Anchors = new (int, int, int, float, float, float)[chain.Length],
+                    };
+                    for (int i = 0; i < chain.Length; i++)
+                    {
+                        // The same spacing the solver uses: the edge's vertices spread evenly along the line.
+                        float t = chain.Length > 1 ? i / (float)(chain.Length - 1) : 0.5f;
+                        anchors.Anchors[i] = Locate(hostMesh, Vector2.Lerp(stitch.TargetStart, stitch.TargetEnd, t));
+                    }
+                    _stitchAnchors[stitch.Id] = anchors;
+                }
+                // How far apart the two lie once sewn: half of each cloth's thickness and the gap the solver leaves.
+                float sourceThickness = garment.EffectiveThicknessMm(source), hostThickness = hostGarment.EffectiveThicknessMm(host);
+                float rest = MathF.Max(0.5f * (sourceThickness + hostThickness) + 1.8f,
+                    (garment.BodyOffset + sourceThickness) - (hostGarment.BodyOffset + hostThickness)) * 0.001f;
+                for (int i = 0; i < chain.Length; i++)
+                {
+                    var (a, b, c, wa, wb, wc) = anchors.Anchors[i];
+                    if (chain[i] >= from.Length || a >= onto.Length || b >= onto.Length || c >= onto.Length)
+                        continue;
+                    var start = from[chain[i]];
+                    var end = onto[a] * wa + onto[b] * wb + onto[c] * wc;
+                    if (Vector3.Distance(start, end) > rest + 0.004f)
+                    {
+                        lines.Add(start);
+                        lines.Add(end);
+                    }
+                }
+            }
+        }
+        foreach (string id in _stitchAnchors.Keys.Where(id => !seen.Contains(id)).ToList())
+            _stitchAnchors.Remove(id);
+        return lines;
+    }
+
+    /// <summary>The triangle of a piece's mesh that holds a point of its pattern (or lies nearest to it), with the point's weights in it.</summary>
+    private static (int A, int B, int C, float Wa, float Wb, float Wc) Locate(PieceMesh mesh, Vector2 point)
+    {
+        var best = (A: mesh.Triangles[0], B: mesh.Triangles[1], C: mesh.Triangles[2], Wa: 1f, Wb: 0f, Wc: 0f);
+        float bestDistance = float.MaxValue;
+        for (int t = 0; t + 2 < mesh.Triangles.Length; t += 3)
+        {
+            int ia = mesh.Triangles[t], ib = mesh.Triangles[t + 1], ic = mesh.Triangles[t + 2];
+            Vector2 a = mesh.Points[ia], b = mesh.Points[ib], c = mesh.Points[ic];
+            float area = (b.X - a.X) * (c.Y - a.Y) - (b.Y - a.Y) * (c.X - a.X);
+            if (MathF.Abs(area) < 1e-9f)
+                continue;
+            float wb = ((point.X - a.X) * (c.Y - a.Y) - (point.Y - a.Y) * (c.X - a.X)) / area;
+            float wc = ((b.X - a.X) * (point.Y - a.Y) - (b.Y - a.Y) * (point.X - a.X)) / area;
+            float wa = 1 - wb - wc;
+            if (wa >= -1e-4f && wb >= -1e-4f && wc >= -1e-4f)
+                return (ia, ib, ic, wa, wb, wc);
+            // Outside this triangle: the nearest place in it is close enough to where clamped weights point.
+            float ca = MathF.Max(wa, 0), cb = MathF.Max(wb, 0), cc = MathF.Max(wc, 0);
+            float sum = ca + cb + cc;
+            ca /= sum; cb /= sum; cc /= sum;
+            float distance = Vector2.DistanceSquared(point, a * ca + b * cb + c * cc);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = (ia, ib, ic, ca, cb, cc);
+            }
+        }
+        return best;
     }
 
     /// <summary>Small octahedra at the given points; the file is only rewritten when the points move.</summary>
@@ -434,28 +587,6 @@ internal sealed class ViewportSync : IDisposable
         QtMesh.WriteTriangles(file, positions, Mesher.ComputeNormals(positions, triangles), null, triangles);
         url = ToUrl(file);
         lastHash = hash;
-    }
-
-    /// <summary>Maps a piece's local 2D pattern bounding box directly to [0,1]x[0,1] for piece-specific decal/detail textures (Repeat &lt;= 0).</summary>
-    private static Vector2[] FitPieceUvs(PieceMesh pieceMesh)
-    {
-        var pts = pieceMesh.Points;
-        var uvs = new Vector2[pts.Length];
-        if (pts.Length == 0)
-            return uvs;
-        float minX = float.MaxValue, maxX = float.MinValue, minY = float.MaxValue, maxY = float.MinValue;
-        foreach (var p in pts)
-        {
-            if (p.X < minX) minX = p.X;
-            if (p.X > maxX) maxX = p.X;
-            if (p.Y < minY) minY = p.Y;
-            if (p.Y > maxY) maxY = p.Y;
-        }
-        float invW = 1f / MathF.Max(maxX - minX, 1e-4f);
-        float invH = 1f / MathF.Max(maxY - minY, 1e-4f);
-        for (int i = 0; i < pts.Length; i++)
-            uvs[i] = new Vector2((pts[i].X - minX) * invW, (pts[i].Y - minY) * invH);
-        return uvs;
     }
 
     public void Dispose()

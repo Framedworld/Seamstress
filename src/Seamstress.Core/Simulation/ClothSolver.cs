@@ -65,6 +65,7 @@ public sealed partial class ClothSolver : IDisposable
     private float[] _bestGap = Array.Empty<float>();
     private int[] _stalled = Array.Empty<int>();
     private bool[] _sewn = Array.Empty<bool>();
+    private float[] _pieceGap = Array.Empty<float>();  // per piece: widest of its own stitches, squared
     private const int StallFrames = 45;
 
     public IReadOnlyList<ClothPiece> Pieces { get; }
@@ -193,7 +194,7 @@ public sealed partial class ClothSolver : IDisposable
                 solver._previous[p] = positions[i];
                 float mass = MathF.Max(area[i] * density, 1e-7f);
                 solver._invMass[p] = cloth.Simulated ? 1f / mass : 0f;
-                solver._thickness[p] = MathF.Max(thickness, 0.1f) * 0.001f + SkinOffset;
+                solver._thickness[p] = (MathF.Max(thickness, 0.1f) + MathF.Max(cloth.Source.BodyOffset, 0f)) * 0.001f + SkinOffset;
                 solver._friction[p] = Math.Clamp(physics.Friction / 100f, 0, 1) * 1.5f;
                 solver._drag[p] = 0.2f + Math.Clamp(physics.Damping, 0, 100) * 0.06f;
                 solver._clothThickness[p] = MathF.Max(thickness, 0.5f) * 0.001f;
@@ -348,7 +349,10 @@ public sealed partial class ClothSolver : IDisposable
                         float srcThick = srcCp.Source.EffectiveThicknessMm(srcCp.Piece);
                         float dstThick = dstCp.Source.EffectiveThicknessMm(dstCp.Piece);
                         float layerSign = srcCp.Source.Layer >= dstCp.Source.Layer ? 1f : -1f;
-                        float offset = layerSign * (0.5f * (srcThick + dstThick) * 0.001f + 0.0018f);
+                        // A patch in a garment that keeps more room from the body than its host stands that much
+                        // further out; anchoring it closer would set the stitch against the body collision.
+                        float clearance = (srcCp.Source.BodyOffset + srcThick) - (dstCp.Source.BodyOffset + dstThick);
+                        float offset = layerSign * MathF.Max(0.5f * (srcThick + dstThick) + 1.8f, clearance) * 0.001f;
 
                         var dstPts = dstCp.Mesh.Points;
                         var dstTris = dstCp.Mesh.Triangles;
@@ -445,6 +449,7 @@ public sealed partial class ClothSolver : IDisposable
         solver._stalled = new int[garmentCount];
         solver._sewn = new bool[garmentCount];
         solver._pieceShift = new Vector3[pieces.Count];
+        solver._pieceGap = new float[pieces.Count];
         solver._pieceStitches = new int[pieces.Count];
         solver._ca = ca.ToArray();
         solver._cb = cb.ToArray();
@@ -521,12 +526,16 @@ public sealed partial class ClothSolver : IDisposable
         // that garment so the pieces do not fall off the avatar before they are attached. If the seams stop getting
         // closer (a seam that cannot close, such as a garment too tight for the body) the phase ends anyway.
         Array.Clear(_gap);
+        Array.Clear(_pieceGap);
         Array.Clear(_openStitch);
         for (int c = 0; c < _sa.Length; c++)
         {
             int g = _garmentOfPiece[_pieceOf[_sa[c]]];
             float apart = Vector3.DistanceSquared(x[_sa[c]], x[_sb[c]]);
             _gap[g] = MathF.Max(_gap[g], apart);
+            int pieceA = _pieceOf[_sa[c]], pieceB = _pieceOf[_sb[c]];
+            _pieceGap[pieceA] = MathF.Max(_pieceGap[pieceA], apart);
+            _pieceGap[pieceB] = MathF.Max(_pieceGap[pieceB], apart);
             if (apart > 0.002f * 0.002f)
                 _openStitch[_sa[c]] = _openStitch[_sb[c]] = true;
         }
@@ -549,6 +558,17 @@ public sealed partial class ClothSolver : IDisposable
                 _sewn[g] = true;
         }
         SeamGap = widest;
+        // While a piece still has a seam more than a centimetre open, all of its cloth slides freely over the body,
+        // not only its stitched points: gravity is held back in this phase, so nothing needs grip to stay up, and
+        // with grip a panel that has to travel over a shoulder or round an arm sticks where it first touches and its
+        // seam never closes. A piece whose own seams are closed keeps its grip (a cuff that must stay on the
+        // forearm while the rest of the sleeve is still being sewn).
+        for (int i = 0; i < _realParticleCount; i++)
+        {
+            int piece = _pieceOf[i];
+            if (_pieceGap[piece] > 0.01f * 0.01f && _sewing[_garmentOfPiece[piece]] > 0f)
+                _openStitch[i] = true;
+        }
         var fullGravity = new Vector3(0, Settings.Gravity, 0);
 
         // Cloth pairs have to be found before they touch, so fast-moving cloth is searched several times a frame:
