@@ -186,7 +186,15 @@ public sealed class McpToolRegistry
             ("grade2DPatterns", "boolean", "Auto-grade 2D pattern outlines to match target body proportions (default true)."),
             ("runMorphDrape", "boolean", "Run staged morph-drape cloth simulation onto target body (default true)."),
             ("morphStages", "integer", "Intermediate morph stages (default 3)."),
-            ("settleFrames", "integer", "Final settling frames on target body (default 30).")))
+            ("settleFrames", "integer", "Final settling frames on target body (default 30)."))),
+        Tool("step_pose", "Advance the avatar to the next posed same-topology OBJ mesh (e.g. T-pose -> A-pose), smoothly carrying draped garments along the bone motion without resizing 2D patterns and stepping CUDA cloth physics.", Props(
+            ("targetObjPath", "string", "Path to the next posed avatar .obj file."),
+            ("frames", "integer", "CUDA cloth relaxation frames to run at this pose step (default 12)."),
+            ("substeps", "integer", "XPBD substeps per frame (default 14)."),
+            ("carryCloth", "boolean", "Carry existing draped garment vertices incrementally via barycentric triangle binding before simulating (default true)."),
+            ("allGarments", "boolean", "Simulate all visible garments simultaneously instead of layer-by-layer (default false)."),
+            ("selfCollision", "boolean", "Enable cloth self-collision during this pose step (default false)."),
+            ("useGpu", "boolean", "Use CUDA GPU acceleration (default true).")), "targetObjPath")
     );
 
     public object Dispatch(string name, JsonElement args)
@@ -224,6 +232,7 @@ public sealed class McpToolRegistry
             "load_body_profile" => LoadBodyProfile(args),
             "inspect_metahuman_dna" => MetaHumanDnaLoader.Inspect(ReqString(args, "path")),
             "refit_garment_to_body" => RefitGarmentToBody(args),
+            "step_pose" => StepPose(args),
             _ => throw new ArgumentException($"Unknown tool '{name}'."),
         };
     }
@@ -894,6 +903,78 @@ public sealed class McpToolRegistry
             averageScale = new[] { MathF.Round(result.AverageScaleX, 3), MathF.Round(result.AverageScaleY, 3), MathF.Round(result.AverageScaleZ, 3) },
             penetratedVerticesAfter = result.PenetratedVerticesAfter,
             maxPenetrationMmAfter = MathF.Round(result.MaxPenetrationMmAfter, 2),
+        };
+    }
+
+    private object StepPose(JsonElement args)
+    {
+        string objPath = Path.GetFullPath(ReqString(args, "targetObjPath"));
+        int frames = OptInt(args, "frames", 12);
+        int substeps = OptInt(args, "substeps", 14);
+        bool carryCloth = OptBool(args, "carryCloth", true);
+        bool allGarments = OptBool(args, "allGarments", false);
+        bool selfCollision = OptBool(args, "selfCollision", false);
+        bool useGpu = OptBool(args, "useGpu", true);
+
+        var prevAvatar = _session.Avatar;
+        var nextAvatar = Avatar.FromObj(objPath, 1f);
+
+        int carriedVerts = 0;
+        if (carryCloth
+            && prevAvatar.Mesh.Positions.Length == nextAvatar.Mesh.Positions.Length
+            && prevAvatar.Mesh.Triangles.Length == nextAvatar.Mesh.Triangles.Length)
+        {
+            foreach (var g in _session.Doc.Garments)
+            {
+                if (!g.Visible || g.Pieces.Count == 0) continue;
+                var gm = _session.Workspace.MeshFor(g);
+                foreach (var pm in gm.Pieces)
+                {
+                    var piece = g.FindPiece(pm.PieceId);
+                    if (piece?.Drape == null || piece.Drape.Length != pm.VertexCount * 3) continue;
+                    var cur = new Vector3[pm.VertexCount];
+                    for (int i = 0; i < pm.VertexCount; i++)
+                        cur[i] = new Vector3(piece.Drape[i * 3], piece.Drape[i * 3 + 1], piece.Drape[i * 3 + 2]);
+                    var next = GarmentRefitter.BindAndTransfer(cur, prevAvatar.Mesh, nextAvatar.Mesh);
+                    var flat = new float[next.Length * 3];
+                    for (int i = 0; i < next.Length; i++)
+                    {
+                        flat[i * 3] = next[i].X;
+                        flat[i * 3 + 1] = next[i].Y;
+                        flat[i * 3 + 2] = next[i].Z;
+                    }
+                    piece.Drape = flat;
+                    piece.DrapeKey = pm.Key;
+                    carriedVerts += next.Length;
+                }
+            }
+        }
+
+        _session.SetAvatar(nextAvatar);
+        _session.Doc.Avatar.Kind = AvatarKind.CustomObj;
+        _session.Doc.Avatar.Path = objPath;
+        _session.Doc.Avatar.Scale = 1f;
+
+        if (frames > 0)
+        {
+            if (allGarments)
+            {
+                _session.RunSimulation(null, frames, true, useGpu, selfCollision, substeps);
+            }
+            else
+            {
+                foreach (var g in _session.Doc.Garments.Where(g => g.Visible && g.Pieces.Count > 0).OrderBy(g => g.Layer))
+                    _session.RunSimulation(g.Id, frames, false, useGpu, selfCollision, substeps);
+            }
+        }
+
+        return new
+        {
+            ok = true,
+            avatarPath = objPath,
+            carriedVertices = carriedVerts,
+            frames,
+            fit = _session.InspectFit(null),
         };
     }
 
