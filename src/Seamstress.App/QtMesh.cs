@@ -17,24 +17,67 @@ internal static class QtMesh
 
     public static void WriteTriangles(string path, Vector3[] positions, Vector3[] normals, Vector2[]? uvs, int[] indices)
     {
-        int stride = uvs != null ? 32 : 24;
+        bool hasUv = uvs != null;
+        int stride = hasUv ? 56 : 24;
         var vertices = new byte[positions.Length * stride];
         var span = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(vertices.AsSpan());
         int floats = stride / 4;
+
+        Vector3[]? tangents = null;
+        Vector3[]? binormals = null;
+        if (hasUv)
+        {
+            tangents = new Vector3[positions.Length];
+            binormals = new Vector3[positions.Length];
+            for (int t = 0; t + 2 < indices.Length; t += 3)
+            {
+                int i0 = indices[t], i1 = indices[t + 1], i2 = indices[t + 2];
+                var e1 = positions[i1] - positions[i0];
+                var e2 = positions[i2] - positions[i0];
+                var duv1 = uvs![i1] - uvs[i0];
+                var duv2 = uvs[i2] - uvs[i0];
+                float det = duv1.X * duv2.Y - duv1.Y * duv2.X;
+                if (MathF.Abs(det) < 1e-10f)
+                    continue;
+                float inv = 1f / det;
+                var tan = (e1 * duv2.Y - e2 * duv1.Y) * inv;
+                var bin = (e2 * duv1.X - e1 * duv2.X) * inv;
+                tangents[i0] += tan; tangents[i1] += tan; tangents[i2] += tan;
+                binormals[i0] += bin; binormals[i1] += bin; binormals[i2] += bin;
+            }
+        }
+
         for (int i = 0; i < positions.Length; i++)
         {
             int o = i * floats;
             span[o] = positions[i].X; span[o + 1] = positions[i].Y; span[o + 2] = positions[i].Z;
             span[o + 3] = normals[i].X; span[o + 4] = normals[i].Y; span[o + 5] = normals[i].Z;
-            if (uvs != null)
+            if (hasUv)
             {
-                span[o + 6] = uvs[i].X;
+                span[o + 6] = uvs![i].X;
                 span[o + 7] = uvs[i].Y;
+                var n = normals[i];
+                var t = tangents![i];
+                t -= n * Vector3.Dot(n, t);
+                float tLen = t.Length();
+                if (tLen > 1e-6f)
+                    t /= tLen;
+                else
+                    t = MathF.Abs(n.Y) < 0.99f ? Vector3.Normalize(Vector3.Cross(Vector3.UnitY, n)) : Vector3.UnitX;
+                var b = Vector3.Cross(n, t);
+                if (Vector3.Dot(b, binormals![i]) < 0f)
+                    b = -b;
+                span[o + 8] = t.X; span[o + 9] = t.Y; span[o + 10] = t.Z;
+                span[o + 11] = b.X; span[o + 12] = b.Y; span[o + 13] = b.Z;
             }
         }
         var entries = new List<(string, uint, uint)> { ("attr_pos", 3, 0), ("attr_norm", 3, 12) };
-        if (uvs != null)
+        if (hasUv)
+        {
             entries.Add(("attr_uv0", 2, 24));
+            entries.Add(("attr_textan", 3, 32));
+            entries.Add(("attr_binormal", 3, 44));
+        }
         Write(path, vertices, stride, entries, positions, indices, DrawTriangles);
     }
 

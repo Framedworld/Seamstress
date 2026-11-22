@@ -123,11 +123,15 @@ public sealed class McpToolRegistry
             ("thickness", "number", "Collision thickness in mm."),
             ("shrinkWeft", "number", "Horizontal rest-length multiplier (e.g. 0.88 = 12% elastic cinch for waistbands/cuffs)."),
             ("shrinkWarp", "number", "Vertical rest-length multiplier (default 1.0)."))),
-        Tool("set_material", "Set the color and material name on a piece or garment.", Props(
+        Tool("set_material", "Set the color, texture, PBR roughness/metallic, and material name on a piece or garment.", Props(
             ("pieceId", "string", "Target piece ID (optional if garmentId given)."),
             ("garmentId", "string", "Target garment ID (optional if pieceId given)."),
             ("name", "string", "Material name."),
-            ("color", "string", "Hex color #RRGGBB.")), "color"),
+            ("color", "string", "Hex color #RRGGBB."),
+            ("texture", "string", "Optional absolute path to a base-color PNG/JPG texture."),
+            ("repeat", "number", "Optional UV texture repeat factor (default 1.0)."),
+            ("roughness", "number", "Optional PBR roughness 0..1 (default 0.8)."),
+            ("metallic", "number", "Optional PBR metallic 0..1 (default 0.0).")), "color"),
         Tool("simulate", "Run cloth simulation (CUDA GPU-accelerated on RTX 4090 when available) to sew and drape the garment on the avatar.", Props(
             ("garmentId", "string", "Optional garment ID (defaults to active garment)."),
             ("frames", "integer", "Number of 60Hz frames to simulate (default 90)."),
@@ -636,6 +640,14 @@ public sealed class McpToolRegistry
         string color = ReqString(args, "color");
         string name = OptString(args, "name") ?? "Fabric";
         var mat = new FabricMaterial { Name = _session.Doc.UniqueName(name), Color = color };
+        if (OptString(args, "texture") is { Length: > 0 } tex)
+            mat.Texture = Path.GetFullPath(tex);
+        if (TryOptFloat(args, "repeat") is { } rep)
+            mat.Repeat = rep;
+        if (TryOptFloat(args, "roughness") is { } rough)
+            mat.Roughness = rough;
+        if (TryOptFloat(args, "metallic") is { } metal)
+            mat.Metallic = metal;
         _session.Doc.Materials.Add(mat);
 
         int updated = 0;
@@ -822,6 +834,12 @@ public sealed class McpToolRegistry
         }
         var avatar = _session.BodyLibrary.BuildAvatar(profile);
         _session.SetAvatar(avatar);
+        if (!string.IsNullOrWhiteSpace(profile.BaseMeshPath) && File.Exists(profile.BaseMeshPath))
+        {
+            _session.Doc.Avatar.Kind = AvatarKind.CustomObj;
+            _session.Doc.Avatar.Path = Path.GetFullPath(profile.BaseMeshPath);
+            _session.Doc.Avatar.Scale = profile.Scale;
+        }
         return new
         {
             ok = true,

@@ -51,6 +51,7 @@
     <None Include="*.qml" />
     <QtResource Include="icons/seamstress.svg" />
     <QtResource Include="icons/tools/*.svg" />
+    <QtResource Include="assets/studio_env.hdr" />
   </ItemGroup>
 
   <!-- The bridge generates the native host's main.cpp itself, so the two things it does not offer are patched here.

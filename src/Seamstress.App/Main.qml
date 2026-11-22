@@ -95,15 +95,17 @@ ApplicationWindow {
 
     // Used by automated runs: capture the window, then quit.
     Timer {
-        interval: App.startupSmoke ? 6000 : 3500
+        interval: App.startupSmoke ? 6000 : 5000
         running: App.startupScreenshot !== ""
         onTriggered: {
-            // "--view prefs|export|makehuman" captures that dialog instead of the main window.
+            // "--view prefs|export|makehuman|garment" captures that dialog or the 3D garment viewport directly.
             const view = App.startupView
             const dialog = view.indexOf("prefs") >= 0 ? preferences : view.indexOf("export") >= 0 ? exportOptions
                          : view.indexOf("makehuman") >= 0 ? makeHumanDialog
                          : view.indexOf("bodyshape") >= 0 ? bodyShape : null
-            const target = dialog ? dialog.contentItem.parent : view.indexOf("contextmenu") >= 0 ? contextMenu.contentItem.parent : rootLayout
+            const target = dialog ? dialog.contentItem.parent
+                         : view.indexOf("contextmenu") >= 0 ? contextMenu.contentItem.parent
+                         : view.indexOf("garment") >= 0 ? viewport : rootLayout
             target.grabToImage(function(result) {
                 result.saveToFile(App.startupScreenshot)
                 window.closing = true

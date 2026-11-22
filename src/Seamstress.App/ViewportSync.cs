@@ -143,6 +143,18 @@ internal sealed class ViewportSync : IDisposable
 
     public static string ToUrl(string path) => new Uri(path).AbsoluteUri;
 
+    private static string SidecarUrl(string? basePath, string suffix)
+    {
+        if (string.IsNullOrEmpty(basePath))
+            return "";
+        string? dir = Path.GetDirectoryName(basePath);
+        string stem = Path.GetFileNameWithoutExtension(basePath);
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(stem))
+            return "";
+        string candidate = Path.Combine(dir, stem + suffix);
+        return File.Exists(candidate) ? ToUrl(candidate) : "";
+    }
+
     private string NextFile(string prefix, Queue<string> history)
     {
         string file = Path.Combine(_folder, $"{prefix}_{++_generation}.mesh");
@@ -285,6 +297,8 @@ internal sealed class ViewportSync : IDisposable
                 if (!_entries.TryGetValue(piece.Id, out var entry))
                     _entries[piece.Id] = entry = new Entry();
 
+                var material = doc.FindMaterial(piece.MaterialId) ?? Seamstress.Core.IO.ExportScene.DefaultMaterial;
+                bool fitPieceUv = !string.IsNullOrEmpty(material.Texture) && material.Repeat <= 0f;
                 var hash = new HashCode();
                 hash.Add(piece.Placement.Position);
                 hash.Add(piece.Placement.Rotation);
@@ -297,13 +311,15 @@ internal sealed class ViewportSync : IDisposable
                 hash.Add(layout.Min);
                 hash.Add(piece.FlipNormals);
                 hash.Add(halfThickness);
+                hash.Add(fitPieceUv);
                 bool usesDrape = piece.Drape != null && piece.DrapeKey == pieceMesh.Key;
                 int signature = hash.ToHashCode();
                 if (entry.Url.Length == 0 || entry.Key != pieceMesh.Key || entry.Hash != signature
                     || !ReferenceEquals(entry.Drape, usesDrape ? piece.Drape : null))
                 {
                     string file = NextFile("p" + piece.Id, entry.Files);
-                    var shell = Mesher.BuildShell(positions[i], normals[i], layout.Map(piece, pieceMesh),
+                    Vector2[] uvs = fitPieceUv ? FitPieceUvs(pieceMesh) : layout.Map(piece, pieceMesh);
+                    var shell = Mesher.BuildShell(positions[i], normals[i], uvs,
                         pieceMesh.ShownTriangles(piece.FlipNormals), halfThickness * 2f);
                     QtMesh.WriteTriangles(file, shell.Positions, shell.Normals, shell.Uvs, shell.Triangles);
                     entry.Url = ToUrl(file);
@@ -313,15 +329,21 @@ internal sealed class ViewportSync : IDisposable
                     anyChanged = true;
                 }
 
-                var material = doc.FindMaterial(piece.MaterialId) ?? Seamstress.Core.IO.ExportScene.DefaultMaterial;
                 if (!first)
                     sb.Append(',');
                 first = false;
                 sb.Append("{\"id\":\"").Append(piece.Id).Append("\",\"source\":\"").Append(entry.Url).Append('"');
                 sb.Append(",\"color\":\"").Append(material.Color).Append('"');
                 string texture = !string.IsNullOrEmpty(material.Texture) && File.Exists(material.Texture) ? ToUrl(material.Texture) : "";
+                string normalMap = SidecarUrl(material.Texture, "_normal.png");
+                string roughMap = SidecarUrl(material.Texture, "_rough.png");
+                string metalMap = SidecarUrl(material.Texture, "_metal.png");
                 sb.Append(",\"texture\":").Append(System.Text.Json.JsonSerializer.Serialize(texture));
-                sb.Append(inv, $",\"repeat\":{material.Repeat:0.####},\"roughness\":{material.Roughness:0.###},\"metallic\":{material.Metallic:0.###},\"opacity\":{material.Opacity:0.###}");
+                sb.Append(",\"normalMap\":").Append(System.Text.Json.JsonSerializer.Serialize(normalMap));
+                sb.Append(",\"roughMap\":").Append(System.Text.Json.JsonSerializer.Serialize(roughMap));
+                sb.Append(",\"metalMap\":").Append(System.Text.Json.JsonSerializer.Serialize(metalMap));
+                float shownRepeat = fitPieceUv ? 1f : material.Repeat;
+                sb.Append(inv, $",\"repeat\":{shownRepeat:0.####},\"roughness\":{material.Roughness:0.###},\"metallic\":{material.Metallic:0.###},\"opacity\":{material.Opacity:0.###}");
                 sb.Append(",\"selected\":").Append(workspace.SelectedPieces.Contains(piece.Id) ? "true" : "false");
                 sb.Append('}');
             }
@@ -412,6 +434,28 @@ internal sealed class ViewportSync : IDisposable
         QtMesh.WriteTriangles(file, positions, Mesher.ComputeNormals(positions, triangles), null, triangles);
         url = ToUrl(file);
         lastHash = hash;
+    }
+
+    /// <summary>Maps a piece's local 2D pattern bounding box directly to [0,1]x[0,1] for piece-specific decal/detail textures (Repeat &lt;= 0).</summary>
+    private static Vector2[] FitPieceUvs(PieceMesh pieceMesh)
+    {
+        var pts = pieceMesh.Points;
+        var uvs = new Vector2[pts.Length];
+        if (pts.Length == 0)
+            return uvs;
+        float minX = float.MaxValue, maxX = float.MinValue, minY = float.MaxValue, maxY = float.MinValue;
+        foreach (var p in pts)
+        {
+            if (p.X < minX) minX = p.X;
+            if (p.X > maxX) maxX = p.X;
+            if (p.Y < minY) minY = p.Y;
+            if (p.Y > maxY) maxY = p.Y;
+        }
+        float invW = 1f / MathF.Max(maxX - minX, 1e-4f);
+        float invH = 1f / MathF.Max(maxY - minY, 1e-4f);
+        for (int i = 0; i < pts.Length; i++)
+            uvs[i] = new Vector2((pts[i].X - minX) * invW, (pts[i].Y - minY) * invH);
+        return uvs;
     }
 
     public void Dispose()

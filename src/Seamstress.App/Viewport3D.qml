@@ -92,8 +92,9 @@ Item {
                 pieceModel.remove(i)
         }
         for (const m of wanted) {
-            const row = { pid: m.id, meshUrl: m.source, tint: m.color, tex: m.texture, rep: m.repeat,
-                          rough: m.roughness, metal: m.metallic, alpha: m.opacity, sel: m.selected }
+            const row = { pid: m.id, meshUrl: m.source, tint: m.color, tex: m.texture,
+                          normTex: m.normalMap || "", roughTex: m.roughMap || "", metalTex: m.metalMap || "",
+                          rep: m.repeat, rough: m.roughness, metal: m.metallic, alpha: m.opacity, sel: m.selected }
             let found = false
             for (let i = 0; i < pieceModel.count; i++) {
                 if (pieceModel.get(i).pid === m.id) {
@@ -217,6 +218,10 @@ Item {
     }
 
     Component.onCompleted: {
+        if (App.startupView.indexOf("front") >= 0) { yaw = 0; pitch = -2; distance = 4.35; target = Qt.vector3d(0, 0.92, 0) }
+        if (App.startupView.indexOf("back") >= 0) { yaw = 180; pitch = -2; distance = 4.35; target = Qt.vector3d(0, 0.92, 0) }
+        if (App.startupView.indexOf("closeup") >= 0) { yaw = 0; pitch = -3; distance = 1.65; target = Qt.vector3d(0, 1.32, 0) }
+        if (App.startupView.indexOf("clean") >= 0) showThreads = false
         if (App.startupView.indexOf("checker") >= 0) displayMode = "checker"
         if (App.startupView.indexOf("wire") >= 0) wireframe = true
         if (App.startupView.indexOf("pinch") >= 0) pinchMode = true
@@ -252,10 +257,18 @@ Item {
         camera: root.activeCamera
 
         environment: SceneEnvironment {
-            clearColor: App.themeViewerBg
+            clearColor: App.startupView.indexOf("garment") >= 0 ? "#242830" : App.themeViewerBg
             backgroundMode: SceneEnvironment.Color
+            lightProbe: Texture { source: "assets/studio_env.hdr" }
+            probeExposure: 0.76
             antialiasingMode: SceneEnvironment.MSAA
             antialiasingQuality: SceneEnvironment.High
+            tonemapMode: SceneEnvironment.TonemapModeFilmic
+            aoStrength: 100
+            aoDistance: 0.30
+            aoSoftness: 14
+            aoSampleRate: 3
+            aoBias: 0.005
             // Ground: a grid that fades with distance; 10 cm (4 in with imperial units) unless changed in Preferences.
             InfiniteGrid {
                 gridInterval: App.gridSizeCm / 100
@@ -284,12 +297,22 @@ Item {
             }
         }
 
-        // Sculpted 3-point studio lighting rig (warm-neutral key, cool soft fill, crisp rim, subtle ground bounce)
-        // so cloth folds, creases and silhouettes read clearly like a studio dress-form showcase.
-        DirectionalLight { eulerRotation: Qt.vector3d(-32, 34, 0); color: "#fff8ef"; brightness: 1.25; ambientColor: Qt.rgba(0.18, 0.20, 0.24, 1) }
-        DirectionalLight { eulerRotation: Qt.vector3d(-16, -62, 0); color: "#cfe0ff"; brightness: 0.52 }
-        DirectionalLight { eulerRotation: Qt.vector3d(-24, 152, 0); color: "#e6eeff"; brightness: 0.72 }
-        DirectionalLight { eulerRotation: Qt.vector3d(72, 20, 0); color: "#c4cbd8"; brightness: 0.18 }
+        // Sculpted high-contrast warm directional studio key light + subtle cool fill + crisp back/shoulder rim (paired w/ studio IBL!)
+        DirectionalLight {
+            eulerRotation: Qt.vector3d(-34, -36, 0)
+            color: "#fff4e4"
+            brightness: 3.45
+            ambientColor: Qt.rgba(0.012, 0.014, 0.018, 1)
+            castsShadow: true
+            shadowMapQuality: Light.ShadowMapQualityHigh
+            shadowFactor: 85
+            shadowBias: 0.12
+            shadowFilter: 10
+            shadowMapFar: 12
+        }
+        DirectionalLight { eulerRotation: Qt.vector3d(-14, 52, 0); color: "#c8d9f5"; brightness: 0.36 }
+        DirectionalLight { eulerRotation: Qt.vector3d(-24, 152, 0); color: "#edf3ff"; brightness: 1.95 }
+        DirectionalLight { eulerRotation: Qt.vector3d(58, 175, 0); color: "#b4bfd4"; brightness: 0.14 }
 
         Model {
             visible: root.showAvatar && root.avatarSource !== ""
@@ -306,6 +329,9 @@ Item {
                 required property string meshUrl
                 required property string tint
                 required property string tex
+                required property string normTex
+                required property string roughTex
+                required property string metalTex
                 required property real rep
                 required property real rough
                 required property real metal
@@ -321,8 +347,13 @@ Item {
                     id: fabric
                     baseColor: pieceItem.checker ? "#ffffff" : (pieceItem.tex !== "" ? "#ffffff" : pieceItem.tint)
                     baseColorMap: pieceItem.textured ? fabricTexture : null
-                    roughness: pieceItem.rough
-                    metalness: pieceItem.metal
+                    normalMap: (!pieceItem.checker && pieceItem.normTex !== "") ? fabricNormalTexture : null
+                    normalStrength: 0.85
+                    roughness: pieceItem.roughTex !== "" ? 1.0 : pieceItem.rough
+                    roughnessMap: (!pieceItem.checker && pieceItem.roughTex !== "") ? fabricRoughTexture : null
+                    metalness: pieceItem.metalTex !== "" ? 1.0 : pieceItem.metal
+                    metalnessMap: (!pieceItem.checker && pieceItem.metalTex !== "") ? fabricMetalTexture : null
+                    specularAmount: 0.50
                     opacity: pieceItem.alpha
                     alphaMode: pieceItem.alpha < 0.999 ? PrincipledMaterial.Blend : PrincipledMaterial.Opaque
                     cullMode: Material.NoCulling
@@ -350,6 +381,36 @@ Item {
                 Texture {
                     id: fabricTexture
                     source: pieceItem.checker ? App.checkerTexture : pieceItem.tex
+                    scaleU: pieceItem.rep
+                    scaleV: pieceItem.rep
+                    tilingModeHorizontal: Texture.Repeat
+                    tilingModeVertical: Texture.Repeat
+                    generateMipmaps: true
+                    mipFilter: Texture.Linear
+                }
+                Texture {
+                    id: fabricNormalTexture
+                    source: pieceItem.normTex
+                    scaleU: pieceItem.rep
+                    scaleV: pieceItem.rep
+                    tilingModeHorizontal: Texture.Repeat
+                    tilingModeVertical: Texture.Repeat
+                    generateMipmaps: true
+                    mipFilter: Texture.Linear
+                }
+                Texture {
+                    id: fabricRoughTexture
+                    source: pieceItem.roughTex
+                    scaleU: pieceItem.rep
+                    scaleV: pieceItem.rep
+                    tilingModeHorizontal: Texture.Repeat
+                    tilingModeVertical: Texture.Repeat
+                    generateMipmaps: true
+                    mipFilter: Texture.Linear
+                }
+                Texture {
+                    id: fabricMetalTexture
+                    source: pieceItem.metalTex
                     scaleU: pieceItem.rep
                     scaleV: pieceItem.rep
                     tilingModeHorizontal: Texture.Repeat
