@@ -224,7 +224,7 @@ public sealed class GarmentSession
             {
                 backend = solver.BackendName,
                 frames,
-                substeps = settings.Substeps,
+                substeps = solver.EffectiveSubsteps,
                 selfCollision = settings.SelfCollision,
                 particles = solver.ParticleCount,
                 constraints = solver.ConstraintCount,

@@ -24,6 +24,18 @@ public sealed class BodyMeasurements
     public float NeckHeightCm { get; private set; }
     public float ShoulderWidthCm { get; private set; }
     public List<TapeSection> Torso { get; } = new();
+
+    /// <summary>The torso's girth every centimetre from the crotch to the armpits, lowest first.</summary>
+    public List<TapeSection> TorsoProfile { get; } = new();
+
+    /// <summary>Girth of the torso at a height above the floor, from <see cref="TorsoProfile"/>; 0 outside it.</summary>
+    public float TorsoGirthAt(float heightCm)
+    {
+        if (TorsoProfile.Count == 0)
+            return 0;
+        var nearest = TorsoProfile.MinBy(s => MathF.Abs(s.Centre.Y * 100f - heightCm))!;
+        return MathF.Abs(nearest.Centre.Y * 100f - heightCm) > 3f ? 0 : nearest.CircumferenceCm;
+    }
     public List<TapeSection> LeftLeg { get; } = new();
     public List<TapeSection> RightLeg { get; } = new();
     public List<ArmMeasure> Arms { get; } = new();
@@ -102,6 +114,8 @@ public sealed class BodyMeasurements
             if (Central(Slice(y)) is { } l)
                 girths.Add((y, l));
         }
+        foreach (var (y, l) in girths)
+            m.TorsoProfile.Add(new TapeSection("", l.Centre(y), l.Circumference * 100f, (l.MaxX - l.MinX) * 100f, (l.MaxZ - l.MinZ) * 100f));
         if (girths.Count > 4)
         {
             var hips = girths.Where(g => g.Y < crotch + span * 0.45f).MaxBy(g => g.L.Circumference);
@@ -196,7 +210,8 @@ public sealed class BodyMeasurements
             if (sections.Count < 4)
                 continue;
             // The wrist is where the forearm stops getting thinner; beyond it the hand widens again.
-            var wrist = sections[^1];
+            // A mitten hand that never widens has no such point: the wrist is then taken four fifths of the way out.
+            var wrist = sections[Math.Min(sections.Count - 1, (int)(sections.Count * 0.8f))];
             for (int i = sections.Count / 2; i + 1 < sections.Count; i++)
             {
                 if (sections[i].S.CircumferenceCm < sections[i + 1].S.CircumferenceCm)
@@ -209,6 +224,20 @@ public sealed class BodyMeasurements
             float droop = MathF.Atan2(-axis.Y, MathF.Abs(axis.X)) * 180f / MathF.PI;
             m.Arms.Add(new ArmMeasure(side > 0 ? "left" : "right", shoulder, wrist.S.Centre, axis, droop,
                 Vector3.Distance(shoulder, wrist.S.Centre) * 100f, sections.Where(s => s.T <= wrist.T).Select(s => s.S).ToList()));
+        }
+        // Bodies are symmetric, meshes not always: when the two arms disagree, both get the shorter reading, so a
+        // garment's sleeves come out the same length.
+        if (m.Arms.Count == 2 && MathF.Abs(m.Arms[0].LengthCm - m.Arms[1].LengthCm) > 0.04f * MathF.Max(m.Arms[0].LengthCm, m.Arms[1].LengthCm))
+        {
+            int shorter = m.Arms[0].LengthCm <= m.Arms[1].LengthCm ? 0 : 1;
+            var keep = m.Arms[shorter];
+            var fix = m.Arms[1 - shorter];
+            Vector3 Flip(Vector3 v) => new(-v.X, v.Y, v.Z);
+            m.Arms[1 - shorter] = fix with
+            {
+                Shoulder = Flip(keep.Shoulder), Wrist = Flip(keep.Wrist), Axis = Flip(keep.Axis), DroopDegrees = keep.DroopDegrees,
+                LengthCm = keep.LengthCm, Sections = keep.Sections.Select(sec => sec with { Centre = Flip(sec.Centre) }).ToList(),
+            };
         }
         return m;
     }

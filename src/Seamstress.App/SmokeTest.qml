@@ -399,6 +399,11 @@ QtObject {
         App.pinchEnd()
         App.toggleSimulation()
         check("pinch is one undo step", App.undoText === "Undo Pinch cloth")
+        // The pinched shape can be kept: set creases is its own undo step, and the grab size is adjustable.
+        App.pinchRadiusCm = 12
+        check("pinch grab size", App.pinchRadiusCm === 12)
+        App.setCreases()
+        check("set creases is one undo step", App.undoText === "Undo Set creases")
         App.selectLayer(JSON.parse(App.layers())[0].id, false)
         check("other garment untouched", selection().piece.draped === false)
 

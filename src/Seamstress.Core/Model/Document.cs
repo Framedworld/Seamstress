@@ -332,6 +332,23 @@ public sealed class PatternPiece
     /// <summary>Fingerprint of the mesh topology the pins belong to.</summary>
     public string? PinKey { get; set; }
 
+    /// <summary>
+    /// Set creases: the 3D shape (x,y,z triples in metres) whose folds the cloth remembers, like pressed or worn-in
+    /// canvas. The simulation bends the cloth back towards these folds instead of towards flat. Valid only for the
+    /// mesh identified by <see cref="CreaseKey"/>; replaced, never mutated in place.
+    /// </summary>
+    public float[]? Crease { get; set; }
+
+    /// <summary>Fingerprint of the mesh topology the creases belong to.</summary>
+    public string? CreaseKey { get; set; }
+
+    /// <summary>How firmly the creases are held, 0 (not at all: the cloth relaxes towards flat) to 1 (fully set).</summary>
+    public float CreaseStrength { get; set; }
+
+    /// <summary>True when there are creases for this mesh.</summary>
+    public bool HasCreasesFor(string meshKey, int vertexCount)
+        => Crease != null && CreaseKey == meshKey && Crease.Length == vertexCount * 3 && CreaseStrength > 0;
+
     public PatternPiece Clone() => new()
     {
         Id = Id,
@@ -351,6 +368,9 @@ public sealed class PatternPiece
         DrapeKey = DrapeKey,
         Pins = new HashSet<int>(Pins),
         PinKey = PinKey,
+        Crease = Crease, // like the drape, replaced and never mutated in place
+        CreaseKey = CreaseKey,
+        CreaseStrength = CreaseStrength,
     };
 
     /// <summary>Points of the outline and of every hole.</summary>
@@ -438,6 +458,13 @@ public sealed class PatternPiece
     {
         Pins.Clear();
         PinKey = null;
+    }
+
+    public void ClearCreases()
+    {
+        Crease = null;
+        CreaseKey = null;
+        CreaseStrength = 0;
     }
 }
 

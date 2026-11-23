@@ -694,5 +694,21 @@
   "Which layer of clothing this garment is. 0 is worn next to the skin; a garment with a higher number is worn over the ones with lower numbers, and the simulation keeps it on their outside so they cannot poke through.": "Qué capa de ropa es esta prenda. La 0 se lleva pegada a la piel; una prenda con un número mayor se lleva sobre las de número menor, y la simulación la mantiene por fuera de ellas para que no la atraviesen.",
   "While a project has unsaved changes, a copy is kept in Seamstress's own data folder, at this interval and after every simulation; your file is not touched. If Seamstress does not close properly, it offers to restore the copy at the next start.": "Mientras un proyecto tiene cambios sin guardar, se conserva una copia en la carpeta de datos de Seamstress, con este intervalo y después de cada simulación; su archivo no se toca. Si Seamstress no se cierra correctamente, ofrece restaurar la copia en el siguiente inicio.",
   "Worn as layer": "Capa de la prenda",
-  "Worn over: %1": "Se lleva sobre: %1"
+  "Worn over: %1": "Se lleva sobre: %1",
+  "Fitted Tee": "Camiseta a medida",
+  "Fitted Trousers": "Pantalón a medida",
+  "Fitted Jacket": "Chaqueta a medida",
+  "Fitted Hoodie": "Sudadera con capucha a medida",
+  "Set creases": "Fijar arrugas",
+  "Clear creases": "Borrar arrugas",
+  "Set Creases": "Fijar arrugas",
+  "Clear Creases": "Borrar arrugas",
+  "Creases set in {0} pieces: the cloth keeps these folds.": "Arrugas fijadas en {0} piezas: la tela conserva estos pliegues.",
+  "Nothing to crease yet: simulate the garment first.": "Aún no hay nada que fijar: simula primero la prenda.",
+  "Creases cleared from {0} pieces.": "Arrugas borradas de {0} piezas.",
+  "No creases to clear.": "No hay arrugas que borrar.",
+  "Grab %1 cm": "Agarre %1 cm",
+  "How much cloth the pinch takes hold of": "Cuánta tela agarra el pellizco",
+  "Keep the folds the cloth has now: pinch it into shape, then set creases so it does not spring back flat": "Conservar los pliegues actuales: pellizca la tela para darle forma y fija las arrugas para que no vuelva a quedar lisa",
+  "Forget the set creases: the cloth bends back towards flat": "Olvidar las arrugas fijadas: la tela vuelve a quedar lisa"
 }

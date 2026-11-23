@@ -315,7 +315,8 @@ Item {
             clearColor: App.startupView.indexOf("garment") >= 0 ? "#242830" : App.themeViewerBg
             backgroundMode: root.captureTransparent ? SceneEnvironment.Transparent : SceneEnvironment.Color
             lightProbe: Texture { source: "assets/studio_env.hdr" }
-            probeExposure: 0.76
+            // Low enough that the key light, not the even studio fill, shapes folds and round parts.
+            probeExposure: 0.52
             antialiasingMode: SceneEnvironment.MSAA
             antialiasingQuality: SceneEnvironment.High
             tonemapMode: SceneEnvironment.TonemapModeFilmic
@@ -355,19 +356,20 @@ Item {
 
         // Sculpted high-contrast warm directional studio key light + subtle cool fill + crisp back/shoulder rim (paired w/ studio IBL!)
         DirectionalLight {
+            // From the viewer's upper left, the usual portrait key.
             eulerRotation: Qt.vector3d(-34, -36, 0)
             color: "#fff4e4"
-            brightness: 3.45
+            brightness: 4.4
             ambientColor: Qt.rgba(0.012, 0.014, 0.018, 1)
             castsShadow: true
             shadowMapQuality: Light.ShadowMapQualityHigh
-            shadowFactor: 85
+            shadowFactor: 90
             shadowBias: 0.12
             shadowFilter: 10
             shadowMapFar: 12
         }
         DirectionalLight { eulerRotation: Qt.vector3d(-14, 52, 0); color: "#c8d9f5"; brightness: 0.36 }
-        DirectionalLight { eulerRotation: Qt.vector3d(-24, 152, 0); color: "#edf3ff"; brightness: 1.95 }
+        DirectionalLight { eulerRotation: Qt.vector3d(-24, 152, 0); color: "#edf3ff"; brightness: 1.5 }
         DirectionalLight { eulerRotation: Qt.vector3d(58, 175, 0); color: "#b4bfd4"; brightness: 0.14 }
 
         Model {
@@ -1048,6 +1050,40 @@ Item {
                     : vb.hovered ? Qt.alpha(palette.windowText, 0.12)
                     : "transparent"
                 Behavior on color { ColorAnimation { duration: 90 } }
+            }
+        }
+        // Pinch options: how much cloth a pinch takes hold of, and setting the folds it has been pulled into.
+        ViewPill {
+            visible: root.pinchMode
+            Label {
+                text: tr("Grab %1 cm").arg(App.pinchRadiusCm)
+                font.pixelSize: 11
+                Layout.leftMargin: 6
+                opacity: 0.86
+            }
+            Slider {
+                implicitWidth: 92
+                implicitHeight: 22
+                from: 1
+                to: 30
+                stepSize: 1
+                value: App.pinchRadiusCm
+                onMoved: App.pinchRadiusCm = value
+                ToolTip.visible: hovered
+                ToolTip.text: tr("How much cloth the pinch takes hold of")
+            }
+            ViewButton {
+                text: tr("Set Creases")
+                onClicked: App.setCreases()
+                ToolTip.visible: hovered
+                readonly property string key: { App.keysRevision; return App.keyText("sim.setCreases") }
+                ToolTip.text: tr("Keep the folds the cloth has now: pinch it into shape, then set creases so it does not spring back flat") + (key !== "" ? " (" + key + ")" : "")
+            }
+            ViewButton {
+                text: tr("Clear Creases")
+                onClicked: App.clearCreases()
+                ToolTip.visible: hovered
+                ToolTip.text: tr("Forget the set creases: the cloth bends back towards flat")
             }
         }
         ViewPill {

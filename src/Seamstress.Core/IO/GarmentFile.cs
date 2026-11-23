@@ -257,6 +257,25 @@ public static class GarmentFile
             w.WriteRawValue(sb.ToString());
             w.WriteEndObject();
         }
+        if (p.Crease != null && p.CreaseKey != null && p.CreaseStrength > 0)
+        {
+            // Set creases: the shape whose folds the cloth remembers, x, y, z per mesh vertex. Safe to delete.
+            w.WriteStartObject("creases");
+            w.WriteString("mesh", p.CreaseKey);
+            w.WriteNumber("strength", MathF.Round(p.CreaseStrength, 3));
+            var sb = new StringBuilder(p.Crease.Length * 8);
+            sb.Append('[');
+            for (int i = 0; i < p.Crease.Length; i++)
+            {
+                if (i > 0)
+                    sb.Append(i % 3 == 0 ? ", " : ",");
+                sb.Append(N(p.Crease[i]));
+            }
+            sb.Append(']');
+            w.WritePropertyName("positions");
+            w.WriteRawValue(sb.ToString());
+            w.WriteEndObject();
+        }
         if (p.Pins.Count > 0 && p.PinKey != null)
         {
             // Vertices held in place during simulation, for the mesh they were chosen on.
@@ -497,6 +516,24 @@ public static class GarmentFile
             {
                 piece.Drape = values;
                 piece.DrapeKey = Str(drape, "mesh");
+            }
+        }
+        if (p.TryGetProperty("creases", out var creases) && creases.ValueKind == JsonValueKind.Object
+            && creases.TryGetProperty("positions", out var creasePositions) && creasePositions.ValueKind == JsonValueKind.Array)
+        {
+            var values = new float[creasePositions.GetArrayLength()];
+            int i = 0;
+            bool valid = true;
+            foreach (var value in creasePositions.EnumerateArray())
+            {
+                valid &= value.ValueKind == JsonValueKind.Number;
+                values[i++] = valid ? value.GetSingle() : 0;
+            }
+            if (valid && values.Length % 3 == 0)
+            {
+                piece.Crease = values;
+                piece.CreaseKey = Str(creases, "mesh");
+                piece.CreaseStrength = Math.Clamp(Num(creases, "strength", 0.8f), 0f, 1f);
             }
         }
         if (p.TryGetProperty("pins", out var pins) && pins.ValueKind == JsonValueKind.Object

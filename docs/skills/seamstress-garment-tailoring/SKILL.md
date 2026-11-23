@@ -75,6 +75,21 @@ Garment-level `thicknessMm` is also what makes cloth render as a shell rather th
   cuffs, raise only the sleeve to `shrinkWarp: 1.3, bend: 70`, simulate, unpin. The cloth has nowhere to go but into
   folds. Without the pin the cuff slides to the wrist.
 
+## Stiffness and shaping folds
+
+- Canvas, denim and workwear read stiff: `bend` 80-90 (stiffness rises tenfold every ~29 points), `thickness` about
+  3 mm, `stretch` 95+. Below about 65 they fold like a knit. Pushing stiff sleeves up hard (`shrinkWarp` 1.25+) crumples
+  them into small ripples; about 1.14 gives a few broad rolls.
+- Folds you want and the simulation will not make on its own: shape, then set creases. The worn-canvas recipe:
+  drape with a softer bend (about 60) and extra length so folds form, `pull_cloth` the knees down towards the shoes
+  with `hold: true` so the shins stack, `set_creases` (80-85%), `pin_piece` false to let go, raise `bend` to canvas,
+  simulate briefly. The folds stay, big and crisp.
+- `pull_cloth` grabs a patch round a pattern point and moves it in steps while the garment simulates. Pushing cloth
+  towards something that stops it (a shoe, a cinched band) makes folds; pulling it away just moves the whole piece.
+  Do it on an open front while its temporary stay is still sewn: simulated without the stay the fronts swing open.
+- Trousers: `outseamBackCm` moves the side seam back so pockets at the front's outer edge sit on the side of the
+  leg; `hemGirthCm` narrows the opening (a narrow hem started inside a high shoe tangles: keep it wider than the shoe).
+
 ## Blocks
 
 - `add_patch` on a draped host: `kind` pocket (top open), flap (top sewn), patch (all round); footprint in the host's

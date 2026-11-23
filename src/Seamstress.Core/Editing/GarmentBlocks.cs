@@ -97,6 +97,12 @@ public sealed record BlockResult(Garment Garment, List<PatternPiece> Pieces, str
 /// </summary>
 public static class GarmentBlocks
 {
+    /// <summary>
+    /// Pattern coordinates made by blocks and templates sit on a 0.01 cm grid: a project file stores them rounded, and
+    /// a piece that meshes even slightly differently after loading would lose its drape.
+    /// </summary>
+    public static float Snap(float cm) => MathF.Round(cm, 2);
+
     /// <summary>Seamstress Euler angles for a rotation taking the piece's x, y and z axes to these world directions.</summary>
     public static Vector3 EulerFromAxes(Vector3 x, Vector3 y, Vector3 z)
         => Workspace.ToEuler(new Matrix4x4(x.X, x.Y, x.Z, 0, y.X, y.Y, y.Z, 0, z.X, z.Y, z.Z, 0, 0, 0, 0, 1));
@@ -193,7 +199,7 @@ public static class GarmentBlocks
         for (int i = 0; i < fp.Count; i++)
         {
             var cut = centre + (fp[i] - centre) * ease;
-            points.Add(new PatternPoint(cut.X, cut.Y)
+            points.Add(new PatternPoint(Snap(cut.X), Snap(cut.Y))
             {
                 EdgeName = edgeNames != null && i < edgeNames.Count ? edgeNames[i] : fp.Count == 4 && area >= 0 ? rectNames[i] : null,
             });
@@ -310,8 +316,8 @@ public static class GarmentBlocks
         var neg = aIsNegative ? (Host: a, C0: a0, C1: a1) : (Host: b, C0: b0, C1: b1);
         var pos = aIsNegative ? (Host: b, C0: b0, C1: b1) : (Host: a, C0: a0, C1: a1);
 
-        float h = Vector3.Distance(low, high) * 100f;
-        float w = widthCm * ease / 2;
+        float h = Snap(Vector3.Distance(low, high) * 100f);
+        float w = Snap(widthCm * ease / 2);
         var points = new List<PatternPoint>
         {
             new(-w, 0) { EdgeName = "bottom_a" }, new(0, 0) { EdgeName = "bottom_b" }, new(w, 0) { EdgeName = "side_b" },
@@ -361,7 +367,9 @@ public static class GarmentBlocks
         var u = up - a * Vector3.Dot(up, a);
         u = u.LengthSquared() > 1e-8f ? Vector3.Normalize(u) : Vector3.Normalize(Vector3.Cross(a, Vector3.UnitZ));
         var x = Vector3.Cross(a, u);
-        float ha = startCircCm / 2, hb = endCircCm / 2;
+        float ha = Snap(startCircCm / 2), hb = Snap(endCircCm / 2);
+        lengthCm = Snap(lengthCm);
+        capCm = Snap(capCm);
         // The two halves of the start edge are named after the way they face on the body.
         bool frontBack = MathF.Abs(x.Z) >= MathF.Abs(x.X);
         string positive = frontBack ? (x.Z > 0 ? "start_front" : "start_back") : (x.X > 0 ? "start_left" : "start_right");
@@ -410,7 +418,7 @@ public static class GarmentBlocks
             garment = new Garment { Name = garmentName, Layer = 90, ParticleDistance = 0.6f, Thickness = thicknessMm };
             document.Garments.Add(garment);
         }
-        var points = outline.Select(p => new PatternPoint(p.X, p.Y)).ToList();
+        var points = outline.Select(p => new PatternPoint(MathF.Round(p.X, 3), MathF.Round(p.Y, 3))).ToList();
         float area = 0;
         for (int i = 0; i < points.Count; i++)
             area += points[i].Position.X * points[(i + 1) % points.Count].Position.Y - points[(i + 1) % points.Count].Position.X * points[i].Position.Y;

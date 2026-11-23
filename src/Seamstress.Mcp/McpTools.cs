@@ -44,7 +44,36 @@ public sealed class McpToolRegistry
             ("pieceId", "string", "Host piece ID."),
             ("xCm", "number", "Local pattern X in centimetres."),
             ("yCm", "number", "Local pattern Y in centimetres.")), "pieceId", "xCm", "yCm"),
-        Tool("add_template_garment", "Add a built-in ready-made garment template (T-Shirt, Tank Top, Skirt, Dress) scaled to the avatar.", Props(("template", "string", "Template name: T-Shirt, Tank Top, Skirt, or Dress.")), "template"),
+        Tool("add_template_garment", "Add a ready-made garment. The Fitted ones (Fitted Tee, Fitted Trousers, Fitted Jacket, Fitted Hoodie) are drafted from the avatar's own tape measurements, placed round it, sewn, with named edges, and set to be worn over whatever the figure already has on: add them from the skin outwards and simulate each. The older blocks (T-Shirt, Tank Top, Skirt, Dress) are one size, scaled to the avatar's height.", Props(
+            ("template", "string", "Fitted Tee, Fitted Trousers, Fitted Jacket, Fitted Hoodie, T-Shirt, Tank Top, Skirt or Dress."),
+            ("sleeves", "string", "Fitted tops: none, short or long (default: tee short, jacket and hoodie long)."),
+            ("openFront", "boolean", "Fitted jacket/hoodie: leave the front open instead of sewn shut (default false). An open front drapes straighter with a temporary strip sewn across it while simulating."),
+            ("frontGapCm", "number", "Fitted jacket/hoodie with openFront: how far apart the two front edges are cut (default 8)."),
+            ("hemGirthCm", "number", "Fitted trousers: the leg opening round one leg in cm (default: a straight leg from the knee). Narrow enough to rest on the shoe, extra length (extraLengthCm) stacks in folds above it."),
+            ("outseamBackCm", "number", "Fitted trousers: move the side seam this far towards the back (default 0), so pockets or a holster at the front's outer edge sit on the side of the leg."),
+            ("hood", "boolean", "Fitted hoodie: add the hood now (default true). Pass false and call add_hood after the outer layers, so the hood lies over them."),
+            ("easePercent", "number", "Fitted: extra width on top of the template's own ease (5 = roomier, -3 = closer)."),
+            ("extraLengthCm", "number", "Fitted: longer body or legs by this much."),
+            ("particleDistance", "number", "Fitted: mesh edge length in cm (default 1.0; 0.8 for finer folds)."),
+            ("simulate", "boolean", "Fitted: drape it straight away (default false)."),
+            ("frames", "integer", "Frames when simulating (default 130).")), "template"),
+        Tool("add_collar", "Building block: a band standing up from a garment's neckline: a collar stand, a ribbed neck, or (with easePercent 15-30 and a soft fabric) the cowl a pushed-back hood makes round the neck. For garments made by the fitted templates, or any garment whose back has edges named neck_l and neck_r and whose two fronts have an edge named neck. It goes in its own garment over what is worn round the neck so far.", Props(
+            ("garmentId", "string", "The garment whose neckline it is sewn to."),
+            ("heightCm", "number", "Height of the band (default 8)."),
+            ("easePercent", "number", "How much longer than the neckline it is cut; 0 stands smooth, 15-30 gathers into folds (default 0)."),
+            ("frontPercent", "number", "How far down each front neck edge it runs, from the shoulder (default 100; about 30 keeps it to the back and sides of the neck)."),
+            ("flarePercent", "number", "How much wider the top edge is than the bottom, so it leans out (default 10)."),
+            ("rollCm", "number", "Above 0, the top edge is sewn down too, this far out from the neckline, so the band closes into a padded roll round the neck: the ring a pushed-down hood makes, a shawl collar or a neck roll. heightCm is then the distance round the roll (about 3x the roll's thickness)."),
+            ("simulate", "boolean", "Drape it straight away (default true)."),
+            ("frames", "integer", "Frames when simulating (default 110).")), "garmentId"),
+        Tool("add_hood", "Building block: a hood for a garment made by Fitted Jacket or Fitted Hoodie (or any garment whose back has edges named neck_l and neck_r and whose two fronts have an edge named neck). Two panels joined down the middle, sewn round the neckline and laid open down the back as a hood falls when not worn. It goes in its own garment, over everything worn so far: add it after the outer layers.", Props(
+            ("garmentId", "string", "The garment to put the hood on."),
+            ("lengthCm", "number", "Hood length from the neck to its tip (default 36)."),
+            ("widthCm", "number", "Half width of the open hood (default 26)."),
+            ("easePercent", "number", "How much longer than the neckline the hood's neck edge is cut; more gives a fuller cowl (default 12)."),
+            ("frontPercent", "number", "How far down each front neck edge the hood is sewn, from the shoulder (default 100). About 30 keeps the hood behind the neck, under a jacket whose collar should show."),
+            ("simulate", "boolean", "Drape it straight away (default true)."),
+            ("frames", "integer", "Frames when simulating (default 120).")), "garmentId"),
         Tool("create_garment", "Create a new empty garment layer.", Props(
             ("name", "string", "Garment name."),
             ("particleDistance", "number", "Target mesh edge length in cm (default 2.0; smaller = finer folds)."),
@@ -187,6 +216,30 @@ public sealed class McpToolRegistry
         Tool("pin_piece", "Hold a whole piece exactly where it is during simulation (or release it): a cuff that must stay on the forearm while the sleeve above it is pushed up, a collar stand, a belt. Pinned cloth does not move at all until unpinned.", Props(
             ("pieceId", "string", "Piece ID."),
             ("pinned", "boolean", "true to pin every point of the piece (default), false to release it.")), "pieceId"),
+        Tool("pull_cloth", "Shape folds by hand: grab the draped cloth round a point of a piece and pull it a few centimetres while the rest of the garment simulates, the way a garment artist tugs fabric into place (drag folds from a pulled hem, a knee pushed forward, a sleeve hiked up). The grabbed patch fades from full pull at the point to none at the radius. It is let go afterwards and the cloth settles, keeping the folds the pull made. Simulate the garment first.", new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["pieceId"] = Prop("string", "Piece to grab."),
+                ["x"] = Prop("number", "Point to grab, in the piece's pattern cm."),
+                ["y"] = Prop("number", "Point to grab, in the piece's pattern cm."),
+                ["radiusCm"] = Prop("number", "How much cloth is grabbed round the point (default 5)."),
+                ["offsetCm"] = NumArrayProp("World pull [dx, dy, dz] in cm (y up, z towards the front of the avatar)."),
+                ["outCm"] = Prop("number", "Pull along the cloth's own outward normal at the point, in cm (negative pushes it in). Added to offsetCm."),
+                ["steps"] = Prop("integer", "The pull is made in this many moves, simulating between them (default 4)."),
+                ["framesPerStep"] = Prop("integer", "Frames simulated after each move (default 20)."),
+                ["settleFrames"] = Prop("integer", "Frames simulated after letting go (default 40; 0 keeps the result exactly as pulled)."),
+                ["hold"] = Prop("boolean", "Keep the grabbed cloth pinned where it was pulled to instead of letting go (default false)."),
+                ["creasePercent"] = Prop("number", "Set creases in the whole garment at the pulled shape before letting go, this firmly (0-100; default 0 = no). Without it stiff cloth springs back towards flat once released; with it the pulled folds stay. Same as calling set_creases while holding."),
+            },
+            ["required"] = new JsonArray("pieceId", "x", "y"),
+        }),
+        Tool("set_creases", "Set creases: the cloth remembers the folds it has now, like canvas or denim keeps the creases it was worn or pressed into, instead of springing back flat when simulated again. Shape the folds first (pull_cloth, a pose, a simulation), then set creases. Setting them again takes the shape as it is then, old creases included. Saved with the project.", Props(
+            ("garmentId", "string", "Garment to crease (every piece)."),
+            ("pieceId", "string", "Or a single piece."),
+            ("strengthPercent", "number", "How firmly the folds are held: 100 fully set, 50 halfway to flat (default 80)."),
+            ("clear", "boolean", "Forget the creases instead: the cloth bends back towards flat again (default false)."))),
         Tool("layout_pattern", "Lay every piece out again in tidy rows in the 2D pattern window, one garment under the other. New pieces are placed automatically; use this after deleting or resizing pieces.", Props()),
         Tool("mirror_piece", "Create a symmetric left/right mirrored copy of an existing pattern piece (mirrors 2D outline keeping CCW winding, and mirrors 3D X position and Y/Z rotation).", Props(
             ("pieceId", "string", "Source piece ID."),
@@ -355,6 +408,8 @@ public sealed class McpToolRegistry
             "get_avatar_landmarks" => _session.GetAvatarLandmarks(),
             "locate_on_piece" => LocateOnPiece(args),
             "add_template_garment" => AddTemplateGarment(args),
+            "add_hood" => AddHood(args),
+            "add_collar" => AddCollar(args),
             "create_garment" => CreateGarment(args),
             "set_garment" => SetGarment(args),
             "add_piece" => AddPiece(args),
@@ -363,6 +418,8 @@ public sealed class McpToolRegistry
             "add_tube" => AddTube(args),
             "add_hardware" => AddHardware(args),
             "pin_piece" => PinPiece(args),
+            "pull_cloth" => PullCloth(args),
+            "set_creases" => SetCreases(args),
             "layout_pattern" => new { ok = true, movedPieces = PatternLayout.ArrangeAll(_session.Doc) },
             "mirror_piece" => MirrorPiece(args),
             "cut_piece" => CutPiece(args),
@@ -484,7 +541,8 @@ public sealed class McpToolRegistry
                         curvature = p.Placement.Curvature,
                     },
                     fabric = p.Physics.Preset,
-                    hasDrape = p.Drape != null,
+                    hasDrape = p.Drape != null && _session.Workspace.MeshFor(g).Find(p.Id)?.Key == p.DrapeKey,
+                    points = p.Points.Select(pt => new { x = MathF.Round(pt.Position.X, 2), y = MathF.Round(pt.Position.Y, 2), edge = pt.EdgeName }),
                     edges = Enumerable.Range(0, p.EdgeCount).Select(e => new
                     {
                         edge = e,
@@ -509,17 +567,71 @@ public sealed class McpToolRegistry
     private object AddTemplateGarment(JsonElement args)
     {
         string template = ReqString(args, "template");
-        var bounds = _session.ActiveAvatar?.Mesh.Bounds();
-        var g = Templates.Create(template, _session.Doc, bounds?.Max.Y - bounds?.Min.Y ?? Templates.ReferenceBodyHeight);
-        _session.Doc.Garments.Add(g);
-        _session.Workspace.SetActiveGarment(g.Id);
+        var body = _session.ActiveAvatar?.Mesh;
+        var bounds = body?.Bounds();
+        var options = new FitOptions
+        {
+            Sleeves = OptString(args, "sleeves"),
+            OpenFront = OptBool(args, "openFront", false),
+            FrontGapCm = OptFloat(args, "frontGapCm", 8f),
+            Hood = OptBool(args, "hood", true),
+            Ease = OptFloat(args, "easePercent", 0f) / 100f,
+            ExtraLengthCm = OptFloat(args, "extraLengthCm", 0f),
+            OutseamBackCm = OptFloat(args, "outseamBackCm", 0f),
+            HemGirthCm = OptFloat(args, "hemGirthCm", 0f),
+            ParticleDistance = TryOptFloat(args, "particleDistance"),
+        };
+        var made = Templates.CreateAll(template, _session.Doc, bounds?.Max.Y - bounds?.Min.Y ?? Templates.ReferenceBodyHeight, body, options);
+        _session.Doc.Garments.AddRange(made);
+        _session.Workspace.SetActiveGarment(made[0].Id);
+        var simulations = new List<object>();
+        if (OptBool(args, "simulate", false))
+        {
+            foreach (var g in made)
+                simulations.Add(_session.RunSimulation(g.Id, OptInt(args, "frames", 130), false, true, false, 12));
+        }
         return new
         {
-            garmentId = g.Id,
-            name = g.Name,
-            pieces = g.Pieces.Select(p => new { id = p.Id, name = p.Name, edges = p.EdgeCount }),
-            seamCount = g.Seams.Count,
+            garmentId = made[0].Id,
+            name = made[0].Name,
+            garments = made.Select(g => new
+            {
+                garmentId = g.Id,
+                name = g.Name,
+                layer = g.Layer,
+                bodyOffsetMm = MathF.Round(g.BodyOffset, 1),
+                seamCount = g.Seams.Count,
+                pieces = g.Pieces.Select(p => new
+                {
+                    id = p.Id,
+                    name = p.Name,
+                    points = p.Points.Select(pt => new { x = MathF.Round(pt.Position.X, 2), y = MathF.Round(pt.Position.Y, 2), edge = pt.EdgeName }),
+                    edges = Enumerable.Range(0, p.EdgeCount).Select(e => new { edge = e, name = p.PointAt(e).EdgeName, lengthCm = MathF.Round(Outline.EdgeLength(p, e), 1) }),
+                }),
+            }),
+            simulations,
+            note = simulations.Count == 0 ? "Simulate each garment to drape it, innermost first." : null,
         };
+    }
+
+    private object AddCollar(JsonElement args)
+    {
+        var host = ResolveGarment(OptString(args, "garmentId"));
+        var collar = FittedGarments.Collar(_session.Doc, host, BodyMeasurements.Measure(_session.Avatar.Mesh), OptFloat(args, "heightCm", 8f),
+            1f + OptFloat(args, "easePercent", 0f) / 100f, OptFloat(args, "frontPercent", 100f) / 100f, 1f + OptFloat(args, "flarePercent", 10f) / 100f,
+            OptFloat(args, "rollCm", 0f));
+        _session.Doc.Garments.Add(collar);
+        return BlockReport(new BlockResult(collar, collar.Pieces.ToList(), "Simulate '" + collar.Name + "' to drape it."), args, 110);
+    }
+
+    private object AddHood(JsonElement args)
+    {
+        var host = ResolveGarment(OptString(args, "garmentId"));
+        var hood = FittedGarments.Hood(_session.Doc, host, BodyMeasurements.Measure(_session.Avatar.Mesh),
+            OptFloat(args, "lengthCm", 36f), OptFloat(args, "widthCm", 26f), 1f + OptFloat(args, "easePercent", 12f) / 100f,
+            OptFloat(args, "frontPercent", 100f) / 100f);
+        _session.Doc.Garments.Add(hood);
+        return BlockReport(new BlockResult(hood, hood.Pieces.ToList(), $"Simulate '{hood.Name}' to drape it."), args, 120);
     }
 
     private object CreateGarment(JsonElement args)
@@ -891,6 +1003,97 @@ public sealed class McpToolRegistry
             piece.ClearPins();
         }
         return new { ok = true, pieceId = id, name = piece.Name, pinnedPoints = piece.Pins.Count };
+    }
+
+    private object PullCloth(JsonElement args)
+    {
+        string id = ReqString(args, "pieceId");
+        var piece = _session.Doc.FindPiece(id) ?? throw new ArgumentException($"Piece '{id}' not found.");
+        var garment = _session.Doc.GarmentOfPiece(id)!;
+        var mesh = _session.Workspace.MeshFor(garment).Find(id)!;
+        if (piece.Drape == null || piece.DrapeKey != mesh.Key)
+            throw new ArgumentException($"'{piece.Name}' has not been draped yet: simulate '{garment.Name}' first, then pull it.");
+        var at = new Vector2(ReqFloat(args, "x"), ReqFloat(args, "y"));
+        float radius = MathF.Max(OptFloat(args, "radiusCm", 5f), 0.5f);
+        var positions = Mesher.CurrentPositions(piece, mesh);
+        if (!SurfaceLocator.TryLocate(mesh, positions, at, piece.FlipNormals, out _, out var normal, out float offCm) || offCm > radius)
+            throw new ArgumentException($"({at.X:0.#}, {at.Y:0.#}) is not on '{piece.Name}'.");
+        var pull = TryFloat3(args, "offsetCm", out var o) ? o * 0.01f : Vector3.Zero;
+        pull += normal * (OptFloat(args, "outCm", 0f) * 0.01f);
+        if (pull.Length() < 1e-5f)
+            throw new ArgumentException("Give offsetCm or outCm: which way, and how far, to pull.");
+
+        // The grabbed patch: full pull at the point, fading smoothly to nothing at the radius.
+        var weights = new Dictionary<int, float>();
+        for (int i = 0; i < mesh.VertexCount; i++)
+        {
+            float d = Vector2.Distance(mesh.Points[i], at);
+            if (d < radius)
+            {
+                float t = 1f - d / radius;
+                weights[i] = t * t * (3f - 2f * t);
+            }
+        }
+        int steps = Math.Clamp(OptInt(args, "steps", 4), 1, 20);
+        int frames = Math.Clamp(OptInt(args, "framesPerStep", 20), 1, 400);
+        var oldPins = new HashSet<int>(piece.Pins);
+        string? oldKey = piece.PinKey;
+        object? last = null;
+        for (int k = 0; k < steps; k++)
+        {
+            var drape = (float[])piece.Drape!.Clone();       // drapes are replaced, never changed in place (undo shares them)
+            foreach (var (i, w) in weights)
+            {
+                drape[i * 3] += pull.X * w / steps;
+                drape[i * 3 + 1] += pull.Y * w / steps;
+                drape[i * 3 + 2] += pull.Z * w / steps;
+            }
+            piece.Drape = drape;
+            piece.Pins = new HashSet<int>(oldKey == mesh.Key ? oldPins.Concat(weights.Keys) : weights.Keys);
+            piece.PinKey = mesh.Key;
+            last = _session.RunSimulation(garment.Id, frames, false, true, false, 12);
+        }
+        float creasePercent = OptFloat(args, "creasePercent", 0f);
+        int creased = creasePercent > 0
+            ? Creases.Set(garment.Pieces, p => _session.Workspace.MeshFor(garment).Find(p.Id), creasePercent / 100f)
+            : 0;
+        bool hold = OptBool(args, "hold", false);
+        if (!hold)
+        {
+            piece.Pins = oldKey == mesh.Key ? oldPins : new HashSet<int>();
+            piece.PinKey = oldKey == mesh.Key ? oldKey : null;
+            int settle = Math.Clamp(OptInt(args, "settleFrames", 40), 0, 600);
+            if (settle > 0)
+                last = _session.RunSimulation(garment.Id, settle, false, true, false, 12);
+        }
+        return new { ok = true, pieceId = id, name = piece.Name, grabbedPoints = weights.Count, pulledCm = MathF.Round(pull.Length() * 100f, 1), held = hold, creasedPieces = creased, simulation = last };
+    }
+
+    private object SetCreases(JsonElement args)
+    {
+        var pieces = new List<(Garment Garment, PatternPiece Piece)>();
+        if (OptString(args, "pieceId") is { } pid)
+        {
+            var piece = _session.Doc.FindPiece(pid) ?? throw new ArgumentException($"Piece '{pid}' not found.");
+            pieces.Add((_session.Doc.GarmentOfPiece(pid)!, piece));
+        }
+        else
+        {
+            var garment = ResolveGarment(OptString(args, "garmentId"));
+            pieces.AddRange(garment.Pieces.Select(p => (garment, p)));
+        }
+        if (OptBool(args, "clear", false))
+            return new { ok = true, cleared = Creases.Clear(pieces.Select(x => x.Piece)) };
+        float strength = Math.Clamp(OptFloat(args, "strengthPercent", Creases.DefaultStrength * 100f), 0f, 100f) / 100f;
+        int creased = 0;
+        foreach (var group in pieces.GroupBy(x => x.Garment))
+            creased += Creases.Set(group.Select(x => x.Piece), p => _session.Workspace.MeshFor(group.Key).Find(p.Id), strength);
+        int skipped = pieces.Count - creased;
+        return new
+        {
+            ok = true, creasedPieces = creased, strengthPercent = MathF.Round(strength * 100f),
+            note = skipped > 0 ? $"{skipped} piece(s) have not been draped, so they have no folds to keep: simulate first." : null,
+        };
     }
 
     private object AddHardware(JsonElement args)

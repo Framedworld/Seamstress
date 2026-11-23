@@ -572,13 +572,15 @@ public sealed class Workspace
     }
 
     /// <param name="bodyHeight">Height of the current avatar in metres, so the pieces start at the right level.</param>
-    public Garment AddTemplate(string template, float bodyHeight = Templates.ReferenceBodyHeight)
+    /// <param name="body">The current avatar: the fitted templates are cut to its measurements.</param>
+    public Garment AddTemplate(string template, float bodyHeight = Templates.ReferenceBodyHeight, Simulation.TriMesh? body = null)
     {
         Garment? added = null;
         History.Execute(Lang.F("Add {0}", Lang.T(template)), doc =>
         {
-            added = Templates.Create(template, doc, bodyHeight);
-            doc.Garments.Add(added);
+            var made = Templates.CreateAll(template, doc, bodyHeight, body);
+            added = made[0];
+            doc.Garments.AddRange(made);
         });
         SelectLayer(added!.Id);
         return added;
@@ -2443,6 +2445,43 @@ public sealed class Workspace
                 piece.ClearDrape();
         });
     }
+
+    /// <summary>
+    /// The cloth keeps the folds it has now (see <see cref="Creases"/>): for the selected pieces, or the whole active
+    /// garment when <paramref name="wholeGarment"/> is set. Returns the number of pieces creased.
+    /// </summary>
+    public int SetCreases(bool wholeGarment, float strength = Creases.DefaultStrength)
+    {
+        var ids = CreaseTargets(wholeGarment);
+        int count = Document.AllPieces().Count(p => ids.Contains(p.Id) && p.Drape != null);
+        if (count == 0)
+            return 0;
+        History.Execute(Lang.T("Set creases"), doc =>
+        {
+            foreach (var garment in doc.Garments)
+            {
+                var pieces = garment.Pieces.Where(p => ids.Contains(p.Id)).ToList();
+                if (pieces.Count > 0)
+                    Creases.Set(pieces, p => MeshFor(garment).Find(p.Id), strength);
+            }
+        });
+        return count;
+    }
+
+    /// <summary>Forgets the set creases of the selected pieces, or of the whole active garment.</summary>
+    public int ClearCreases(bool wholeGarment)
+    {
+        var ids = CreaseTargets(wholeGarment);
+        int count = Document.AllPieces().Count(p => ids.Contains(p.Id) && p.Crease != null);
+        if (count == 0)
+            return 0;
+        History.Execute(Lang.T("Clear creases"), doc => Creases.Clear(doc.AllPieces().Where(p => ids.Contains(p.Id))));
+        return count;
+    }
+
+    private HashSet<string> CreaseTargets(bool wholeGarment) => wholeGarment
+        ? (ActiveGarment?.Pieces.Select(p => p.Id).ToHashSet() ?? new HashSet<string>())
+        : SelectedPieces.ToHashSet();
 
     // ---------------------------------------------------------------- moving pieces in 3D
 

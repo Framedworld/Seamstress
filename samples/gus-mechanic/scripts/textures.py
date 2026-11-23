@@ -56,7 +56,14 @@ def save(path, arr):
     Image.fromarray((np.clip(arr, 0, 1) * 255).astype(np.uint8)).save(path)
 
 
-def fabric(out, name, base, weave, seed, wear=0.18, grime=(0.30, 0.24, 0.17), grime_amt=0.25, bump=3.0, rough=0.86):
+def crumple(seed, n=N):
+    """Soft creases, as cloth keeps after being worn and washed: for the normal map only, never the colour."""
+    a = np.abs(noise(1.7, seed, n, lo=3) - 0.5) * 2
+    b = np.abs(noise(1.5, seed + 9, n, lo=7) - 0.5) * 2
+    return 1 - np.clip(0.65 * a + 0.35 * b, 0, 1) ** 0.6
+
+
+def fabric(out, name, base, weave, seed, wear=0.18, grime=(0.30, 0.24, 0.17), grime_amt=0.25, bump=3.0, rough=0.86, crease=0.0, wash=0.0):
     """Fine weave + stippled grit + mid-frequency wear. No low-frequency blotches (they read as camouflage)."""
     fine = noise(0.6, seed, lo=40)
     mid = noise(1.2, seed + 1, lo=14)
@@ -70,10 +77,40 @@ def fabric(out, name, base, weave, seed, wear=0.18, grime=(0.30, 0.24, 0.17), gr
     alb = alb + fade[..., None] * (0.55 - alb) * 0.5
     dirt = np.clip((noise(1.0, seed + 3, lo=16) - 0.52) * 4, 0, 1) * grime_amt * (0.6 + 0.4 * grit)
     alb = alb * (1 - dirt[..., None]) + np.array(grime)[None, None, :] * dirt[..., None]
+    if wash > 0:
+        # stone-washed canvas: paler, slightly warmer patches a few centimetres across
+        pale = np.clip((noise(1.4, seed + 5, lo=7) - 0.45) * 2.2, 0, 1) * wash
+        alb = alb + pale[..., None] * (np.array([0.30, 0.28, 0.27]) - alb) * 0.55
     save(out / f"{name}.png", alb)
-    save(out / f"{name}_normal.png", normal_map(height, bump))
+    relief = height + crease * 6.0 * crumple(seed + 20) if crease > 0 else height
+    save(out / f"{name}_normal.png", normal_map(relief, bump))
     r = rough + 0.08 * (fine - 0.5) - 0.10 * fade + 0.06 * dirt
     save(out / f"{name}_rough.png", np.repeat(r[..., None], 3, -1))
+
+
+def hoodie_front(out, name, base, w=512, h=1024):
+    """Fit-to-piece front of the zip hoodie: fleece, with the zip tape and brass teeth down its centre-front edge
+    (the left edge of the picture; the mirrored copy is for the other front)."""
+    y, x = np.mgrid[0:h, 0:w]
+    fl = np.tile(noise(0.9, 57, lo=24), (2, 1))[:h, :w]
+    fine = np.tile(noise(0.3, 58, lo=110), (2, 1))[:h, :w]
+    b = np.array(base, float) / 255
+    alb = b[None, None, :] * (0.78 + 0.35 * fl + 0.2 * (fine - 0.5))[..., None]
+    tape = x < w * 0.065
+    alb[tape] = np.array([0.075, 0.07, 0.07])
+    teeth = (x < w * 0.032) & ((y % 12) < 8)
+    alb[teeth] = np.array([0.56, 0.42, 0.20]) * (0.75 + 0.35 * ((y[teeth] % 12) / 8))[:, None]
+    stitch = (np.abs(x - w * 0.085) < 1.2) & ((y // 7) % 2 == 0)
+    alb[stitch] = alb[stitch] * 0.5 + 0.09
+    metal_map = np.zeros((h, w, 3)); metal_map[teeth] = 1
+    height = fl * 0.6 + fine * 0.4; height[teeth] += 0.9; height[tape & ~teeth] -= 0.15
+    r = np.full((h, w), 0.95); r[teeth] = 0.34
+    for suffix, flip in (("", False), ("_mirror", True)):
+        f = (lambda a: a[:, ::-1]) if flip else (lambda a: a)
+        save(out / f"{name}{suffix}.png", f(alb))
+        save(out / f"{name}{suffix}_normal.png", normal_map(f(height), 2.6))
+        save(out / f"{name}{suffix}_rough.png", np.repeat(f(r)[..., None], 3, -1))
+        save(out / f"{name}{suffix}_metal.png", f(metal_map))
 
 
 def leather(out, name, base, seed):
@@ -83,7 +120,7 @@ def leather(out, name, base, seed):
     base = np.array(base, float) / 255
     alb = base[None, None, :] * (0.8 + 0.5 * (height - 0.2))[..., None]
     scuff = np.clip((noise(1.5, seed + 3, lo=5) - 0.6) * 5, 0, 1) * 0.35
-    alb = alb + scuff[..., None] * (np.array([0.62, 0.5, 0.36]) - alb)
+    alb = alb + scuff[..., None] * (np.array([0.40, 0.32, 0.24]) - alb)
     save(out / f"{name}.png", alb)
     save(out / f"{name}_normal.png", normal_map(height, 4.0))
     save(out / f"{name}_rough.png", np.repeat((0.55 + 0.25 * scuff + 0.1 * (cells - 0.5))[..., None], 3, -1))
@@ -112,7 +149,7 @@ def knee_patch(out, name, base, seed, w=640, h=960):
     height = 0.6 * weave + 0.4 * fine
     base = np.array(base, float) / 255
     alb = base[None, None, :] * (1 + 0.5 * (height - 0.5))[..., None]
-    alb = alb * (1 - 0.75 * dirt[..., None]) + np.array([0.36, 0.28, 0.19])[None, None, :] * 0.75 * dirt[..., None]
+    alb = alb * (1 - 0.6 * dirt[..., None]) + np.array([0.27, 0.21, 0.15])[None, None, :] * 0.6 * dirt[..., None]
     edge = np.minimum.reduce([x, y, w - 1 - x, h - 1 - y]).astype(float)
     alb *= (0.72 + 0.28 * np.clip(edge / 26, 0, 1))[..., None]          # worn, darker rim
     for inset in (16, 28):                                               # double-needle topstitch
@@ -148,17 +185,19 @@ def zipper(out, name, w=128, h=1536):
 
 def main(out):
     out = pathlib.Path(out); out.mkdir(parents=True, exist_ok=True)
-    fabric(out, "canvas_navy", (37, 41, 56), twill(8), 11, wear=0.14, grime_amt=0.22)
-    fabric(out, "canvas_charcoal", (38, 40, 50), twill(8), 23, wear=0.14, grime_amt=0.30)
+    fabric(out, "canvas_navy", (33, 35, 45), twill(8), 11, wear=0.14, grime=(0.24, 0.19, 0.14), grime_amt=0.32, crease=0.10, wash=0.5)
+    fabric(out, "canvas_charcoal", (31, 32, 39), twill(8), 23, wear=0.14, grime=(0.27, 0.21, 0.14), grime_amt=0.45, crease=0.10, wash=0.4)
+    fabric(out, "fleece_charcoal", (30, 28, 30), noise(0.8, 56, lo=30), 52, wear=0.10, grime_amt=0.08, bump=2.2, rough=0.96, crease=0.08)
+    hoodie_front(out, "hoodie_front", (34, 32, 34))
     fabric(out, "duck_brown", (60, 52, 46), twill(10), 31, wear=0.22, grime_amt=0.35)
     fabric(out, "jersey_black", (27, 26, 29), knit(6), 41, wear=0.08, grime_amt=0.08, bump=1.6, rough=0.9)
     fabric(out, "fleece_brown", (41, 35, 32), noise(0.8, 55, lo=30), 51, wear=0.12, grime_amt=0.1, bump=2.2, rough=0.95)
-    fabric(out, "rag_red", (132, 60, 52), plain(8), 61, wear=0.25, grime=(0.2, 0.13, 0.1), grime_amt=0.45, bump=2.5, rough=0.92)
+    fabric(out, "rag_red", (104, 44, 39), plain(8), 61, wear=0.25, grime=(0.16, 0.10, 0.08), grime_amt=0.6, bump=2.5, rough=0.92, crease=0.1)
     fabric(out, "patch_tan", (172, 160, 138), plain(5), 71, wear=0.12, grime_amt=0.18, bump=2.0)
-    leather(out, "leather_brown", (88, 64, 42), 81)
+    leather(out, "leather_brown", (58, 44, 32), 81)
     metal(out, "brass", (176, 138, 72), 91, rough=0.30)
     metal(out, "steel", (150, 154, 160), 92, rough=0.26)
-    knee_patch(out, "knee_panel", (60, 52, 46), 33)
+    knee_patch(out, "knee_panel", (40, 38, 40), 33)
     zipper(out, "zip_facing")
     print("textures ->", out)
 

@@ -694,5 +694,21 @@
   "Which layer of clothing this garment is. 0 is worn next to the skin; a garment with a higher number is worn over the ones with lower numbers, and the simulation keeps it on their outside so they cannot poke through.": "这件服装属于第几层。0 为贴身穿着；数字较大的服装穿在数字较小的服装外面，模拟时会让它保持在外侧，使内层不会穿出。",
   "While a project has unsaved changes, a copy is kept in Seamstress's own data folder, at this interval and after every simulation; your file is not touched. If Seamstress does not close properly, it offers to restore the copy at the next start.": "项目有未保存的更改时，会按此间隔并在每次模拟后，在 Seamstress 自己的数据文件夹中保留一份副本；不会改动您的文件。如果 Seamstress 没有正常关闭，下次启动时会询问是否恢复该副本。",
   "Worn as layer": "穿着层次",
-  "Worn over: %1": "穿在这些外面：%1"
+  "Worn over: %1": "穿在这些外面：%1",
+  "Fitted Tee": "合身T恤",
+  "Fitted Trousers": "合身长裤",
+  "Fitted Jacket": "合身夹克",
+  "Fitted Hoodie": "合身连帽衫",
+  "Set creases": "固定褶皱",
+  "Clear creases": "清除褶皱",
+  "Set Creases": "固定褶皱",
+  "Clear Creases": "清除褶皱",
+  "Creases set in {0} pieces: the cloth keeps these folds.": "已在 {0} 个裁片上固定褶皱：布料会保持这些褶皱。",
+  "Nothing to crease yet: simulate the garment first.": "还没有可固定的褶皱：请先模拟服装。",
+  "Creases cleared from {0} pieces.": "已清除 {0} 个裁片的褶皱。",
+  "No creases to clear.": "没有可清除的褶皱。",
+  "Grab %1 cm": "抓取 %1 厘米",
+  "How much cloth the pinch takes hold of": "捏取时抓住的布料范围",
+  "Keep the folds the cloth has now: pinch it into shape, then set creases so it does not spring back flat": "保留布料现有的褶皱：先捏出形状，再固定褶皱，布料就不会弹回平整",
+  "Forget the set creases: the cloth bends back towards flat": "清除已固定的褶皱：布料会恢复平整"
 }

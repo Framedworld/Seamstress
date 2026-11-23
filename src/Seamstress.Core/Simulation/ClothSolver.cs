@@ -66,6 +66,17 @@ public sealed partial class ClothSolver : IDisposable
     private int[] _stalled = Array.Empty<int>();
     private bool[] _sewn = Array.Empty<bool>();
     private float[] _pieceGap = Array.Empty<float>();  // per piece: widest of its own stitches, squared
+    private int _fineMeshSubsteps = 1;                 // substeps the finest simulated mesh needs to stay as stiff as it should
+
+    /// <summary>
+    /// Substeps a mesh of this edge length (cm) needs: with too few, a fine mesh is stretchier than its fabric says,
+    /// and a waistband cut at 0.85 cm slips over the hips that the same band at 1 cm holds on to.
+    /// </summary>
+    /// <summary>Substeps actually used each frame: the setting, or more when the mesh is fine enough to need it.</summary>
+    public int EffectiveSubsteps => Math.Clamp(Math.Max(Settings.Substeps, _fineMeshSubsteps), 1, 64);
+
+    public static int SubstepsForMesh(float particleDistanceCm)
+        => particleDistanceCm >= 1f ? 1 : (int)Math.Clamp(MathF.Ceiling(16f / MathF.Pow(MathF.Max(particleDistanceCm, 0.3f), 2.5f)), 16, 64);
     private const int StallFrames = 45;
 
     public IReadOnlyList<ClothPiece> Pieces { get; }
@@ -158,6 +169,11 @@ public sealed partial class ClothSolver : IDisposable
 
         var solver = new ClothSolver(totalCount, pieces, collider, settings);
         solver._realParticleCount = realCount;
+        foreach (var cp in pieces)
+        {
+            if (cp.Simulated)
+                solver._fineMeshSubsteps = Math.Max(solver._fineMeshSubsteps, SubstepsForMesh(cp.Source.EffectiveParticleDistance(cp.Piece)));
+        }
         // For every piece: boundary edge -> the vertex opposite it, used to resist folding across seams.
         var rims = new Dictionary<PieceMesh, Dictionary<long, int>>();
         var triangles = new List<int>();
@@ -226,6 +242,9 @@ public sealed partial class ClothSolver : IDisposable
             }
 
             float bendStiffness = BendStiffness(physics);
+            // Set creases: the bending springs rest at the folded shape instead of flat, so the folds come back.
+            float[]? crease = cloth.Piece.HasCreasesFor(mesh.Key, mesh.VertexCount) ? cloth.Piece.Crease : null;
+            float creaseMix = Math.Clamp(cloth.Piece.CreaseStrength, 0f, 1f);
             var rim = rims[mesh] = new Dictionary<long, int>();
             foreach (var (key, opposite) in edges)
             {
@@ -253,6 +272,12 @@ public sealed partial class ClothSolver : IDisposable
                 {
                     var dAcross = mesh.Points[opposite.D] - mesh.Points[opposite.C];
                     float across = new Vector2(dAcross.X * shrinkX, dAcross.Y * shrinkY).Length() * 0.01f;
+                    if (crease != null)
+                    {
+                        int c3 = opposite.C * 3, d3 = opposite.D * 3;
+                        float folded = new Vector3(crease[d3] - crease[c3], crease[d3 + 1] - crease[c3 + 1], crease[d3 + 2] - crease[c3 + 2]).Length();
+                        across += (folded - across) * creaseMix;
+                    }
                     ca.Add(off + opposite.C);
                     cb.Add(off + opposite.D);
                     rest.Add(across);
@@ -517,7 +542,7 @@ public sealed partial class ClothSolver : IDisposable
     /// <summary>Advances the cloth by one display frame (1/60 s of simulated time at time scale 1).</summary>
     public void Step()
     {
-        int substeps = Math.Clamp(Settings.Substeps, 1, 64);
+        int substeps = Math.Clamp(Math.Max(Settings.Substeps, _fineMeshSubsteps), 1, 64);
         float h = FrameTime * Math.Clamp(Settings.TimeScale, 0.05f, 4f) / substeps;
         var x = Positions;
         int n = x.Length;

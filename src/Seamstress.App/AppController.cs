@@ -735,6 +735,30 @@ public partial class AppController : INotifyPropertyChanged
             : Lang.F("Unpinned {0} vertices", count);
     }
 
+    /// <summary>
+    /// The cloth keeps the folds it has now, so it does not spring back flat: pinch it into shape, set creases, let go.
+    /// Works during a simulation too: the run is stopped, the creases set, and the run picks up again with them.
+    /// </summary>
+    public void SetCreases() => Crease(set: true);
+
+    /// <summary>Forgets the set creases: the cloth bends back towards flat again.</summary>
+    public void ClearCreases() => Crease(set: false);
+
+    private void Crease(bool set)
+    {
+        bool wasRunning = _simulation.IsRunning;
+        if (wasRunning)
+            StopSimulation();
+        bool whole = _workspace.SelectedPieces.Count == 0 || _workspace.SelectedLayerId != null;
+        int count = set ? _workspace.SetCreases(whole) : _workspace.ClearCreases(whole);
+        if (wasRunning)
+            StartSimulation();
+        StatusText = set
+            ? count == 0 ? Lang.T("Nothing to crease yet: simulate the garment first.") : Lang.F("Creases set in {0} pieces: the cloth keeps these folds.", count)
+            : count == 0 ? Lang.T("No creases to clear.") : Lang.F("Creases cleared from {0} pieces.", count);
+        ViewportRevision++;
+    }
+
     public void UnpinAll()
     {
         int count = _workspace.UnpinAll();
@@ -802,6 +826,18 @@ public partial class AppController : INotifyPropertyChanged
     // and stopped again shortly after the cloth is let go, so the whole pinch is a single undo step.
     private bool _pinchStartedSimulation;
     private bool _pinching;
+    private double _pinchRadiusCm = 5;
+
+    /// <summary>How much cloth a pinch takes hold of: everything within this many centimetres of the grabbed point.</summary>
+    public double PinchRadiusCm
+    {
+        get => _pinchRadiusCm;
+        set
+        {
+            double v = Math.Clamp(Math.Round(value), 1, 30);
+            if (v != _pinchRadiusCm) { _pinchRadiusCm = v; Notify(); }
+        }
+    }
     private long _pinchStopFrame = -1;
     private const int PinchSettleFrames = 45;
 
@@ -836,7 +872,7 @@ public partial class AppController : INotifyPropertyChanged
         }
         _pinching = true;
         _pinchStopFrame = -1;
-        _simulation.BeginPinch(new Vector3((float)x, (float)y, (float)z));
+        _simulation.BeginPinch(new Vector3((float)x, (float)y, (float)z), (float)(_pinchRadiusCm / 100.0));
         StatusText = Lang.T("Pinching — drag to pull the cloth, release to let it settle.");
         return true;
     }
@@ -1040,7 +1076,7 @@ public partial class AppController : INotifyPropertyChanged
 
     public void AddTemplate(string name)
     {
-        _workspace.AddTemplate(name, _avatar?.Mesh.Bounds().Max.Y ?? Templates.ReferenceBodyHeight);
+        _workspace.AddTemplate(name, _avatar?.Mesh.Bounds().Max.Y ?? Templates.ReferenceBodyHeight, _avatar?.Mesh);
         StatusText = Lang.F("Added {0}. Press Simulate to sew and drape it.", Lang.T(name));
     }
 

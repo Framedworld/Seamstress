@@ -694,5 +694,21 @@
   "Which layer of clothing this garment is. 0 is worn next to the skin; a garment with a higher number is worn over the ones with lower numbers, and the simulation keeps it on their outside so they cannot poke through.": "Qual camada de roupa esta peça de vestuário é. A 0 é usada junto à pele; uma roupa com número maior é usada sobre as de número menor, e a simulação a mantém por fora delas para que não a atravessem.",
   "While a project has unsaved changes, a copy is kept in Seamstress's own data folder, at this interval and after every simulation; your file is not touched. If Seamstress does not close properly, it offers to restore the copy at the next start.": "Enquanto um projeto tem alterações não salvas, uma cópia é mantida na pasta de dados do Seamstress, neste intervalo e depois de cada simulação; o seu arquivo não é alterado. Se o Seamstress não for fechado corretamente, ele oferece restaurar a cópia na próxima inicialização.",
   "Worn as layer": "Camada da roupa",
-  "Worn over: %1": "Usada sobre: %1"
+  "Worn over: %1": "Usada sobre: %1",
+  "Fitted Tee": "Camiseta sob medida",
+  "Fitted Trousers": "Calça sob medida",
+  "Fitted Jacket": "Jaqueta sob medida",
+  "Fitted Hoodie": "Moletom com capuz sob medida",
+  "Set creases": "Fixar vincos",
+  "Clear creases": "Limpar vincos",
+  "Set Creases": "Fixar vincos",
+  "Clear Creases": "Limpar vincos",
+  "Creases set in {0} pieces: the cloth keeps these folds.": "Vincos fixados em {0} peças: o tecido mantém estas dobras.",
+  "Nothing to crease yet: simulate the garment first.": "Ainda não há nada para vincar: simule a peça primeiro.",
+  "Creases cleared from {0} pieces.": "Vincos removidos de {0} peças.",
+  "No creases to clear.": "Não há vincos para limpar.",
+  "Grab %1 cm": "Pegar %1 cm",
+  "How much cloth the pinch takes hold of": "Quanto tecido a pinça segura",
+  "Keep the folds the cloth has now: pinch it into shape, then set creases so it does not spring back flat": "Manter as dobras atuais: belisque o tecido para moldá-lo e depois fixe os vincos para que ele não volte a ficar liso",
+  "Forget the set creases: the cloth bends back towards flat": "Esquecer os vincos fixados: o tecido volta a ficar liso"
 }

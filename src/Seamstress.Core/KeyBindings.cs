@@ -73,6 +73,8 @@ public static class KeyBindings
 
         new("sim.toggle", "Simulation", "Simulate / Stop", new[] { "Space" }),
         new("sim.reset", "Simulation", "Reset Arrangement", Array.Empty<string>()),
+        new("sim.setCreases", "Simulation", "Set Creases", new[] { "K" }),
+        new("sim.clearCreases", "Simulation", "Clear Creases", Array.Empty<string>()),
     };
 
     public static KeyCommand? Find(string id) => Commands.FirstOrDefault(c => c.Id == id);

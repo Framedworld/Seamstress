@@ -6,7 +6,22 @@ namespace Seamstress.Core.Editing;
 /// <summary>Ready-made garments sized for the built-in mannequin; useful starting points and test subjects.</summary>
 public static class Templates
 {
-    public static readonly string[] Names = { "T-Shirt", "Tank Top", "Skirt", "Dress" };
+    /// <summary>The fixed blocks first, then the garments cut to the avatar's own measurements.</summary>
+    public static readonly string[] Names = { "T-Shirt", "Tank Top", "Skirt", "Dress", "Fitted Tee", "Fitted Trousers", "Fitted Jacket", "Fitted Hoodie" };
+
+    /// <summary>
+    /// Every garment a template makes (a fitted hoodie is a body and a hood). <paramref name="body"/> is the avatar
+    /// the fitted templates are measured from; without one they are cut for the built-in mannequin.
+    /// </summary>
+    public static List<Garment> CreateAll(string template, Document document, float bodyHeight = ReferenceBodyHeight,
+        Simulation.TriMesh? body = null, FitOptions? options = null)
+    {
+        if (!FittedGarments.IsFitted(template))
+            return new List<Garment> { Create(template, document, bodyHeight) };
+        var measured = Simulation.BodyMeasurements.Measure(body ?? Simulation.Avatar.CreateMannequin().Mesh);
+        return FittedGarments.Create(template, document, measured, options);
+    }
+
 
     /// <summary>Both the mannequin's and the MakeHuman base mesh's torso sit slightly forward of Z = 0.</summary>
     private const float BodyCentreZ = 0.045f;
@@ -17,6 +32,8 @@ public static class Templates
     /// <param name="bodyHeight">Height of the avatar in metres; pieces are placed at its shoulders, arms and hips.</param>
     public static Garment Create(string template, Document document, float bodyHeight = ReferenceBodyHeight)
     {
+        if (FittedGarments.IsFitted(template))
+            return CreateAll(template, document, bodyHeight)[0];
         float scale = Math.Clamp(bodyHeight / ReferenceBodyHeight, 0.4f, 1.6f);
         var garment = template switch
         {

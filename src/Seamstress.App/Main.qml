@@ -141,6 +141,24 @@ ApplicationWindow {
             }
             // "--view prefs|export|makehuman|garment" captures that dialog or the 3D garment viewport directly.
             const view = App.startupView
+            // "--view picture" (with wide3d, a camera...) saves the 3D view the way "Save 3D View as Image" does: at
+            // twice its size, without the toolbar, the floor grid or the background, for comparing with artwork.
+            if (view.indexOf("picture") >= 0) {
+                const asked = viewport.saveImage(App.startupScreenshot, 2, true, function(saved) {
+                    if (!saved) {
+                        App.automationFailed("could not write the picture " + App.startupScreenshot)
+                        return
+                    }
+                    App.automationDone()
+                    window.closing = true
+                    Qt.quit()
+                })
+                if (asked)
+                    App.automationStep("the picture was requested and waits for the next frame")
+                else
+                    App.automationFailed("the picture could not be started")
+                return
+            }
             const dialog = view.indexOf("prefs") >= 0 ? preferences : view.indexOf("export") >= 0 ? exportOptions
                          : view.indexOf("makehuman") >= 0 ? makeHumanDialog
                          : view.indexOf("bodyshape") >= 0 ? bodyShape
@@ -273,6 +291,8 @@ ApplicationWindow {
         "view.avatar": () => viewport.showAvatar = !viewport.showAvatar,
         "sim.toggle": () => App.toggleSimulation(),
         "sim.reset": () => App.resetArrangement(),
+        "sim.setCreases": () => App.setCreases(),
+        "sim.clearCreases": () => App.clearCreases(),
     })
     function run(id) { if (commands[id]) commands[id]() }
     readonly property var bindings: { App.keysRevision; return JSON.parse(App.keyBindingsJson()) }
@@ -394,6 +414,8 @@ ApplicationWindow {
                 }
                 MenuSeparator {}
                 KeyMenuItem { text: tr("Reset Arrangement"); command: "sim.reset"; onTriggered: App.resetArrangement() }
+                KeyMenuItem { text: tr("Set Creases"); command: "sim.setCreases"; onTriggered: App.setCreases() }
+                KeyMenuItem { text: tr("Clear Creases"); command: "sim.clearCreases"; onTriggered: App.clearCreases() }
                 MenuSeparator {}
                 // The pin actions of the 3D pin brush's right-click menu (PinMenu.qml), for the vertices chosen with it.
                 MenuItem { text: tr("Pin Selected Vertices"); enabled: App.pinSelectionCount > 0; onTriggered: App.pinSelectedVertices() }

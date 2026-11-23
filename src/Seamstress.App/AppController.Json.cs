@@ -244,7 +244,7 @@ public partial class AppController
             _avatarKey = AvatarKeyFor(_workspace.Document.Avatar);
         }
         foreach (string template in options.Templates)
-            _workspace.AddTemplate(template, _avatar?.Mesh.Bounds().Max.Y ?? Templates.ReferenceBodyHeight);
+            _workspace.AddTemplate(template, _avatar?.Mesh.Bounds().Max.Y ?? Templates.ReferenceBodyHeight, _avatar?.Mesh);
         if (options.Quads)
         {
             foreach (var garment in _workspace.Document.Garments)
