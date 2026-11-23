@@ -18,10 +18,31 @@ internal static class QtMesh
     public static void WriteTriangles(string path, Vector3[] positions, Vector3[] normals, Vector2[]? uvs, int[] indices)
     {
         bool hasUv = uvs != null;
-        int stride = hasUv ? 56 : 24;
+        int stride = TriangleStride(hasUv);
         var vertices = new byte[positions.Length * stride];
-        var span = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(vertices.AsSpan());
-        int floats = stride / 4;
+        FillTriangleVertices(System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(vertices.AsSpan()),
+            positions, normals, uvs, indices);
+        var entries = new List<(string, uint, uint)> { ("attr_pos", 3, 0), ("attr_norm", 3, 12) };
+        if (hasUv)
+        {
+            entries.Add(("attr_uv0", 2, 24));
+            entries.Add(("attr_textan", 3, 32));
+            entries.Add(("attr_binormal", 3, 44));
+        }
+        Write(path, vertices, stride, entries, positions, indices, DrawTriangles);
+    }
+
+    /// <summary>Bytes per vertex of a triangle mesh: position and normal, plus UV, tangent and binormal with UVs.</summary>
+    public static int TriangleStride(bool hasUv) => hasUv ? 56 : 24;
+
+    /// <summary>
+    /// Interleaves a triangle mesh's vertices as the viewport draws them (see <see cref="TriangleStride"/>), working
+    /// out the tangents a normal map needs from the UVs. Used for the mesh files and for buffers handed over in memory.
+    /// </summary>
+    public static void FillTriangleVertices(Span<float> span, Vector3[] positions, Vector3[] normals, Vector2[]? uvs, int[] indices)
+    {
+        bool hasUv = uvs != null;
+        int floats = TriangleStride(hasUv) / 4;
 
         Vector3[]? tangents = null;
         Vector3[]? binormals = null;
@@ -71,14 +92,6 @@ internal static class QtMesh
                 span[o + 11] = b.X; span[o + 12] = b.Y; span[o + 13] = b.Z;
             }
         }
-        var entries = new List<(string, uint, uint)> { ("attr_pos", 3, 0), ("attr_norm", 3, 12) };
-        if (hasUv)
-        {
-            entries.Add(("attr_uv0", 2, 24));
-            entries.Add(("attr_textan", 3, 32));
-            entries.Add(("attr_binormal", 3, 44));
-        }
-        Write(path, vertices, stride, entries, positions, indices, DrawTriangles);
     }
 
     public static void WriteLines(string path, Vector3[] positions)

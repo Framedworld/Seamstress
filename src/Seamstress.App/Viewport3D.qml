@@ -139,6 +139,22 @@ Item {
         return picked
     }
 
+    // For the automated check: the id of a piece hit by a ray through one of the shown pieces' vertices, or "".
+    // The pieces' meshes may be handed over in memory, and the picking the tools rely on has to reach them too.
+    function pickAnyPiece() {
+        for (const model of JSON.parse(App.viewportModels()).models) {
+            const data = JSON.parse(App.pinVertices(model.id))
+            const step = 6 * Math.max(1, Math.floor(data.length / 6 / 40))
+            for (let i = 0; i + 5 < data.length; i += step) {
+                const point = view.mapFrom3DScene(Qt.vector3d(data[i], data[i + 1], data[i + 2]))
+                const hit = view.pick(point.x, point.y)
+                if (hit.objectHit && hit.objectHit.pid)
+                    return hit.objectHit.pid
+            }
+        }
+        return ""
+    }
+
     // Box selection covers every visible piece, so it can start on empty space; Shift keeps the old selection.
     function pinBoxSelectAll(x0, y0, x1, y1, additive) {
         if (!App.pinBrush)
@@ -389,7 +405,7 @@ Item {
 
         Repeater3D {
             model: pieceModel
-            delegate: Model {
+            delegate: MeshModel {
                 id: pieceItem
                 required property string pid
                 required property string meshUrl
@@ -406,7 +422,7 @@ Item {
                 readonly property bool checker: root.displayMode === "checker"
                 readonly property bool textured: checker || tex !== ""
 
-                source: meshUrl
+                mesh: meshUrl
                 pickable: true
                 materials: root.showNormals ? [frontFaces] : [fabric]
                 PrincipledMaterial {
@@ -436,7 +452,8 @@ Item {
                 }
                 Model {
                     visible: root.showNormals
-                    source: pieceItem.meshUrl
+                    source: pieceItem.live ? "" : pieceItem.meshUrl
+                    geometry: pieceItem.live ? pieceItem.liveGeometry : null
                     materials: PrincipledMaterial {
                         baseColor: "#e04848"
                         roughness: 0.8
@@ -488,40 +505,40 @@ Item {
         }
 
         // Topology overlay: the outline of every face.
-        Model {
+        MeshModel {
             visible: root.wireframe && root.wireSource !== ""
-            source: root.wireSource
+            mesh: root.wireSource
             materials: PrincipledMaterial { baseColor: "#14161a"; lighting: PrincipledMaterial.NoLighting }
         }
 
         // Threads between stitched edges that have not been pulled together yet.
-        Model {
+        MeshModel {
             visible: root.showThreads && root.threadSource !== ""
-            source: root.threadSource
+            mesh: root.threadSource
             materials: PrincipledMaterial { baseColor: "#ff5a5f"; lighting: PrincipledMaterial.NoLighting }
         }
 
         // The same for surface stitches (patch pockets, flaps, belt loops): from the patch's edge to the line on the
         // host piece it is sewn onto, in the amber the 2D view draws them with.
-        Model {
+        MeshModel {
             visible: root.showThreads && root.stitchSource !== ""
-            source: root.stitchSource
+            mesh: root.stitchSource
             materials: PrincipledMaterial { baseColor: "#f59e0b"; lighting: PrincipledMaterial.NoLighting }
         }
 
         // Pinned vertices stay where they are; the brush selection is a brighter, temporary highlight.
-        Model {
+        MeshModel {
             visible: root.pinSource !== ""
-            source: root.pinSource
+            mesh: root.pinSource
             materials: PrincipledMaterial {
                 baseColor: "#ff8a1f"
                 lighting: PrincipledMaterial.NoLighting
                 cullMode: Material.NoCulling
             }
         }
-        Model {
+        MeshModel {
             visible: root.pinSelectionSource !== ""
-            source: root.pinSelectionSource
+            mesh: root.pinSelectionSource
             materials: PrincipledMaterial {
                 baseColor: "#ffe14d"
                 lighting: PrincipledMaterial.NoLighting

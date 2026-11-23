@@ -20,6 +20,8 @@ internal sealed class ViewportSync : IDisposable
         public string Key = "";
         public int Hash;
         public string Url = "";
+        /// <summary>Bumped whenever the mesh is rebuilt: a "live:" key stays the same while its buffer changes.</summary>
+        public int Revision;
         public readonly Queue<string> Files = new();
     }
 
@@ -192,6 +194,40 @@ internal sealed class ViewportSync : IDisposable
             return "";
         string candidate = Path.Combine(dir, stem + suffix);
         return File.Exists(candidate) ? ToUrl(candidate) : "";
+    }
+
+    private readonly LiveGeometry _live = new();
+
+    /// <summary>The buffers handed to the 3D view in memory; QML attaches its geometry objects to them.</summary>
+    public LiveGeometry Live => _live;
+
+    /// <summary>
+    /// Hands a triangle mesh to the 3D view: in memory where Qt allows it (a "live:" key), otherwise as a new file
+    /// (its URL). Either way the result is what the QML model is given in place of a source.
+    /// </summary>
+    private string PutTriangles(string name, Queue<string> history, Vector3[] positions, Vector3[] normals, Vector2[]? uvs,
+        int[] triangles)
+    {
+        if (_live.Available)
+            return _live.SetTriangles(name, positions, normals, uvs, triangles);
+        string file = NextFile(name, history);
+        QtMesh.WriteTriangles(file, positions, normals, uvs, triangles);
+        return ToUrl(file);
+    }
+
+    /// <summary>The same for line segments; no lines give "".</summary>
+    private string PutLines(string name, Queue<string> history, List<Vector3> lines)
+    {
+        if (lines.Count == 0)
+        {
+            _live.Remove(name);
+            return "";
+        }
+        if (_live.Available)
+            return _live.SetLines(name, lines);
+        string file = NextFile(name, history);
+        QtMesh.WriteLines(file, lines.ToArray());
+        return ToUrl(file);
     }
 
     private string NextFile(string prefix, Queue<string> history)
@@ -405,12 +441,12 @@ internal sealed class ViewportSync : IDisposable
                 if (entry.Url.Length == 0 || entry.Key != pieceMesh.Key || entry.Hash != signature
                     || !ReferenceEquals(entry.Drape, usesDrape ? piece.Drape : null))
                 {
-                    string file = NextFile("p" + piece.Id, entry.Files);
                     Vector2[] uvs = layout.MapMaterial(piece, pieceMesh, material);
                     var shell = Mesher.BuildShell(positions[i], normals[i], uvs,
                         pieceMesh.ShownTriangles(piece.FlipNormals), halfThickness * 2f);
-                    QtMesh.WriteTriangles(file, shell.Positions, shell.Normals, shell.Uvs, shell.Triangles);
-                    entry.Url = ToUrl(file);
+                    entry.Revision = ++_generation;
+                    entry.Url = PutTriangles("p" + piece.Id, entry.Files, shell.Positions, shell.Normals, shell.Uvs,
+                        shell.Triangles);
                     entry.Key = pieceMesh.Key;
                     entry.Hash = signature;
                     entry.Drape = usesDrape ? piece.Drape : null;
@@ -421,6 +457,7 @@ internal sealed class ViewportSync : IDisposable
                     sb.Append(',');
                 first = false;
                 sb.Append("{\"id\":\"").Append(piece.Id).Append("\",\"source\":\"").Append(entry.Url).Append('"');
+                sb.Append(",\"rev\":").Append(entry.Revision);
                 sb.Append(",\"color\":\"").Append(material.Color).Append('"');
                 var (texture, normalMap, roughMap, metalMap) = TextureUrls(material.Texture);
                 sb.Append(",\"texture\":").Append(System.Text.Json.JsonSerializer.Serialize(texture));
@@ -445,48 +482,21 @@ internal sealed class ViewportSync : IDisposable
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
             }
             _entries.Remove(id);
+            _live.Remove("p" + id);
             anyChanged = true;
         }
 
         if (anyChanged || (_seamUrl.Length == 0) != (seamLines.Count == 0))
-        {
-            if (seamLines.Count == 0)
-            {
-                _seamUrl = "";
-            }
-            else
-            {
-                string file = NextFile("seams", _seamFiles);
-                QtMesh.WriteLines(file, seamLines.ToArray());
-                _seamUrl = ToUrl(file);
-            }
-        }
+            _seamUrl = PutLines("seams", _seamFiles, seamLines);
 
         var stitchLines = shownPositions == null ? new List<Vector3>() : SurfaceStitchThreads(workspace, shownPositions);
         if (anyChanged || (_stitchUrl.Length == 0) != (stitchLines.Count == 0))
-        {
-            if (stitchLines.Count == 0)
-            {
-                _stitchUrl = "";
-            }
-            else
-            {
-                string file = NextFile("stitches", _stitchFiles);
-                QtMesh.WriteLines(file, stitchLines.ToArray());
-                _stitchUrl = ToUrl(file);
-            }
-        }
+            _stitchUrl = PutLines("stitches", _stitchFiles, stitchLines);
 
         if (wireLines == null || wireLines.Count == 0)
-        {
-            _wireUrl = "";
-        }
+            _wireUrl = PutLines("wire", _wireFiles, new List<Vector3>());
         else if (anyChanged || _wireUrl.Length == 0)
-        {
-            string file = NextFile("wire", _wireFiles);
-            QtMesh.WriteLines(file, wireLines.ToArray());
-            _wireUrl = ToUrl(file);
-        }
+            _wireUrl = PutLines("wire", _wireFiles, wireLines);
 
         WriteMarkers("pins", pins, _pinFiles, ref _pinHash, ref _pinUrl);
         WriteMarkers("pin_selection", pinSelection, _pinSelectionFiles, ref _pinSelectionHash, ref _pinSelectionUrl);
@@ -620,6 +630,7 @@ internal sealed class ViewportSync : IDisposable
         {
             url = "";
             lastHash = hash;
+            _live.Remove(prefix);
             return;
         }
         if (hash == lastHash && url.Length != 0)
@@ -641,14 +652,13 @@ internal sealed class ViewportSync : IDisposable
             foreach (int corner in new[] { 0, 2, 1, 0, 4, 2, 0, 3, 4, 0, 1, 3, 5, 1, 2, 5, 2, 4, 5, 4, 3, 5, 3, 1 })
                 triangles[triangle++] = vertex + corner;
         }
-        string file = NextFile(prefix, history);
-        QtMesh.WriteTriangles(file, positions, Mesher.ComputeNormals(positions, triangles), null, triangles);
-        url = ToUrl(file);
+        url = PutTriangles(prefix, history, positions, Mesher.ComputeNormals(positions, triangles), null, triangles);
         lastHash = hash;
     }
 
     public void Dispose()
     {
+        _live.Dispose();
         try { Directory.Delete(_folder, true); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }

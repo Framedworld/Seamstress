@@ -636,6 +636,15 @@ public partial class AppController : INotifyPropertyChanged
         return models;
     }
 
+    /// <summary>
+    /// A model of the 3D view shows the buffer behind a "live:" key (from <see cref="ViewportModels"/>) through its
+    /// ProceduralMesh, passed as QML writes it ("ProceduralMesh(0x…)"); the buffer is handed over in memory.
+    /// </summary>
+    public void AttachGeometry(string key, string geometry) => _viewport.Live.Attach(key, geometry);
+
+    /// <summary>The model is going away or shows something else: its geometry is no longer updated.</summary>
+    public void DetachGeometry(string key, string geometry) => _viewport.Live.Detach(key, geometry);
+
     public void SelectIn3D(string pieceId, bool additive)
     {
         if (string.IsNullOrEmpty(pieceId))

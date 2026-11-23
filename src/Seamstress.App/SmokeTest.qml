@@ -93,9 +93,11 @@ QtObject {
         check("garment thickness enabled", selection().garment.thickness !== null)
         App.setGarmentThickness(garmentId, 10)
         check("garment thickness edited", Math.abs(selection().garment.thickness - 10) < 1e-4)
-        const thinSource = JSON.parse(App.viewportModels()).models[0].source
+        // A mesh handed over in memory keeps its "live:" key, so a rebuild shows in its revision.
+        const shownMesh = (m) => m.source + "@" + m.rev
+        const thinSource = shownMesh(JSON.parse(App.viewportModels()).models[0])
         App.setGarmentThickness(garmentId, 20)
-        check("thickness extrudes the displayed mesh", JSON.parse(App.viewportModels()).models[0].source !== thinSource)
+        check("thickness extrudes the displayed mesh", shownMesh(JSON.parse(App.viewportModels()).models[0]) !== thinSource)
         App.setGarmentThickness(garmentId, 10)
         App.setGarmentThicknessEnabled(garmentId, false)
         check("garment thickness disabled", selection().garment.thickness === null)
@@ -123,7 +125,7 @@ QtObject {
         App.undo(); App.undo(); App.undo()
         check("elastic undone", selection().physics.shrinkWeft === 1 && selection().physics.shrinkWarp === 1 && selection().physics.preset === "Custom")
         const tiledPiece = selection().piece.id
-        const meshOf = (id) => JSON.parse(App.viewportModels()).models.find(m => m.id === id).source
+        const meshOf = (id) => shownMesh(JSON.parse(App.viewportModels()).models.find(m => m.id === id))
         App.setMaterialTexture(App.checkerTexture)
         const untiled = meshOf(tiledPiece)
         App.setMaterialValue("tileSize", 12)
@@ -385,6 +387,7 @@ QtObject {
     function finish() {
         App.tick()
         check("simulation running", App.simulating)
+        check("a piece in the 3D view can be picked", viewport.pickAnyPiece() !== "")
         check("only the skirt is simulated", JSON.parse(App.layers()).filter(r => r.kind === "garment" && r.simulating).length === 1)
         App.toggleSimulation()
         check("simulation stopped", !App.simulating)

@@ -7,6 +7,8 @@
     <RootNamespace>Seamstress.App</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- LiveGeometry calls Qt Quick 3D's geometry functions through function pointers. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <QtBridgeAssemblyResourceId>Seamstress</QtBridgeAssemblyResourceId>
 
