@@ -771,6 +771,16 @@ Pane {
                     checked: root.sel.garment ? root.sel.garment.simulateWithOthers : false
                     onToggled: App.setSimulateWithOthers(root.sel.garment.id, checked)
                 }
+                CheckBox {
+                    visible: !!root.sel.garment
+                    Layout.fillWidth: true
+                    text: tr("Frozen")
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: tr("Freeze: hold this garment still and build the next layer on top of it")
+                    checked: root.sel.garment ? !!root.sel.garment.frozen : false
+                    onToggled: App.setFrozen(root.sel.garment.id, checked)
+                }
                 SliderRow { label: tr("Gravity"); from: -20; to: 0; stepSize: 0.1; decimals: 1; suffix: " m/s²"; value: root.sel.simulation.gravity !== undefined ? root.sel.simulation.gravity : -9.8; onEdited: (v) => App.setSimulationValue("gravity", v) }
                 SliderRow { label: tr("Substeps"); from: 4; to: 40; stepSize: 1; value: root.sel.simulation.substeps !== undefined ? root.sel.simulation.substeps : 12; onEdited: (v) => App.setSimulationValue("substeps", v) }
                 SliderRow { label: tr("Speed"); from: 0.1; to: 2; stepSize: 0.1; decimals: 1; suffix: "×"; value: root.sel.simulation.timeScale !== undefined ? root.sel.simulation.timeScale : 1; onEdited: (v) => App.setSimulationValue("timeScale", v) }

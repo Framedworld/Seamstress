@@ -104,11 +104,12 @@ public class CudaClothTests
         return speed[speed.Length / 2];
     }
 
-    // A pinch moves the solver from the GPU to the CPU and back, and the cloth's velocities have to cross with it.
-    // Both tests hold a single particle (the smallest pinch) so that the rest of the cloth keeps falling freely.
+    // A pinch runs on the GPU with the rest of the simulation: holding cloth must not slow the solver down by moving
+    // it to the CPU, nor stop the cloth it does not hold. Both tests hold a single particle (the smallest pinch) so
+    // that the rest of the cloth keeps falling freely.
 
     [Fact]
-    public void FallingClothKeepsItsSpeedWhenAPinchMovesItToTheCpu()
+    public void APinchStaysOnTheGpuAndTheRestOfTheClothKeepsFalling()
     {
         if (!CudaClothBackend.Register())
         {
@@ -124,13 +125,14 @@ public class CudaClothTests
         Assert.True(falling > 1f, $"Expected the cloth to be falling after 10 frames, got {falling:F2} m/s");
 
         solver.BeginPinch(solver.Positions[0], 0.01f);
-        float after = StepMedianSpeed(solver); // this frame runs on the CPU
-        _output.WriteLine($"Falling at {falling:F2} m/s on the GPU, {after:F2} m/s on the first CPU frame");
-        Assert.True(after > 0.8f * falling, $"The cloth lost its speed when the CPU took over: {falling:F2} -> {after:F2} m/s");
+        float after = StepMedianSpeed(solver);
+        _output.WriteLine($"Falling at {falling:F2} m/s, {after:F2} m/s on the first pinched frame");
+        Assert.StartsWith("CUDA", solver.BackendName);
+        Assert.True(after > 0.8f * falling, $"The cloth lost its speed when the pinch began: {falling:F2} -> {after:F2} m/s");
     }
 
     [Fact]
-    public void FallingClothKeepsItsSpeedWhenAPinchEndsAndTheGpuTakesOver()
+    public void ClothHeldOnTheGpuFollowsTheHandAndStaysPutWhenLetGo()
     {
         if (!CudaClothBackend.Register())
         {
@@ -140,16 +142,30 @@ public class CudaClothTests
 
         using var solver = FallingSquare();
         Assert.StartsWith("CUDA", solver.BackendName);
-        solver.BeginPinch(solver.Positions[0], 0.01f);
-        float falling = 0;
-        for (int i = 0; i < 10; i++)
-            falling = StepMedianSpeed(solver); // on the CPU from the first frame, so the GPU has never seen the cloth move
-        Assert.True(falling > 0.8f, $"Expected the cloth to be falling after 10 frames, got {falling:F2} m/s");
+        var start = solver.Positions[0];
+        var hand = start + new Vector3(0.1f, 0.05f, 0f);
+        solver.BeginPinch(start, 0.03f);
+        for (int i = 0; i < 30; i++)
+        {
+            solver.MovePinch(hand);
+            solver.Step();
+        }
+        float reach = Vector3.Distance(solver.Positions[0], hand);
+        _output.WriteLine($"Held corner {reach * 100:F1} cm from the hand after half a second");
+        Assert.True(reach < 0.03f, $"The held cloth did not follow the hand: {reach * 100:F1} cm away");
 
+        // Let go, the cloth carries on with the motion it had; a fling (speed left over from being held) would throw it.
+        static Vector3 Centre(Vector3[] p) => p.Aggregate(Vector3.Zero, (a, b) => a + b) / p.Length;
+        var before = Centre(solver.Positions);
+        solver.MovePinch(hand);
+        solver.Step();
+        var held = Centre(solver.Positions);
         solver.EndPinch();
-        float after = StepMedianSpeed(solver); // back on the GPU
-        _output.WriteLine($"Falling at {falling:F2} m/s on the CPU, {after:F2} m/s on the first GPU frame");
-        Assert.True(after > 0.8f * falling, $"The cloth lost its speed when the GPU took over: {falling:F2} -> {after:F2} m/s");
+        solver.Step();
+        var released = Centre(solver.Positions);
+        float change = Vector3.Distance(held - before, released - held);
+        _output.WriteLine($"Centre moved {(held - before).Length() * 100:F2} cm held, {(released - held).Length() * 100:F2} cm let go");
+        Assert.True(change < 0.01f, $"The cloth was flung when it was let go: its motion changed by {change * 100:F1} cm in one frame");
     }
 
     private static PatternPiece HorizontalSheet(string name, float size, float height)

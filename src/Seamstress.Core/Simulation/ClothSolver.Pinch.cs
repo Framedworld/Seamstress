@@ -20,6 +20,13 @@ public sealed partial class ClothSolver
     private float[] _pinchStrength = Array.Empty<float>();
     private Vector3[] _pinchOffset = Array.Empty<Vector3>();
     private Vector3 _pinchHand;
+    // The middle of the held patch is held rigidly (its mass set aside) so it stays under the cursor however much
+    // cloth hangs from it; only the rim gives. Their own masses come back when the cloth is let go.
+    internal const float PinchCoreStrength = 0.5f;
+    private int[] _pinchCore = Array.Empty<int>();
+    private float[] _pinchCoreMass = Array.Empty<float>();
+    private bool _pinchChanged;
+    private Vector3[] _pinchHands = Array.Empty<Vector3>();
 
     /// <summary>True while a patch of cloth is being held.</summary>
     public bool IsPinching => _pinched.Length > 0 || _pinchRequest != null;
@@ -61,8 +68,17 @@ public sealed partial class ClothSolver
         {
             if (_pinchRelease)
             {
+                // Let go without a fling: while held, the cloth carries the speed of being dragged against its own
+                // seams and stretch, which threw a sleeve 12 cm the moment it was released.
+                if (_accelerator == null)
+                {
+                    foreach (int i in _pinched)
+                        _velocity[i] = Vector3.Zero;
+                }
                 _pinched = Array.Empty<int>();
                 _pinchRelease = false;
+                _pinchChanged = true;
+                RestorePinchCore();
             }
             request = _pinchRequest;
             radius = _pinchRadius;
@@ -70,6 +86,7 @@ public sealed partial class ClothSolver
         }
         if (request is not { } point)
             return;
+        RestorePinchCore();
 
         var x = Positions;
         int nearest = -1;
@@ -109,14 +126,48 @@ public sealed partial class ClothSolver
         _pinched = particles.ToArray();
         _pinchStrength = strength.ToArray();
         _pinchOffset = offsets.ToArray();
+        var core = new List<int>();
+        for (int k = 0; k < _pinched.Length; k++)
+        {
+            if (_pinchStrength[k] >= PinchCoreStrength)
+                core.Add(_pinched[k]);
+        }
+        _pinchCore = core.ToArray();
+        _pinchCoreMass = _pinchCore.Select(i => _invMass[i]).ToArray();
+        foreach (int i in _pinchCore)
+            _invMass[i] = 0f;
         _pinchHand = centre;
+        _pinchChanged = true;
     }
 
-    /// <summary>Every substep: draw the held particles towards the hand.</summary>
-    private void ApplyPinch(float h)
+    private void RestorePinchCore()
     {
+        for (int k = 0; k < _pinchCore.Length; k++)
+            _invMass[_pinchCore[k]] = _pinchCoreMass[k];
+        _pinchCore = Array.Empty<int>();
+        _pinchCoreMass = Array.Empty<float>();
+    }
+
+    /// <summary>Hands the held cloth to the accelerator when it changed, and the hand's path through this frame.</summary>
+    private Vector3[]? PinchForAccelerator(int substeps, float h)
+    {
+        if (_pinchChanged)
+        {
+            _accelerator!.SetPinch(_pinched, _pinchStrength, _pinchOffset, PinchCoreStrength);
+            _pinchChanged = false;
+        }
         if (_pinched.Length == 0)
-            return;
+            return null;
+        if (_pinchHands.Length != substeps)
+            _pinchHands = new Vector3[substeps];
+        for (int s = 0; s < substeps; s++)
+            _pinchHands[s] = MoveHand(h);
+        return _pinchHands;
+    }
+
+    /// <summary>One substep of the hand towards where the user is dragging, at a limited speed.</summary>
+    private Vector3 MoveHand(float h)
+    {
         Vector3 target;
         lock (_pinchGate)
             target = _pinchTarget;
@@ -124,7 +175,15 @@ public sealed partial class ClothSolver
         float distance = toTarget.Length();
         float step = PinchMaxSpeed * h;
         _pinchHand = distance <= step ? target : _pinchHand + toTarget * (step / distance);
+        return _pinchHand;
+    }
 
+    /// <summary>Every substep: draw the held particles towards the hand.</summary>
+    private void ApplyPinch(float h)
+    {
+        if (_pinched.Length == 0)
+            return;
+        MoveHand(h);
         var x = Positions;
         for (int k = 0; k < _pinched.Length; k++)
         {

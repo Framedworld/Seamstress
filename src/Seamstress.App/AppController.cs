@@ -63,6 +63,7 @@ public partial class AppController : INotifyPropertyChanged
         _workspace.History.Changed += OnDocumentChanged;
         _workspace.SelectionChanged += OnDocumentChanged;
         _editor.Changed += () => SceneRevision++;
+        _editor.OverlayChanged += () => OverlayRevision++;
         _editor.CutMade += outcome =>
         {
             StatusText = outcome.Problem ?? (outcome.SourcePieces == 1
@@ -124,6 +125,16 @@ public partial class AppController : INotifyPropertyChanged
     public int SelectionRevision { get => _selectionRevision; private set { _selectionRevision = value; Notify(); } }
     public int ViewportRevision { get => _viewportRevision; private set { _viewportRevision = value; Notify(); } }
     public int ErrorRevision { get => _errorRevision; private set { _errorRevision = value; Notify(); } }
+
+    /// <summary>Goes up while a selection box is dragged in the 2D view; only the box is redrawn.</summary>
+    public int OverlayRevision { get => _overlayRevision; private set { _overlayRevision = value; Notify(); } }
+    private int _overlayRevision;
+
+    /// <summary>The selection box being dragged in the 2D view as [x0, y0, x1, y1] in pattern centimetres, or "null".</summary>
+    public string MarqueeBox()
+        => _editor.Marquee is { } box
+            ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"[{box[0]},{box[1]},{box[2]},{box[3]}]")
+            : "null";
 
     /// <summary>Goes up when the avatar was built or replaced, so the 2D view reads its outline again.</summary>
     public int AvatarRevision { get => _avatarRevision; private set { _avatarRevision = value; Notify(); } }
@@ -473,7 +484,11 @@ public partial class AppController : INotifyPropertyChanged
     public void PointerMove(double x, double y, double tolerance)
         => _editor.PointerMove(new Vector2((float)x, (float)y), (float)tolerance);
 
-    public void PointerUp(double x, double y) => _editor.PointerUp(new Vector2((float)x, (float)y));
+    public void PointerUp(double x, double y)
+    {
+        _editor.PointerUp(new Vector2((float)x, (float)y));
+        OverlayRevision++; // the selection box, if one was dragged, is gone
+    }
 
     public void DoubleClick(double x, double y, double tolerance, bool additive)
     {
@@ -615,7 +630,10 @@ public partial class AppController : INotifyPropertyChanged
     public string ViewportModels()
     {
         _viewport.PinToolActive = _pinBrush;
-        return _viewport.Sync(_workspace, _avatar);
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        string models = _viewport.Sync(_workspace, _avatar);
+        BenchmarkCountSync(System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+        return models;
     }
 
     public void SelectIn3D(string pieceId, bool additive)
@@ -846,12 +864,32 @@ public partial class AppController : INotifyPropertyChanged
     }
     private long _pinchStopFrame = -1;
     private const int PinchSettleFrames = 45;
+    private string? _pinchGarmentId;
+    private bool _pinchKeepsShape = true;
+
+    /// <summary>
+    /// Letting go of a pinch keeps the shape the cloth was pulled into (its folds are set as creases), instead of
+    /// stiff cloth springing back to the shape it had.
+    /// </summary>
+    public bool PinchKeepsShape
+    {
+        get => _pinchKeepsShape;
+        set
+        {
+            if (value != _pinchKeepsShape) { _pinchKeepsShape = value; Notify(); }
+        }
+    }
 
     public bool PinchBegin(string pieceId, double x, double y, double z)
     {
         var garment = _workspace.Document.GarmentOfPiece(pieceId);
         if (garment == null)
             return false;
+        if (garment.Frozen)
+        {
+            StatusText = Lang.F("“{0}” is frozen. Unfreeze it in the layers panel to pull it.", garment.Name);
+            return false;
+        }
         if (!_simulation.IsRunning)
         {
             if (_avatarTask != null)
@@ -877,6 +915,7 @@ public partial class AppController : INotifyPropertyChanged
             return false;
         }
         _pinching = true;
+        _pinchGarmentId = garment.Id;
         _pinchStopFrame = -1;
         _simulation.BeginPinch(new Vector3((float)x, (float)y, (float)z), (float)(_pinchRadiusCm / 100.0));
         StatusText = Lang.T("Pinching — drag to pull the cloth, release to let it settle.");
@@ -894,6 +933,20 @@ public partial class AppController : INotifyPropertyChanged
         if (!_pinching)
             return;
         _pinching = false;
+        if (_pinchKeepsShape && _pinchGarmentId is { } held)
+        {
+            // Stop while the cloth is still held, so the drape is the pulled shape, and set it as the garment's creases.
+            bool continuous = !_pinchStartedSimulation;
+            StopSimulation();
+            int count = _workspace.KeepPulledShape(held);
+            if (continuous)
+                StartSimulation();
+            StatusText = count > 0
+                ? Lang.T("Pinch applied and kept. Ctrl+Z undoes it.")
+                : Lang.T("Pinch applied. Ctrl+Z undoes it.");
+            ViewportRevision++;
+            return;
+        }
         _simulation.EndPinch();
         if (_pinchStartedSimulation)
             _pinchStopFrame = _simulation.Frame + PinchSettleFrames;
@@ -949,6 +1002,7 @@ public partial class AppController : INotifyPropertyChanged
         }
         if (_simulation.Pump())
         {
+            BenchmarkCountFrame();
             ViewportRevision++;
             SimInfo = Lang.F("Simulating · {0:N0} particles · {1:0.0} ms/step", _simulation.ParticleCount, _simulation.StepMilliseconds);
         }
@@ -1282,6 +1336,18 @@ public partial class AppController : INotifyPropertyChanged
     }
 
     public void SetSimulateWithOthers(string garmentId, bool value) => _workspace.SetSimulateWithOthers(garmentId, value);
+
+    /// <summary>Freezes a garment so it holds still and what is simulated collides with it, or lets it move again.</summary>
+    public void SetFrozen(string garmentId, bool value)
+    {
+        if (_simulation.IsRunning)
+            StopSimulation();
+        _workspace.SetFrozen(garmentId, value);
+        var name = _workspace.Document.FindGarment(garmentId)?.Name ?? "";
+        StatusText = value
+            ? Lang.F("“{0}” is frozen: it holds still, and the garments you simulate collide with it.", name)
+            : Lang.F("“{0}” can move again.", name);
+    }
     public void SetGarmentThicknessEnabled(string garmentId, bool enabled) => _workspace.SetGarmentThicknessEnabled(garmentId, enabled);
     public void SetGarmentThickness(string garmentId, double millimetres) => _workspace.SetGarmentThickness(garmentId, (float)millimetres);
 

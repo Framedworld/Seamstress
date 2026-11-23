@@ -777,5 +777,17 @@
   "Hood pushed down": "放下的帽兜",
   "Round the roll": "卷边周长",
   "Length": "长度",
-  "Only round the back of the neck (under a jacket collar)": "只缝在后颈（在夹克领下）"
+  "Only round the back of the neck (under a jacket collar)": "只缝在后颈（在夹克领下）",
+  "Pinch applied and kept. Ctrl+Z undoes it.": "已应用并保留捏拉。按 Ctrl+Z 撤销。",
+  "Freeze garment": "冻结服装",
+  "Unfreeze garment": "解冻服装",
+  "“{0}” is frozen. Unfreeze it in the layers panel to simulate it.": "“{0}”已冻结。请在图层面板中解冻后再模拟。",
+  "“{0}” is frozen: it holds still, and the garments you simulate collide with it.": "“{0}”已冻结：它保持不动，模拟的服装会与它碰撞。",
+  "“{0}” can move again.": "“{0}”可以再次移动。",
+  "“{0}” is frozen. Unfreeze it in the layers panel to pull it.": "“{0}”已冻结。请在图层面板中解冻后再拉动。",
+  "Keep Shape": "保持形状",
+  "Letting go keeps the shape the cloth was pulled into. Off, stiff cloth springs back to the shape it had.": "松开后布料保持被拉成的形状。关闭时，硬挺的布料会弹回原来的形状。",
+  "Frozen: it holds still, and the garments you simulate collide with it. Click to let it move again.": "已冻结：保持不动，模拟的服装会与它碰撞。点击可再次移动。",
+  "Freeze: hold this garment still and build the next layer on top of it": "冻结：保持此服装不动，并在其上制作下一层",
+  "Frozen": "已冻结"
 }

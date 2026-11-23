@@ -777,5 +777,17 @@
   "Hood pushed down": "下ろしたフード",
   "Round the roll": "ロールの周囲",
   "Length": "長さ",
-  "Only round the back of the neck (under a jacket collar)": "首の後ろだけ（ジャケットの襟の下）"
+  "Only round the back of the neck (under a jacket collar)": "首の後ろだけ（ジャケットの襟の下）",
+  "Pinch applied and kept. Ctrl+Z undoes it.": "つまみを適用し、形を保持しました。Ctrl+Z で元に戻せます。",
+  "Freeze garment": "衣服を固定",
+  "Unfreeze garment": "衣服の固定を解除",
+  "“{0}” is frozen. Unfreeze it in the layers panel to simulate it.": "「{0}」は固定されています。シミュレーションするにはレイヤーパネルで固定を解除してください。",
+  "“{0}” is frozen: it holds still, and the garments you simulate collide with it.": "「{0}」を固定しました。動かず、シミュレーションする衣服がこれに衝突します。",
+  "“{0}” can move again.": "「{0}」は再び動けます。",
+  "“{0}” is frozen. Unfreeze it in the layers panel to pull it.": "「{0}」は固定されています。引っ張るにはレイヤーパネルで固定を解除してください。",
+  "Keep Shape": "形を保持",
+  "Letting go keeps the shape the cloth was pulled into. Off, stiff cloth springs back to the shape it had.": "放したときに、引っ張った形を布が保ちます。オフにすると、硬い布は元の形に戻ります。",
+  "Frozen: it holds still, and the garments you simulate collide with it. Click to let it move again.": "固定中：動かず、シミュレーションする衣服がこれに衝突します。クリックで再び動かせます。",
+  "Freeze: hold this garment still and build the next layer on top of it": "固定：この衣服を動かさず、その上に次のレイヤーを作ります",
+  "Frozen": "固定"
 }

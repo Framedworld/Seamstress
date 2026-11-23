@@ -187,14 +187,15 @@ public sealed class GarmentSession
         {
             if (!g.Visible || g.Pieces.Count == 0)
                 continue;
-            bool sim = allGarments
-                || (garmentId != null ? g.Id == garmentId : (Workspace.ActiveGarment?.Id == g.Id || g.SimulateWithOthers));
+            bool sim = !g.Frozen && (allGarments
+                || (garmentId != null ? g.Id == garmentId : (Workspace.ActiveGarment?.Id == g.Id || g.SimulateWithOthers)));
             if (sim) targets.Add(g);
             else obstacles.Add(g);
         }
         if (targets.Count == 0)
             throw new InvalidOperationException("No visible garments with pieces to simulate.");
 
+        Attachments.Prepare(Doc, Workspace.MeshFor);
         var simMeshes = targets.Select(Workspace.MeshFor).ToList();
         var obsMeshes = obstacles.Select(Workspace.MeshFor).ToList();
 
@@ -212,13 +213,16 @@ public sealed class GarmentSession
                 solver.Step();
             sw.Stop();
 
-            // Write draped positions back into the document pieces
+            // Write draped positions back into the document pieces; hard parts on them are carried along.
+            var moved = new HashSet<string>();
             foreach (var cp in solver.Pieces)
             {
                 if (!cp.Simulated) continue;
                 cp.Piece.Drape = solver.ExtractDrape(cp);
                 cp.Piece.DrapeKey = cp.Mesh.Key;
+                moved.Add(cp.Piece.Id);
             }
+            Attachments.Follow(Doc, Workspace.MeshFor, moved);
 
             return new
             {

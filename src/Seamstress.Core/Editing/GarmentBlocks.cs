@@ -410,7 +410,7 @@ public static class GarmentBlocks
         float spinDegrees = 0, float rollDegrees = 0, bool followTilt = true)
     {
         var host = Host(document, meshFor, hostPieceId);
-        if (!SurfaceLocator.TryLocate(host.Mesh, host.Positions, at, host.Piece.FlipNormals, out var position, out var normal, out _))
+        if (!SurfaceLocator.TryLocate(host.Mesh, host.Positions, at, host.Piece.FlipNormals, out var position, out var normal, out _, out var snapped))
             throw new ArgumentException($"'{host.Piece.Name}' has no surface to set hardware on.");
         var garment = document.Garments.FirstOrDefault(g => g.Name == garmentName);
         if (garment == null)
@@ -436,12 +436,14 @@ public static class GarmentBlocks
         var middle = (lo + hi) / 2;
         var toMiddle = Vector3.TransformNormal(new Vector3(middle.X, middle.Y, 0) * 0.01f, Workspace.EulerMatrix(piece.Placement.Rotation));
         piece.Placement.Position = position + normal * (liftMm * 0.001f + radius) + toMiddle;
-        // Pin every vertex: a simulation leaves it exactly where it was put.
+        // Pin every vertex: a simulation leaves it exactly where it was put. It is attached to its host, so it is
+        // carried along when the host moves.
         if (meshFor(garment).Find(piece.Id) is { } mesh)
         {
             piece.Pins = Enumerable.Range(0, mesh.VertexCount).ToHashSet();
             piece.PinKey = mesh.Key;
         }
+        piece.Attachment = new PieceAttachment { HostPieceId = host.Piece.Id, At = snapped };
         return piece;
     }
 

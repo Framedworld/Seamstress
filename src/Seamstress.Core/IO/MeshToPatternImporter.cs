@@ -298,7 +298,7 @@ public static class MeshToPatternImporter
             return weldId;
 
         // Track pairs of vertices that appear in the same triangle so welding never collapses a triangle edge.
-        var sameTriPairs = new HashSet<long>(triangles.Count * 3);
+        var sameTriPairs = new HashSet<long>(triangles.Count * 3, EdgeKey.Comparer);
         foreach (var t in triangles)
         {
             sameTriPairs.Add(UndirectedKey(t.V0, t.V1));
@@ -429,7 +429,7 @@ public static class MeshToPatternImporter
             warnings.Add($"Only {uvTriCount}/{triCount} triangles had valid UVs; panels without UVs were flattened from 3D.");
 
         // Map undirected 3D welded edge -> incident triangles.
-        var edgeTris = new Dictionary<long, List<int>>(triCount * 2);
+        var edgeTris = new Dictionary<long, List<int>>(triCount * 2, EdgeKey.Comparer);
         for (int t = 0; t < triCount; t++)
         {
             var tri = obj.Triangles[t];
@@ -811,7 +811,7 @@ public static class MeshToPatternImporter
         }
 
         // Collect unique panel edges with exact 3D rest lengths (cm).
-        var edgeSet = new HashSet<long>();
+        var edgeSet = new HashSet<long>(EdgeKey.Comparer);
         var edges = new List<(int U, int V, float RestCm)>(triCount * 2);
         var restTris = new (int A, int B, int C, Vector2 R0, Vector2 R1, Vector2 R2, float Weight)[triCount];
         float maxInitErr = 0f;
@@ -1070,7 +1070,7 @@ public static class MeshToPatternImporter
     private static void ExtractBoundaryLoops(PanelData panel, List<string> warnings)
     {
         int triCount = panel.Triangles.Length / 3;
-        var edgeCounts = new Dictionary<long, int>(triCount * 2);
+        var edgeCounts = new Dictionary<long, int>(triCount * 2, EdgeKey.Comparer);
         var directedEdges = new List<(int From, int To)>(triCount * 3);
 
         for (int t = 0; t < triCount; t++)
@@ -1245,7 +1245,7 @@ public static class MeshToPatternImporter
 
     private static void MatchSeamPartners(List<PanelData> panels)
     {
-        var byWeldEdge = new Dictionary<long, List<BoundaryHalfEdge>>();
+        var byWeldEdge = new Dictionary<long, List<BoundaryHalfEdge>>(EdgeKey.Comparer);
         foreach (var panel in panels)
         {
             foreach (var loop in panel.Loops)

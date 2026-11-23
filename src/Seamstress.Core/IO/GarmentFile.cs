@@ -115,6 +115,8 @@ public static class GarmentFile
                 w.WriteString("name", g.Name);
                 w.WriteBoolean("visible", g.Visible);
                 w.WriteBoolean("simulateWithOthers", g.SimulateWithOthers);
+                if (g.Frozen)
+                    w.WriteBoolean("frozen", true);
                 w.WriteNumber("particleDistance", g.ParticleDistance);
                 if (g.Thickness is { } thickness)
                     w.WriteNumber("thickness", thickness);
@@ -276,6 +278,15 @@ public static class GarmentFile
             w.WriteRawValue(sb.ToString());
             w.WriteEndObject();
         }
+        if (p.Attachment is { } attachment)
+        {
+            // A hard part's host: the piece and the point of its pattern it sits on.
+            w.WriteStartObject("attachedTo");
+            w.WriteString("piece", attachment.HostPieceId);
+            w.WritePropertyName("at");
+            w.WriteRawValue(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"[{attachment.At.X:0.###}, {attachment.At.Y:0.###}]"));
+            w.WriteEndObject();
+        }
         if (p.Pins.Count > 0 && p.PinKey != null)
         {
             // Vertices held in place during simulation, for the mesh they were chosen on.
@@ -372,6 +383,7 @@ public static class GarmentFile
             garment.Name = Str(g, "name") ?? garment.Name;
             garment.Visible = Bool(g, "visible", true);
             garment.SimulateWithOthers = Bool(g, "simulateWithOthers", false);
+            garment.Frozen = Bool(g, "frozen", false);
             garment.ParticleDistance = Math.Clamp(Num(g, "particleDistance", garment.ParticleDistance), 0.3f, 20f);
             if (g.TryGetProperty("thickness", out var thickness) && thickness.ValueKind == JsonValueKind.Number)
                 garment.Thickness = Math.Clamp(thickness.GetSingle(), 1f, 50f);
@@ -535,6 +547,16 @@ public static class GarmentFile
                 piece.CreaseKey = Str(creases, "mesh");
                 piece.CreaseStrength = Math.Clamp(Num(creases, "strength", 0.8f), 0f, 1f);
             }
+        }
+        if (p.TryGetProperty("attachedTo", out var attachedTo) && attachedTo.ValueKind == JsonValueKind.Object
+            && Str(attachedTo, "piece") is { Length: > 0 } hostId
+            && attachedTo.TryGetProperty("at", out var at) && at.ValueKind == JsonValueKind.Array && at.GetArrayLength() >= 2)
+        {
+            piece.Attachment = new Seamstress.Core.Editing.PieceAttachment
+            {
+                HostPieceId = hostId,
+                At = new System.Numerics.Vector2(at[0].GetSingle(), at[1].GetSingle()),
+            };
         }
         if (p.TryGetProperty("pins", out var pins) && pins.ValueKind == JsonValueKind.Object
             && pins.TryGetProperty("vertices", out var vertices) && vertices.ValueKind == JsonValueKind.Array)

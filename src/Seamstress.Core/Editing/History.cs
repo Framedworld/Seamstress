@@ -94,6 +94,24 @@ public sealed class History
     }
 
     /// <summary>
+    /// Applies an edit as part of the last undo step (keeping the pulled shape of a pinch that was just recorded), so
+    /// one undo takes both back. With nothing to undo it is a step of its own.
+    /// </summary>
+    public void Amend(string name, Action<Document> edit)
+    {
+        if (!CanUndo || _pending != null || _redo.Count > 0)
+        {
+            Execute(name, edit);
+            return;
+        }
+        BeforeChange?.Invoke();
+        edit(Current);
+        _currentId = _nextId++;
+        _mergeKey = null;
+        Changed?.Invoke();
+    }
+
+    /// <summary>
     /// Starts an edit that happens gradually (a drag, a running simulation). Change <see cref="Current"/> freely,
     /// then call <see cref="Commit"/> to record one undo step or <see cref="Cancel"/> to roll everything back.
     /// </summary>

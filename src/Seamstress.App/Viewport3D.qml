@@ -89,25 +89,33 @@ Item {
         if (hasGizmo)
             gizmoOrigin = Qt.vector3d(data.gizmo[0], data.gizmo[1], data.gizmo[2])
         const wanted = data.models
-        // Update rows in place so unchanged pieces keep their GPU buffers.
+        // Update rows in place so unchanged pieces keep their GPU buffers. Rows are found through a table (looking
+        // each one up in the list made every update scan the whole outfit), and only the roles that changed are
+        // set: while simulating that is just the moving pieces' mesh, so nothing else re-binds.
+        const keep = {}
+        for (const m of wanted)
+            keep[m.id] = true
         for (let i = pieceModel.count - 1; i >= 0; i--) {
-            if (!wanted.some(m => m.id === pieceModel.get(i).pid))
+            if (!keep[pieceModel.get(i).pid])
                 pieceModel.remove(i)
         }
+        const index = {}
+        for (let i = 0; i < pieceModel.count; i++)
+            index[pieceModel.get(i).pid] = i
         for (const m of wanted) {
             const row = { pid: m.id, meshUrl: m.source, tint: m.color, tex: m.texture,
                           normTex: m.normalMap || "", roughTex: m.roughMap || "", metalTex: m.metalMap || "",
                           rep: m.repeat, rough: m.roughness, metal: m.metallic, alpha: m.opacity, sel: m.selected }
-            let found = false
-            for (let i = 0; i < pieceModel.count; i++) {
-                if (pieceModel.get(i).pid === m.id) {
-                    pieceModel.set(i, row)
-                    found = true
-                    break
-                }
-            }
-            if (!found)
+            const i = index[m.id]
+            if (i === undefined) {
                 pieceModel.append(row)
+                continue
+            }
+            const old = pieceModel.get(i)
+            for (const key in row) {
+                if (old[key] !== row[key])
+                    pieceModel.setProperty(i, key, row[key])
+            }
         }
     }
 
@@ -1071,6 +1079,14 @@ Item {
                 onMoved: App.pinchRadiusCm = value
                 ToolTip.visible: hovered
                 ToolTip.text: tr("How much cloth the pinch takes hold of")
+            }
+            ViewButton {
+                text: tr("Keep Shape")
+                checkable: true
+                checked: App.pinchKeepsShape
+                onToggled: App.pinchKeepsShape = checked
+                ToolTip.visible: hovered
+                ToolTip.text: tr("Letting go keeps the shape the cloth was pulled into. Off, stiff cloth springs back to the shape it had.")
             }
             ViewButton {
                 text: tr("Set Creases")

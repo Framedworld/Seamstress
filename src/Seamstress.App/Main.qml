@@ -127,10 +127,12 @@ ApplicationWindow {
     // Used by automated runs: capture the window, then quit. Every way this can go wrong ends the run with a reason
     // on standard error (App.automationFailed); a run that never gets here is ended by the watchdog in Program.cs.
     Timer {
-        interval: App.startupSmoke ? 6000 : 5000
+        // "--view livesim" lets the live simulation run for a while before reporting how fast it was.
+        interval: App.startupSmoke ? 6000 : App.startupView.indexOf("live") >= 0 ? 16000 : 5000
         running: App.startupScreenshot !== ""
         onTriggered: {
             App.automationStep("the capture timer fired")
+            if (App.startupView.indexOf("livesim") >= 0) App.benchmarkReport()
             if (App.startupSmoke && !(smokeLoader.item && smokeLoader.item.finished)) {
                 App.automationFailed("the smoke test did not run to its end")
                 return
@@ -198,6 +200,7 @@ ApplicationWindow {
             if (view.indexOf("prefs") >= 0) preferences.openPage(preferences.pages.find(p => view.indexOf("prefs" + p.toLowerCase()) >= 0) || "General")
             if (view.indexOf("contextmenu") >= 0) contextMenu.popup(patternView, patternView.width * 0.45, patternView.height * 0.35)
             if (view.indexOf("export") >= 0) { window.pendingExport = "fbx"; exportOptions.open() }
+            if (view.indexOf("livesim") >= 0) App.benchmarkStart()
             if (view.indexOf("makehuman") >= 0) makeHumanDialog.open()
             if (view.indexOf("bodyshape") >= 0) bodyShape.open()
             if (view.indexOf("saveimage") >= 0) imageOptions.open()

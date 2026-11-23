@@ -25,7 +25,7 @@ public class SewSelectionTests
 
         editor.PointerDown(new Vector2(15, 5), 0.5f, false);
         editor.PointerMove(new Vector2(25, 35), 0.5f);
-        Assert.Contains("\"marquee\":", editor.SceneJson(2048));
+        Assert.NotNull(editor.Marquee); // the box is drawn on its own while it is dragged, not with the pattern
         editor.PointerUp(new Vector2(25, 35));
 
         Assert.Equal(2, editor.SewSelection.Count);

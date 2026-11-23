@@ -44,6 +44,8 @@ public readonly struct ClothStepParams
     public required int SearchEvery { get; init; }
     public required float[] Sewing { get; init; }
     public required byte[] OpenStitch { get; init; }
+    /// <summary>Where the pinching hand is at each substep of this frame; null when nothing is held.</summary>
+    public Vector3[]? PinchHands { get; init; }
 }
 
 /// <summary>Compact point-triangle self-collision contact pair for GPU resolution (must be public for ILGPU).</summary>
@@ -105,6 +107,13 @@ public interface IClothAccelerator : IDisposable
     /// for GPU-side contact resolution across this and subsequent substeps.
     /// </param>
     float StepFrame(in ClothStepParams parameters, Func<Vector3[], ContactBroadphaseResult>? onBroadphase = null);
+
+    /// <summary>
+    /// The cloth held by a pinch: each particle is drawn towards the hand plus its offset, by its strength, every
+    /// substep that has a hand position. Particles held at <c>coreStrength</c> or more are held rigidly (no mass)
+    /// until the next call. Empty arrays let go, and the cloth that was held stops where it is.
+    /// </summary>
+    void SetPinch(int[] particles, float[] strength, Vector3[] offsets, float coreStrength);
 }
 
 /// <summary>Global registration point for an optional GPU accelerator (e.g. Seamstress.Cuda).</summary>

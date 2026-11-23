@@ -246,6 +246,26 @@ public sealed class Workspace
         SelectionChanged?.Invoke();
     }
 
+    /// <summary>Selects several pieces at once (a box dragged round them), adding to the selection or replacing it.</summary>
+    public void SelectPieces(IEnumerable<string> pieceIds, bool additive)
+    {
+        var ids = pieceIds.Where(id => Document.FindPiece(id) != null).ToList();
+        SelectedSeamId = null;
+        SelectedPoint = null;
+        SelectedLayerId = null;
+        SelectedReferenceId = null;
+        if (!additive)
+            SelectedPieces.Clear();
+        foreach (var id in ids)
+        {
+            if (!SelectedPieces.Contains(id))
+                SelectedPieces.Add(id);
+        }
+        if (ids.Count > 0)
+            ActiveGarmentId = Document.GarmentOfPiece(ids[0])?.Id ?? ActiveGarmentId;
+        SelectionChanged?.Invoke();
+    }
+
     /// <summary>Makes a garment the one Simulate works on, without touching the selection.</summary>
     public void SetActiveGarment(string garmentId)
     {
@@ -2513,6 +2533,18 @@ public sealed class Workspace
         });
     }
 
+    /// <summary>Freezes a garment (it holds still and the simulated garments collide with it) or lets it move again.</summary>
+    public void SetFrozen(string garmentId, bool value)
+    {
+        if (Document.FindGarment(garmentId) is not { } current || current.Frozen == value)
+            return;
+        History.Execute(value ? Lang.T("Freeze garment") : Lang.T("Unfreeze garment"), doc =>
+        {
+            if (doc.FindGarment(garmentId) is { } garment)
+                garment.Frozen = value;
+        });
+    }
+
     public void SetMakeHumanZDepth(string garmentId, int value)
     {
         History.Execute(Lang.T("Change MakeHuman layer"), doc =>
@@ -2597,13 +2629,24 @@ public sealed class Workspace
     /// The cloth keeps the folds it has now (see <see cref="Creases"/>): for the selected pieces, or the whole active
     /// garment when <paramref name="wholeGarment"/> is set. Returns the number of pieces creased.
     /// </summary>
-    public int SetCreases(bool wholeGarment, float strength = Creases.DefaultStrength)
+    public int SetCreases(bool wholeGarment, float strength = Creases.DefaultStrength) => SetCreases(CreaseTargets(wholeGarment), strength, false);
+
+    /// <summary>
+    /// Keeps the shape a garment was just pulled into: its folds become its creases, as part of the last undo step
+    /// (the pinch that pulled it).
+    /// </summary>
+    public int KeepPulledShape(string garmentId)
     {
-        var ids = CreaseTargets(wholeGarment);
+        var ids = Document.Garments.FirstOrDefault(g => g.Id == garmentId)?.Pieces.Select(p => p.Id).ToHashSet() ?? new HashSet<string>();
+        return SetCreases(ids, Creases.DefaultStrength, amend: true);
+    }
+
+    private int SetCreases(HashSet<string> ids, float strength, bool amend)
+    {
         int count = Document.AllPieces().Count(p => ids.Contains(p.Id) && p.Drape != null);
         if (count == 0)
             return 0;
-        History.Execute(Lang.T("Set creases"), doc =>
+        void Edit(Document doc)
         {
             foreach (var garment in doc.Garments)
             {
@@ -2611,7 +2654,11 @@ public sealed class Workspace
                 if (pieces.Count > 0)
                     Creases.Set(pieces, p => MeshFor(garment).Find(p.Id), strength);
             }
-        });
+        }
+        if (amend)
+            History.Amend(Lang.T("Set creases"), Edit);
+        else
+            History.Execute(Lang.T("Set creases"), Edit);
         return count;
     }
 

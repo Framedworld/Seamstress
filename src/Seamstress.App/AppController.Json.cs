@@ -34,7 +34,7 @@ public partial class AppController
         {
             bool active = garment.Id == _workspace.ActiveGarmentId;
             bool simulated = _simulation.SimulatedGarments.Contains(garment.Id);
-            string extra = $",\"active\":{B(active)},\"simulateWithOthers\":{B(garment.SimulateWithOthers)},\"simulating\":{B(simulated)}"
+            string extra = $",\"active\":{B(active)},\"simulateWithOthers\":{B(garment.SimulateWithOthers)},\"frozen\":{B(garment.Frozen)},\"simulating\":{B(simulated)}"
                          + $",\"faces\":{(garment.Pieces.Count > 0 ? _workspace.MeshFor(garment).FaceCount : 0)}";
             Row(garment.Id, "garment", garment.Name, 0, garment.Visible, garment.Expanded,
                 _workspace.SelectedLayerId == garment.Id, garment.Pieces.Count + garment.Groups.Count > 0, extra);
@@ -142,7 +142,8 @@ public partial class AppController
             // The garments this one is worn over (lower layers) by name, innermost first, for the panel's hint.
             sb.Append(",\"wornOver\":[").Append(string.Join(",", doc.Garments.Where(g => g != garment && g.Layer < garment.Layer)
                 .OrderBy(g => g.Layer).Select(g => Q(g.Name)))).Append(']');
-            sb.Append(",\"simulateWithOthers\":").Append(B(garment.SimulateWithOthers)).Append('}');
+            sb.Append(",\"simulateWithOthers\":").Append(B(garment.SimulateWithOthers));
+            sb.Append(",\"frozen\":").Append(B(garment.Frozen)).Append('}');
         }
 
         if (reference != null)

@@ -78,6 +78,12 @@ public sealed class Garment
     /// <summary>When set, this garment is also simulated while another garment is the active one.</summary>
     public bool SimulateWithOthers { get; set; }
 
+    /// <summary>
+    /// A frozen garment holds still: it is never simulated, and every garment that is simulated collides with it,
+    /// so a finished layer can be built on.
+    /// </summary>
+    public bool Frozen { get; set; }
+
     /// <summary>Target edge length of the simulation mesh in centimetres. Smaller means more faces.</summary>
     public float ParticleDistance { get; set; } = 2.0f;
 
@@ -135,6 +141,7 @@ public sealed class Garment
         Visible = Visible,
         Expanded = Expanded,
         SimulateWithOthers = SimulateWithOthers,
+        Frozen = Frozen,
         ParticleDistance = ParticleDistance,
         Thickness = Thickness,
         Topology = Topology,
@@ -345,6 +352,9 @@ public sealed class PatternPiece
     /// <summary>How firmly the creases are held, 0 (not at all: the cloth relaxes towards flat) to 1 (fully set).</summary>
     public float CreaseStrength { get; set; }
 
+    /// <summary>The cloth this hard part sits on and is carried along with, or null.</summary>
+    public Seamstress.Core.Editing.PieceAttachment? Attachment { get; set; }
+
     /// <summary>True when there are creases for this mesh.</summary>
     public bool HasCreasesFor(string meshKey, int vertexCount)
         => Crease != null && CreaseKey == meshKey && Crease.Length == vertexCount * 3 && CreaseStrength > 0;
@@ -371,6 +381,7 @@ public sealed class PatternPiece
         Crease = Crease, // like the drape, replaced and never mutated in place
         CreaseKey = CreaseKey,
         CreaseStrength = CreaseStrength,
+        Attachment = Attachment?.Clone(),
     };
 
     /// <summary>Points of the outline and of every hole.</summary>

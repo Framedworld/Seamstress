@@ -326,7 +326,7 @@ public static class GarmentRefitter
     {
         double sumAfterU = 0, sumBeforeU = 0;
         double sumAfterV = 0, sumBeforeV = 0;
-        var seenEdges = new HashSet<long>();
+        var seenEdges = new HashSet<long>(EdgeKey.Comparer);
         var pts2 = pieceMesh.Points;
         var tris = pieceMesh.Triangles;
 

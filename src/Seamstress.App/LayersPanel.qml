@@ -381,6 +381,30 @@ Pane {
                         ToolTip.text: checked ? tr("Simulated together with the active garment") : tr("Only simulated when it is the active garment")
                     }
 
+                    // Freeze: the garment holds still and what is simulated collides with it, to build layers on.
+                    ToolButton {
+                        id: freezeBtn
+                        visible: row.modelData.kind === "garment"
+                        implicitWidth: 22; implicitHeight: 22
+                        padding: 0
+                        text: "❄"
+                        font.pixelSize: 12
+                        checkable: true
+                        checked: row.modelData.kind === "garment" && row.modelData.frozen
+                        opacity: checked ? 1 : (hovered ? 0.85 : 0.38)
+                        palette.buttonText: checked ? "#5FA8E8" : palette.windowText
+                        background: Rectangle {
+                            radius: 4
+                            color: freezeBtn.checked ? Qt.alpha("#5FA8E8", 0.22)
+                                : freezeBtn.hovered ? Qt.alpha(palette.windowText, 0.1) : "transparent"
+                        }
+                        onClicked: App.setFrozen(row.modelData.id, checked)
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 400
+                        ToolTip.text: checked ? tr("Frozen: it holds still, and the garments you simulate collide with it. Click to let it move again.")
+                                              : tr("Freeze: hold this garment still and build the next layer on top of it")
+                    }
+
                     ToolButton {
                         id: visBtn
                         implicitWidth: 22; implicitHeight: 22

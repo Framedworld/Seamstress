@@ -1,3 +1,4 @@
+using Seamstress.Core.Geometry;
 using System.Numerics;
 
 namespace Seamstress.Core.Simulation;
@@ -8,6 +9,9 @@ public sealed partial class ClothSolver
 {
     private const float ContactMargin = 0.02f;
     private const float ContactGap = 0.0022f;
+    // The most a contact pushes in one pass (metres): cloth near another, and cloth on the wrong side of it.
+    internal const float ContactStep = 0.0015f;
+    internal const float UntangleStep = 0.0003f;
 
     private struct Contact
     {
@@ -23,9 +27,6 @@ public sealed partial class ClothSolver
     private int _contactCount;
     private Dictionary<long, float> _sides = new();
     private Dictionary<long, float> _sidesNext = new();
-    private int[] _bucketStart = Array.Empty<int>();
-    private int[] _bucketFill = Array.Empty<int>();
-    private int[] _bucketItems = Array.Empty<int>();
     private int[] _triStamp = Array.Empty<int>();
     private int _triStampEpoch;
     private int[] _triPiece = Array.Empty<int>();
@@ -75,6 +76,25 @@ public sealed partial class ClothSolver
             _triPiece[t] = _pieceOf[triangles[3 * t]];
             _triRest[t] = (_rest2D[triangles[3 * t]] + _rest2D[triangles[3 * t + 1]] + _rest2D[triangles[3 * t + 2]]) / 3f;
         }
+        var moving = new List<int>();
+        var frozen = new List<int>();
+        // Without self-collision the moving cloth only meets the frozen garments.
+        for (int t = 0; t < _triPiece.Length; t++)
+        {
+            var piece = Pieces[_triPiece[t]];
+            if (piece.Simulated)
+            {
+                if (Settings.SelfCollision)
+                    moving.Add(t);
+            }
+            else if (Settings.SelfCollision || piece.Source.Frozen)
+            {
+                frozen.Add(t);
+            }
+        }
+        _movingTris = moving.ToArray();
+        _frozenTris = frozen.ToArray();
+        _frozenGrid.Built = false;
         _weld = new int[n];
         for (int i = 0; i < n; i++)
             _weld[i] = i;
@@ -120,7 +140,7 @@ public sealed partial class ClothSolver
         }
 
         // Collect free boundary (hem) edges: edges belonging to a single triangle and not stitched on both ends.
-        var edgeCounts = new Dictionary<long, (int A, int B, int Count)>();
+        var edgeCounts = new Dictionary<long, (int A, int B, int Count)>(EdgeKey.Comparer);
         for (int t = 0; t < triangles.Length; t += 3)
         {
             for (int k = 0; k < 3; k++)
@@ -178,78 +198,20 @@ public sealed partial class ClothSolver
         var marginVec = new Vector3(margin);
         float cell = MathF.Max(0.04f, margin);
         float inv = 1f / cell;
-        int size = 1024;
-        while (size < triCount * 4)
-            size <<= 1;
-        int mask = size - 1;
-        if (_bucketStart.Length != size + 1)
-        {
-            _bucketStart = new int[size + 1];
-            _bucketFill = new int[size];
-        }
-        Array.Clear(_bucketStart);
-
-        // Two passes over the triangles' padded bounding boxes: count (caching AABBs), then fill.
-        for (int pass = 0; pass < 2; pass++)
-        {
-            int total = 0;
-            for (int t = 0; t < triCount; t++)
-            {
-                Vector3 minP, maxP;
-                if (pass == 0)
-                {
-                    var a = x[_tris[3 * t]];
-                    var b = x[_tris[3 * t + 1]];
-                    var c = x[_tris[3 * t + 2]];
-                    minP = Vector3.Min(a, Vector3.Min(b, c)) - marginVec;
-                    maxP = Vector3.Max(a, Vector3.Max(b, c)) + marginVec;
-                    _triMin[t] = minP;
-                    _triMax[t] = maxP;
-                }
-                else
-                {
-                    minP = _triMin[t];
-                    maxP = _triMax[t];
-                }
-                var lo = minP * inv;
-                var hi = maxP * inv;
-                int x0 = (int)MathF.Floor(lo.X), x1 = (int)MathF.Floor(hi.X);
-                int y0 = (int)MathF.Floor(lo.Y), y1 = (int)MathF.Floor(hi.Y);
-                int z0 = (int)MathF.Floor(lo.Z), z1 = (int)MathF.Floor(hi.Z);
-                // A triangle stretched across the scene (mid-sewing) would flood the grid; it cannot be in contact anyway.
-                if ((long)(x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1) > 400)
-                    continue;
-                for (int iz = z0; iz <= z1; iz++)
-                {
-                    for (int iy = y0; iy <= y1; iy++)
-                    {
-                        for (int ix = x0; ix <= x1; ix++)
-                        {
-                            int bucket = Bucket(ix, iy, iz, mask);
-                            if (pass == 0)
-                                _bucketStart[bucket + 1]++;
-                            else
-                                _bucketItems[_bucketStart[bucket] + _bucketFill[bucket]++] = t;
-                            total++;
-                        }
-                    }
-                }
-            }
-            if (pass == 0)
-            {
-                for (int i = 0; i < size; i++)
-                    _bucketStart[i + 1] += _bucketStart[i];
-                if (_bucketItems.Length < total)
-                    _bucketItems = new int[total + total / 2];
-                Array.Clear(_bucketFill);
-            }
-        }
+        // The moving cloth's triangles are sorted into the grid at every search; the frozen garments' only once,
+        // since they do not move. On a layered outfit those are most of the triangles.
+        BuildGrid(_movingGrid, _movingTris, inv, marginVec);
+        if (!_frozenGrid.Built)
+            BuildGrid(_frozenGrid, _frozenTris, inv, marginVec);
 
         _sidesNext.Clear();
         float reach = margin * margin;
         const float samePieceSq = SamePieceRestDistance * SamePieceRestDistance;
 
-        int activeCount = _realParticleCount > 0 ? _realParticleCount : x.Length;
+        // Only the moving cloth looks for contacts: frozen garments take part through their triangles. Asking every
+        // frozen particle as well multiplied the work (and the contacts) several times over on a layered outfit.
+        int activeCount = _simulatedParticleCount > 0 ? _simulatedParticleCount
+            : _realParticleCount > 0 ? _realParticleCount : x.Length;
         if (activeCount < 512)
         {
             if (_triStampEpoch > int.MaxValue - activeCount - 2)
@@ -259,7 +221,7 @@ public sealed partial class ClothSolver
             }
             int baseEpoch = _triStampEpoch;
             _triStampEpoch += activeCount + 1;
-            QueryParticleRange(0, activeCount, inv, mask, triCount, reach, samePieceSq, _triStamp, baseEpoch, null);
+            QueryParticleRange(0, activeCount, inv, triCount, reach, samePieceSq, _triStamp, baseEpoch, null);
         }
         else
         {
@@ -293,7 +255,7 @@ public sealed partial class ClothSolver
                 }
                 int baseEpoch = _workerEpochs[w];
                 _workerEpochs[w] += span;
-                QueryParticleRange(start, end, inv, mask, triCount, reach, samePieceSq, stamp, baseEpoch, list);
+                QueryParticleRange(start, end, inv, triCount, reach, samePieceSq, stamp, baseEpoch, list);
             });
 
             for (int w = 0; w < workers; w++)
@@ -308,22 +270,25 @@ public sealed partial class ClothSolver
                 {
                     var c = list[i];
                     _contacts[_contactCount++] = c;
-                    _sidesNext[(long)c.Particle * triCount + c.Triangle] = c.Side;
+                    // Only contacts within one layer need their side remembered; between layers it is fixed.
+                    if (_pieceLayer[_pieceOf[c.Particle]] == _pieceLayer[_triPiece[c.Triangle]])
+                        _sidesNext[(long)c.Particle * triCount + c.Triangle] = c.Side;
                 }
             }
         }
 
         (_sides, _sidesNext) = (_sidesNext, _sides);
-        FindHemContacts(margin);
+        if (Settings.SelfCollision)
+            FindHemContacts(margin);
+        else
+            _hemContactCount = 0;
     }
 
     private void QueryParticleRange(
-        int start, int end, float inv, int mask, int triCount, float reach, float samePieceSq,
+        int start, int end, float inv, int triCount, float reach, float samePieceSq,
         int[] stamp, int baseEpoch, List<Contact>? output)
     {
         var x = Positions;
-        var bucketStart = _bucketStart;
-        var bucketItems = _bucketItems;
         var triMin = _triMin;
         var triMax = _triMax;
         var triPiece = _triPiece;
@@ -341,7 +306,15 @@ public sealed partial class ClothSolver
             int pPiece = pieceOf[p];
             var pRest = rest2D[p];
             float mp = invMass[p];
-            int bucket = Bucket((int)MathF.Floor(pos.X * inv), (int)MathF.Floor(pos.Y * inv), (int)MathF.Floor(pos.Z * inv), mask);
+            int cx = (int)MathF.Floor(pos.X * inv), cy = (int)MathF.Floor(pos.Y * inv), cz = (int)MathF.Floor(pos.Z * inv);
+            for (int g = 0; g < 2; g++)
+            {
+            var grid = g == 0 ? _movingGrid : _frozenGrid;
+            if (grid.Mask == 0)
+                continue;
+            var bucketStart = grid.Start;
+            var bucketItems = grid.Items;
+            int bucket = Bucket(cx, cy, cz, grid.Mask);
             int kEnd = bucketStart[bucket + 1];
             for (int k = bucketStart[bucket]; k < kEnd; k++)
             {
@@ -400,13 +373,101 @@ public sealed partial class ClothSolver
                 }
                 else
                 {
-                    _sidesNext[key] = side;
+                    if (pLayer == tLayer)
+                        _sidesNext[key] = side;
                     if (_contactCount == _contacts.Length)
                         Array.Resize(ref _contacts, Math.Max(1024, _contacts.Length * 2));
                     _contacts[_contactCount++] = contact;
                 }
             }
+            }
         }
+    }
+
+    /// <summary>A spatial hash of triangles' bounding boxes, padded by the contact margin.</summary>
+    private sealed class TriangleGrid
+    {
+        public int[] Start = Array.Empty<int>();
+        public int[] Fill = Array.Empty<int>();
+        public int[] Items = Array.Empty<int>();
+        public int Mask;
+        public bool Built;
+    }
+
+    private readonly TriangleGrid _movingGrid = new();
+    private readonly TriangleGrid _frozenGrid = new();
+    private int[] _movingTris = Array.Empty<int>();
+    private int[] _frozenTris = Array.Empty<int>();
+
+    /// <summary>Sorts the triangles into the grid's buckets, refreshing their padded bounding boxes first.</summary>
+    private void BuildGrid(TriangleGrid grid, int[] triangles, float inv, Vector3 marginVec)
+    {
+        grid.Built = true;
+        if (triangles.Length == 0)
+        {
+            grid.Mask = 0;
+            return;
+        }
+        var x = Positions;
+        int size = 1024;
+        while (size < triangles.Length * 4)
+            size <<= 1;
+        int mask = size - 1;
+        if (grid.Start.Length != size + 1)
+        {
+            grid.Start = new int[size + 1];
+            grid.Fill = new int[size];
+        }
+        Array.Clear(grid.Start);
+
+        // Two passes over the triangles' padded bounding boxes: count (caching AABBs), then fill.
+        for (int pass = 0; pass < 2; pass++)
+        {
+            int total = 0;
+            foreach (int t in triangles)
+            {
+                if (pass == 0)
+                {
+                    var a = x[_tris[3 * t]];
+                    var b = x[_tris[3 * t + 1]];
+                    var c = x[_tris[3 * t + 2]];
+                    _triMin[t] = Vector3.Min(a, Vector3.Min(b, c)) - marginVec;
+                    _triMax[t] = Vector3.Max(a, Vector3.Max(b, c)) + marginVec;
+                }
+                var lo = _triMin[t] * inv;
+                var hi = _triMax[t] * inv;
+                int x0 = (int)MathF.Floor(lo.X), x1 = (int)MathF.Floor(hi.X);
+                int y0 = (int)MathF.Floor(lo.Y), y1 = (int)MathF.Floor(hi.Y);
+                int z0 = (int)MathF.Floor(lo.Z), z1 = (int)MathF.Floor(hi.Z);
+                // A triangle stretched across the scene (mid-sewing) would flood the grid; it cannot be in contact anyway.
+                if ((long)(x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1) > 400)
+                    continue;
+                for (int iz = z0; iz <= z1; iz++)
+                {
+                    for (int iy = y0; iy <= y1; iy++)
+                    {
+                        for (int ix = x0; ix <= x1; ix++)
+                        {
+                            int bucket = Bucket(ix, iy, iz, mask);
+                            if (pass == 0)
+                                grid.Start[bucket + 1]++;
+                            else
+                                grid.Items[grid.Start[bucket] + grid.Fill[bucket]++] = t;
+                            total++;
+                        }
+                    }
+                }
+            }
+            if (pass == 0)
+            {
+                for (int i = 0; i < size; i++)
+                    grid.Start[i + 1] += grid.Start[i];
+                if (grid.Items.Length < total)
+                    grid.Items = new int[total + total / 2];
+                Array.Clear(grid.Fill);
+            }
+        }
+        grid.Mask = mask;
     }
 
     private void FindHemContacts(float margin)
@@ -418,35 +479,61 @@ public sealed partial class ClothSolver
         var x = Positions;
         float reachSq = margin * margin;
         float samePieceSq = SamePieceRestDistance * SamePieceRestDistance;
+        // Every pair of hems with at least one of them moving: the frozen hems among themselves are never compared,
+        // which on a layered outfit is nearly all of the pairs. Split across the cores, the bounding boxes first.
+        var lo = new Vector3[m];
+        var hi = new Vector3[m];
+        var moving = new bool[m];
         for (int i = 0; i < m; i++)
         {
-            int a1 = _hemA[i], b1 = _hemB[i];
-            var p1 = x[a1];
-            var q1 = x[b1];
-            var lo1 = Vector3.Min(p1, q1) - new Vector3(margin);
-            var hi1 = Vector3.Max(p1, q1) + new Vector3(margin);
-            int piece1 = _hemPiece[i];
-            for (int j = i + 1; j < m; j++)
+            var p = x[_hemA[i]];
+            var q = x[_hemB[i]];
+            lo[i] = Vector3.Min(p, q);
+            hi[i] = Vector3.Max(p, q);
+            moving[i] = _invMass[_hemA[i]] != 0 || _invMass[_hemB[i]] != 0;
+        }
+        var pad = new Vector3(margin);
+        var found = new System.Collections.Concurrent.ConcurrentBag<List<(int, int)>>();
+        Parallel.ForEach(System.Collections.Concurrent.Partitioner.Create(0, m, Math.Max(64, m / (4 * Environment.ProcessorCount))), range =>
+        {
+            List<(int, int)>? local = null;
+            for (int i = range.Item1; i < range.Item2; i++)
             {
-                int a2 = _hemA[j], b2 = _hemB[j];
-                if (_invMass[a1] == 0 && _invMass[b1] == 0 && _invMass[a2] == 0 && _invMass[b2] == 0)
+                if (!moving[i])
                     continue;
-                if (piece1 == _hemPiece[j] && Vector2.DistanceSquared(_hemRest[i], _hemRest[j]) < samePieceSq)
-                    continue;
-                if (_weld[a1] == _weld[a2] || _weld[a1] == _weld[b2] || _weld[b1] == _weld[a2] || _weld[b1] == _weld[b2])
-                    continue;
-                var p2 = x[a2];
-                var q2 = x[b2];
-                var lo2 = Vector3.Min(p2, q2);
-                var hi2 = Vector3.Max(p2, q2);
-                if (hi1.X < lo2.X || lo1.X > hi2.X || hi1.Y < lo2.Y || lo1.Y > hi2.Y || hi1.Z < lo2.Z || lo1.Z > hi2.Z)
-                    continue;
-                ClosestPointsOnSegments(p1, q1, p2, q2, out _, out _, out var c1, out var c2);
-                if (Vector3.DistanceSquared(c1, c2) > reachSq)
-                    continue;
+                int a1 = _hemA[i], b1 = _hemB[i];
+                var lo1 = lo[i] - pad;
+                var hi1 = hi[i] + pad;
+                int piece1 = _hemPiece[i];
+                for (int j = 0; j < m; j++)
+                {
+                    var lo2 = lo[j];
+                    var hi2 = hi[j];
+                    if (hi1.X < lo2.X || lo1.X > hi2.X || hi1.Y < lo2.Y || lo1.Y > hi2.Y || hi1.Z < lo2.Z || lo1.Z > hi2.Z)
+                        continue;
+                    if (j == i || (moving[j] && j < i))
+                        continue;
+                    if (piece1 == _hemPiece[j] && Vector2.DistanceSquared(_hemRest[i], _hemRest[j]) < samePieceSq)
+                        continue;
+                    int a2 = _hemA[j], b2 = _hemB[j];
+                    if (_weld[a1] == _weld[a2] || _weld[a1] == _weld[b2] || _weld[b1] == _weld[a2] || _weld[b1] == _weld[b2])
+                        continue;
+                    ClosestPointsOnSegments(x[a1], x[b1], x[a2], x[b2], out _, out _, out var c1, out var c2);
+                    if (Vector3.DistanceSquared(c1, c2) > reachSq)
+                        continue;
+                    (local ??= new List<(int, int)>()).Add((i, j));
+                }
+            }
+            if (local != null)
+                found.Add(local);
+        });
+        foreach (var list in found)
+        {
+            foreach (var pair in list)
+            {
                 if (_hemContactCount == _hemContacts.Length)
                     Array.Resize(ref _hemContacts, Math.Max(128, _hemContacts.Length * 2));
-                _hemContacts[_hemContactCount++] = (i, j);
+                _hemContacts[_hemContactCount++] = pair;
             }
         }
     }
@@ -558,8 +645,10 @@ public sealed partial class ClothSolver
             // Only when the particle is over the triangle itself; beside it, the neighbouring triangle is in charge.
             if ((r - normal * height).LengthSquared() > separation * separation)
                 continue;
-            // A deep overlap is worked off over several substeps rather than thrown out in one.
-            float depth = MathF.Min(separation - height, separation);
+            // An overlap is worked off over several substeps rather than thrown out in one: every push becomes speed,
+            // and cloth that starts out overlapping (draped without collisions, or layered by body offset alone) blew
+            // apart when its whole overlap was pushed out at once.
+            float depth = MathF.Min(separation - height, height < 0f ? UntangleStep : ContactStep);
             if (depth <= 0)
                 continue;
 

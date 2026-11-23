@@ -93,6 +93,7 @@ public sealed class PatternEditor
     private GizmoMode _gizmoMode;
     private Vector2 _pointsPivot;
     private Vector2? _marqueeEnd;
+    private bool _marqueeAdditive;
     private bool _constrain;
     private bool _onHandle;                 // the last press landed on one of the 2D handles
     private Vector2? _rulerStart, _rulerEnd;
@@ -109,6 +110,17 @@ public sealed class PatternEditor
 
     /// <summary>Raised when something only the 2D view shows (hover, draft shape, tool) changed.</summary>
     public event Action? Changed;
+
+    /// <summary>
+    /// Only the selection box being dragged changed: the view redraws the box alone. Rebuilding the whole pattern
+    /// view for every move of the pointer made box selection crawl on a large outfit, worse while simulating.
+    /// </summary>
+    public event Action? OverlayChanged;
+
+    /// <summary>The selection box being dragged, as x0, y0, x1, y1 in pattern centimetres; null when there is none.</summary>
+    public float[]? Marquee => _drag is Drag.Marquee or Drag.SewBox && _marqueeEnd is { } end
+        ? new[] { _dragStart.X, _dragStart.Y, end.X, end.Y }
+        : null;
 
     /// <summary>Raised after a cut line was released, with what it cut or why it did nothing.</summary>
     public event Action<Workspace.CutOutcome>? CutMade;
@@ -512,6 +524,17 @@ public sealed class PatternEditor
                 return true;
         }
         return false;
+    }
+
+    /// <summary>True when the box touches the piece: crosses or holds part of its outline, or lies inside it.</summary>
+    private static bool PieceInRect(PatternPiece piece, Vector2 lo, Vector2 hi)
+    {
+        for (int e = 0; e < piece.EdgeCount; e++)
+        {
+            if (EdgeInRect(piece, e, lo, hi))
+                return true;
+        }
+        return Outline.Contains(piece, lo - piece.Origin);
     }
 
     private static bool SegmentsCross(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
@@ -1008,7 +1031,12 @@ public sealed class PatternEditor
                     }
                     else
                     {
-                        _workspace.ClearSelection();
+                        // Empty space: drag a box to select every piece it touches (Shift or Ctrl adds to them).
+                        _marqueeAdditive = additive || _constrain;
+                        if (!_marqueeAdditive)
+                            _workspace.ClearSelection();
+                        _drag = Drag.Marquee;
+                        _marqueeEnd = null;
                     }
                     if (seam == null && edge is { } clicked && clicked.Piece == piece)
                         Measure(new EdgeRef(clicked.Piece.Id, clicked.Edge));
@@ -1244,7 +1272,7 @@ public sealed class PatternEditor
                 }
             case Drag.Marquee:
                 _marqueeEnd = world;
-                Changed?.Invoke();
+                OverlayChanged?.Invoke();
                 return;
             case Drag.Ruler:
                 _rulerEnd = RulerPoint(world, tolerance, _rulerStart);
@@ -1256,7 +1284,7 @@ public sealed class PatternEditor
                 return;
             case Drag.SewBox:
                 _marqueeEnd = world;
-                Changed?.Invoke();
+                OverlayChanged?.Invoke();
                 return;
             case Drag.InsetWidth:
                 if (_insetDrag != null && Doc.FindPiece(_insetDrag.PieceId) is { } inset && _insetDrag.Edge < inset.EdgeCount)
@@ -1450,6 +1478,19 @@ public sealed class PatternEditor
                 _insetDrag = null;
                 Changed?.Invoke();
                 break;
+            case Drag.Marquee when _tool == PatternTool.Select:
+                {
+                    if (_dragMoved && _marqueeEnd is { } end)
+                    {
+                        var lo = Vector2.Min(_dragStart, end);
+                        var hi = Vector2.Max(_dragStart, end);
+                        var touched = VisiblePieces().Select(v => v.Piece).Where(piece => PieceInRect(piece, lo, hi)).Select(p => p.Id).ToList();
+                        _workspace.SelectPieces(touched, _marqueeAdditive);
+                    }
+                    _marqueeEnd = null;
+                    Changed?.Invoke();
+                    break;
+                }
             case Drag.Marquee:
                 {
                     if (_dragMoved && _marqueeEnd is { } end)
@@ -1877,8 +1918,6 @@ public sealed class PatternEditor
                 }
                 sb.Append(']');
             }
-            if (_drag == Drag.SewBox && _marqueeEnd is { } corner)
-                sb.Append(inv, $",\"marquee\":[{_dragStart.X:0.###},{_dragStart.Y:0.###},{corner.X:0.###},{corner.Y:0.###}]");
         }
 
         if (!_uvMode && (_tool == PatternTool.TransformPoints || _tool == PatternTool.Select))
@@ -1889,8 +1928,6 @@ public sealed class PatternEditor
             int count = GizmoTargets().Count;
             if ((_drag is Drag.PointsRotate or Drag.PointsScale ? _pointsPivot : PointsCentre()) is { } handles)
                 sb.Append(inv, $",\"pointGizmo\":[{handles.X:0.###},{handles.Y:0.###},{(ShowsMove ? GizmoArrow : 0):0},{(ShowsRotate(count) ? GizmoRing : 0):0},{(ShowsScale(count) ? ScaleBoxDistance : 0):0},{ScaleEvenOffset:0}]");
-            if (_drag == Drag.Marquee && _marqueeEnd is { } corner)
-                sb.Append(inv, $",\"marquee\":[{_dragStart.X:0.###},{_dragStart.Y:0.###},{corner.X:0.###},{corner.Y:0.###}]");
         }
 
         // Length read-outs as x, y, length, nx, ny: the middle of the edge, its length in centimetres, and the

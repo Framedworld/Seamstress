@@ -39,7 +39,26 @@ public sealed class SimulationController : IDisposable
     {
         var doc = _workspace.Document;
         var active = _workspace.ActiveGarment;
-        return doc.Garments.Where(g => g.Visible && g.Pieces.Count > 0 && (all || g == active || g.SimulateWithOthers)).ToList();
+        bool Movable(Garment g) => g.Visible && !g.Frozen && g.Pieces.Count > 0;
+        var simulated = doc.Garments.Where(g => Movable(g) && (all || g == active || g.SimulateWithOthers)).ToList();
+        // What is sewn onto a simulated garment comes with it, as a pocket comes with the jacket it is sewn to (and a
+        // flap with its pocket): left behind as an obstacle, trim stayed where it was while the garment moved away.
+        bool added;
+        do
+        {
+            added = false;
+            foreach (var g in doc.Garments)
+            {
+                if (simulated.Contains(g) || !Movable(g))
+                    continue;
+                if (g.SurfaceStitches.Any(s => simulated.Any(h => h.FindPiece(s.TargetPieceId) != null)))
+                {
+                    simulated.Add(g);
+                    added = true;
+                }
+            }
+        } while (added);
+        return simulated;
     }
 
     /// <summary>Starts simulating. Returns a message when there is nothing to simulate.</summary>
@@ -51,12 +70,16 @@ public sealed class SimulationController : IDisposable
         var doc = _workspace.Document;
         var simulated = GarmentsToSimulate(allGarments);
         if (simulated.Count == 0)
-            return Lang.T("There is no visible garment to simulate. Add a garment or select one in the layers panel.");
+            return _workspace.ActiveGarment is { Frozen: true } frozen
+                ? Lang.F("“{0}” is frozen. Unfreeze it in the layers panel to simulate it.", frozen.Name)
+                : Lang.T("There is no visible garment to simulate. Add a garment or select one in the layers panel.");
 
         _stopping = true; // Begin raises BeforeChange; this run has not started yet
         _workspace.History.Begin(undoName ?? (simulated.Count == 1 ? Lang.F("Simulate {0}", simulated[0].Name) : Lang.T("Simulate garments")));
         _stopping = false;
 
+        // Hard parts are lined up with the cloth they sit on, so they can be carried along as it moves.
+        Seamstress.Core.Editing.Attachments.Prepare(doc, _workspace.MeshFor);
         var active = simulated.Select(g => _workspace.MeshFor(g)).ToList();
         var obstacles = doc.Garments.Where(g => g.Visible && !simulated.Contains(g)).Select(g => _workspace.MeshFor(g)).ToList();
         var solver = ClothSolver.Create(active, obstacles, _avatar()?.Sdf, doc.Simulation.Clone());
@@ -78,14 +101,17 @@ public sealed class SimulationController : IDisposable
         var frame = runner.TakeFrame(force);
         if (frame == null)
             return false;
+        var moved = new HashSet<string>();
         foreach (var cloth in runner.Solver.Pieces)
         {
             if (cloth.Simulated && frame.TryGetValue(cloth.Piece.Id, out var drape))
             {
                 cloth.Piece.Drape = drape;
                 cloth.Piece.DrapeKey = cloth.Mesh.Key;
+                moved.Add(cloth.Piece.Id);
             }
         }
+        Seamstress.Core.Editing.Attachments.Follow(_workspace.Document, _workspace.MeshFor, moved);
         return true;
     }
 

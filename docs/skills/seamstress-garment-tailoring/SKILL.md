@@ -77,14 +77,19 @@ you create by hand.
 | Hood roll, cowl | 4 | 11+ |
 | Hanging accessories | 1.6-3 | 9.5+ |
 
-With offsets in place simulate with `selfCollision: false`: it is 50-100 times faster and smoother. Turn it on for:
+With offsets in place simulate with `selfCollision: false`: it is several times faster. Turn it on for:
 - trim on a loose host: cargo pockets on roomy trousers get poked through by the trousers' own folds unless the
-  trim's simulate has `selfCollision: true` (about 13 s);
-- cloth that must not pass through itself, such as trouser hems stacking on boots. Follow it with a short pass
-  without it.
+  trim's simulate has `selfCollision: true`;
+- cloth that must not pass through itself, such as trouser hems stacking on boots.
 
-Keep it off for pieces sewn by one edge that overhang their host (collars, facings), which crumple, and for trim on
-a stiff jacket, which exploded (17 m/s, seams torn).
+Self-collision works off overlaps gradually, so a drape made without it can be simulated with it (Gus's jacket
+against the whole outfit: about 30 ms a frame, settling within a second). It used to throw such cloth apart at
+10+ m/s. Keep it off for pieces sewn by one edge that overhang their host (collars, facings), which crumple.
+
+The project's own `simulation.selfCollision` is what the app uses when someone presses Simulate or pinches; the
+MCP `simulate` call's flag does not change it. A garment with `"frozen": true` in the project is never simulated
+and is always collided with, even with self-collision off: the app's ❄ button in Layers, for building a layer
+over finished ones.
 
 Garment-level `thicknessMm` is also what makes cloth render as a shell rather than a paper-thin sheet.
 
@@ -126,7 +131,8 @@ Garment-level `thicknessMm` is also what makes cloth render as a shell rather th
 - Creases belong to the mesh they were set on: changing a piece's outline or particle distance drops them. Set them
   last.
 - For people shaping by hand in the app: the Pinch tool (G) drags cloth during a live simulation, its Grab slider
-  sets how much cloth it takes, and Set Creases (K) keeps the result as one undo step. The blocks are there too:
+  sets how much cloth it takes, and with Keep Shape on (the default) letting go sets the pulled folds as creases,
+  in the same undo step. Set Creases (K) does the same for the whole garment. The blocks are there too:
   Garment ▸ Add Fitted … (with fit, length, sleeves, open front), Add Collar…, Add Hood…, and the Trim tool (J)
   for pockets, flaps, patches, snaps, buttons, rivets and buckles dragged or clicked onto a piece in 2D.
 
@@ -141,8 +147,12 @@ Garment-level `thicknessMm` is also what makes cloth render as a shell rather th
   level-1 trim, so put chest pockets at 2 and flaps or a name patch over them at 3.
 - Hoods: `add_collar` with `rollCm` (about 4.5, `bend` 88, 4 mm fleece) for a hood pushed down into a roll round the
   neck; `add_hood` for the hood itself lying down the back (soft, `bend` about 46).
-- `add_hardware` for snaps, buttons, pens, tool handles and wrenches: pinned, so later simulations do not move it.
-  Put it on the piece it sits on (a snap on a flap goes on the flap).
+- `add_hardware` for snaps, buttons, pens, tool handles and wrenches: pinned, so a simulation does not move it by
+  itself, but it is attached to the piece it is put on (`attachedTo` in the project) and carried along rigidly when
+  that piece is simulated. Put it on the piece it sits on (a snap on a flap goes on the flap). Pinned hard parts
+  without a host are attached to the cloth under them (within 3 cm) when a simulation starts.
+- In the app, simulating or pinching a garment also simulates everything surface-stitched onto it (pockets, flaps,
+  collars, recursively); `simulate` over MCP still moves only the garments it is given.
 - Set a garment's material before adding trim to it: patches take their host's fabric.
 
 ## Materials

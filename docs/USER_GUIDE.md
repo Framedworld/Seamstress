@@ -96,7 +96,7 @@ The toolbar shows each tool as an icon. Hover over an icon to see its name, what
 
 | # | Tool | Key | What it does |
 | --- | --- | --- | --- |
-| 1 | **Select** | V | Click a piece to select it, drag to move it in the pattern. Ctrl+click adds to the selection. Click a seam's dashed line to select the seam. Double-click a piece to select all its points. |
+| 1 | **Select** | V | Click a piece to select it, drag to move it in the pattern. Ctrl+click adds to the selection. Drag a box from empty space to select every piece it touches (hold Shift or Ctrl to add to the selection). Click a seam's dashed line to select the seam. Double-click a piece to select all its points. |
 | 2 | **Edit Points** | A | Drag a point to move it. Drag an edge to curve it. Double-click an edge to add a point. |
 | 3 | **Transform Points** | T | Select one point or several, then move or rotate them with handles. Does not bend edges. |
 | 4 | **Sew** | S | Click one edge, then another, to sew them together, or drag a box around several edges and press Enter. |
@@ -582,16 +582,19 @@ body.
 
 ![A draped skirt, and the same skirt with its hem pulled outwards by a pinch](images/pinch.png)
 
-- **During a simulation**, pinching simply adds your hand to it. Let go and the cloth settles from where you
-  left it.
-- **After a simulation**, pinching starts the simulation for that garment for as long as you hold on, lets the
-  cloth settle for a moment after you let go, and stops again. The whole pinch is one undo step (**Ctrl+Z**).
+- **Keep Shape** (on by default, next to the Grab slider): when you let go, the cloth keeps the shape you pulled
+  it into. Its folds are set as creases, so stiff canvas does not spring back. Turn it off to let the cloth
+  settle freely from where you left it, back towards the shape it had.
+- **During a simulation**, pinching simply adds your hand to it.
+- **After a simulation**, pinching starts the simulation for that garment for as long as you hold on and stops
+  again when you let go. The whole pinch, with its kept shape, is one undo step (**Ctrl+Z**).
 - The cloth still collides with the avatar and other garments, so you can pull it over a shoulder or smooth it
   down against the body, but not drag it through.
 - While Pinch is on, Alt+drag orbits the camera, Shift+drag pans, and the move/rotate handles are hidden. Turn
   Pinch off to get them back.
-- About 5 cm of cloth around the cursor is held; cloth further away is moved only by the fabric pulling on it.
-- Only garments that are being simulated can be pinched. If another garment is the active one and a simulation
+- **Grab** sets how much cloth is held: the middle of it stays exactly under the cursor, the rim gives a little,
+  and cloth further away is moved only by the fabric pulling on it.
+- A frozen garment cannot be pinched; unfreeze it first. Only garments that are being simulated can be pinched. If another garment is the active one and a simulation
   is already running, stop it first or tick **All garments**.
 
 ### Ripping the cloth
@@ -656,6 +659,18 @@ and acts as an obstacle. Two ways to widen that:
   garment is the active one.
 - Tick **All garments** next to the Simulate button to simulate every visible garment at once.
 
+Whatever is sewn onto a simulated garment comes with it: pockets, flaps, patches and collars added with the Trim
+tool or the Garment menu are simulated together with the garment they are on (and a flap with its pocket), so
+pulling a jacket brings its pockets along. Hardware (snaps, buttons, rivets, buckles) stays pinned, but is carried
+along rigidly with the cloth it sits on, keeping its angle to the surface. Hardware in projects made before this
+is attached to the cloth right under it the first time it is simulated.
+
+Click the **❄** button on a garment's row in Layers (or tick **Frozen** in its Simulation properties) to
+**freeze** it. A frozen garment is never simulated, not even with All garments, and everything that is
+simulated collides with it even when **Cloth-to-cloth collision** is off. Freeze the trousers and the tee, then
+build the jacket on top of them: the jacket drapes over the frozen layers without moving them, and quickly,
+because only the jacket's cloth is moving. Frozen is saved with the project and is one undo step.
+
 ### Layering garments
 
 ![A shirt simulated over a skirt](images/layering.png)
@@ -683,7 +698,7 @@ At the bottom of the Properties panel, under **Simulation**:
 | **Gravity** | Downward acceleration in m/s². |
 | **Substeps** | Solver steps per frame. More is stiffer and more accurate, and slower. |
 | **Speed** | Slow motion or fast forward. |
-| **Cloth-to-cloth collision** | Keeps cloth from passing through itself and other garments. Turning it off roughly halves simulation time. |
+| **Cloth-to-cloth collision** | Keeps cloth from passing through itself and other garments. Off, the simulated cloth still collides with frozen garments; it is faster, and fine for a single layer over frozen ones. |
 | **Ground plane** | Whether cloth stops at the floor. |
 
 ### Good to know

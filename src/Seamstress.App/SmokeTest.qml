@@ -396,10 +396,12 @@ QtObject {
         check("pinch takes hold", App.pinchBegin(skirtPiece, 0, 0.45, 0.16))
         check("pinch runs the simulation", App.simulating)
         App.pinchMove(0, 0.5, 0.3)
+        // Letting go keeps the pulled shape (its creases are set) and stops the run, all in the pinch's undo step.
+        check("keep shape is on", App.pinchKeepsShape)
         App.pinchEnd()
-        App.toggleSimulation()
+        check("pinch keeps its shape and stops", !App.simulating)
         check("pinch is one undo step", App.undoText === "Undo Pinch cloth")
-        // The pinched shape can be kept: set creases is its own undo step, and the grab size is adjustable.
+        // Set creases by hand is its own undo step, and the grab size is adjustable.
         App.pinchRadiusCm = 12
         check("pinch grab size", App.pinchRadiusCm === 12)
         App.setCreases()
@@ -424,6 +426,25 @@ QtObject {
         App.addHood(34, 25, true)
         check("hood added", App.undoText === "Undo Add hood")
         App.undo(); App.undo(); App.undo()
+
+        // Freeze: the skirt holds still and cannot be pulled; undo lets it move again.
+        const skirtGarment = JSON.parse(App.layers()).filter(r => r.kind === "garment" && r.name === "Skirt")[0]
+        App.setFrozen(skirtGarment.id, true)
+        check("garment frozen", JSON.parse(App.layers()).filter(r => r.id === skirtGarment.id)[0].frozen === true)
+        check("frozen garment cannot be pinched", !App.pinchBegin(skirtPiece, 0, 0.45, 0.16) && !App.simulating)
+        App.undo()
+        check("unfrozen by undo", JSON.parse(App.layers()).filter(r => r.id === skirtGarment.id)[0].frozen === false)
+
+        // A box dragged from empty space in the 2D view selects every piece it touches.
+        App.tool = "Select"
+        App.pointerDown(-900, -900, 1, false)
+        App.pointerMove(0, 0, 1)
+        App.pointerMove(900, 900, 1)
+        App.pointerUp(900, 900)
+        check("marquee selects the pieces", scene().pieces.filter(p => p.selected).length === scene().pieces.filter(p => p.visible !== false).length
+              && scene().pieces.filter(p => p.selected).length > 1)
+        App.pointerDown(-900, -900, 1, false); App.pointerUp(-900, -900)
+        check("a click in empty space clears it", scene().pieces.filter(p => p.selected).length === 0)
 
         App.selectLayer(JSON.parse(App.layers())[0].id, false)
         check("other garment untouched", selection().piece.draped === false)

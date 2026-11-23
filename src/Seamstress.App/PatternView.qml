@@ -162,6 +162,7 @@ Item {
     Connections {
         target: App
         function onSceneRevisionChanged() { Qt.callLater(root.refresh) }
+        function onOverlayRevisionChanged() { root.marquee = JSON.parse(App.marqueeBox()) }
         function onAvatarRevisionChanged() { root.refreshBody() }
         function onShowBodyOutlineChanged() { canvas.requestPaint() }
         function onImperialChanged() { canvas.requestPaint() }
@@ -448,15 +449,6 @@ Item {
                 for (let i = 0; i < s.draft.length; i += 2)
                     ctx.fillRect(root.sx(s.draft[i]) - 3, root.sy(s.draft[i + 1]) - 3, 6, 6)
             }
-            if (s.marquee) {
-                const x = root.sx(s.marquee[0]), y = root.sy(s.marquee[1])
-                ctx.fillStyle = withAlpha(root.accent, 0.15)
-                ctx.strokeStyle = root.accent; ctx.lineWidth = 1
-                ctx.setLineDash([4, 3])
-                ctx.fillRect(x, y, root.sx(s.marquee[2]) - x, root.sy(s.marquee[3]) - y)
-                ctx.strokeRect(x + 0.5, y + 0.5, root.sx(s.marquee[2]) - x, root.sy(s.marquee[3]) - y)
-                ctx.setLineDash([])
-            }
             if (s.pointGizmo) {
                 // Move arrows (red along X, green along Y) with a square to move freely, a ring to rotate, and
                 // boxes to scale: one on each axis and a yellow one that scales evenly.
@@ -597,6 +589,19 @@ Item {
                 ctx.fillText(root.tr("1 square = %1").arg(level[1]), x + len + 8, y + 4)
             }
         }
+    }
+
+    // The selection box while it is dragged: drawn on its own, so moving it does not redraw the pattern.
+    property var marquee: null
+    Rectangle {
+        visible: root.marquee !== null
+        x: root.marquee ? Math.min(root.sx(root.marquee[0]), root.sx(root.marquee[2])) : 0
+        y: root.marquee ? Math.min(root.sy(root.marquee[1]), root.sy(root.marquee[3])) : 0
+        width: root.marquee ? Math.abs(root.sx(root.marquee[2]) - root.sx(root.marquee[0])) : 0
+        height: root.marquee ? Math.abs(root.sy(root.marquee[3]) - root.sy(root.marquee[1])) : 0
+        color: Qt.alpha(root.accent, 0.15)
+        border.color: root.accent
+        border.width: 1
     }
 
     MouseArea {

@@ -32,7 +32,6 @@ public sealed partial class ClothSolver : IDisposable
 
     private IClothAccelerator? _accelerator;
     private byte[] _openStitchBytes = Array.Empty<byte>();
-    private bool _gpuDirty;
     private Func<Vector3[], ContactBroadphaseResult>? _acceleratorBroadphase;
 
     /// <summary>Human-readable compute backend currently driving this solver (e.g. "CUDA (...)" or "CPU").</summary>
@@ -60,6 +59,8 @@ public sealed partial class ClothSolver : IDisposable
     private int[] _garmentOfPiece = Array.Empty<int>();
     private int[] _pieceLayer = Array.Empty<int>();
     private int _realParticleCount;
+    private int _simulatedParticleCount;
+    private bool _collides; // cloth-to-cloth contacts: self-collision, or frozen garments to collide with // the simulated garments' particles come first; the frozen ones follow
     private float[] _sewing = Array.Empty<float>();   // per garment: 1 while its seams are far apart, 0 once sewn
     private float[] _gap = Array.Empty<float>();
     private float[] _bestGap = Array.Empty<float>();
@@ -141,11 +142,15 @@ public sealed partial class ClothSolver : IDisposable
         }
         foreach (var g in simulated)
             Register(g, true);
-        if (settings.SelfCollision || simulated.Any(g => g.Garment.SurfaceStitches.Count > 0))
-        {
-            foreach (var g in obstacles)
-                Register(g, false);
-        }
+        int simulatedCount = count;
+        // Frozen garments are always there to collide with; the others only with self-collision on (or as the
+        // surface that trim is stitched to).
+        var registered = settings.SelfCollision || simulated.Any(g => g.Garment.SurfaceStitches.Count > 0)
+            ? obstacles.ToList()
+            : obstacles.Where(g => g.Garment.Frozen).ToList();
+        foreach (var g in registered)
+            Register(g, false);
+        bool collides = settings.SelfCollision || registered.Any(g => g.Garment.Frozen);
 
         int realCount = count;
         var pieceLookup = pieces.Select((cp, idx) => (cp, idx)).ToDictionary(x => x.cp.Piece.Id, x => x);
@@ -169,6 +174,7 @@ public sealed partial class ClothSolver : IDisposable
 
         var solver = new ClothSolver(totalCount, pieces, collider, settings);
         solver._realParticleCount = realCount;
+        solver._simulatedParticleCount = simulatedCount;
         foreach (var cp in pieces)
         {
             if (cp.Simulated)
@@ -230,7 +236,7 @@ public sealed partial class ClothSolver : IDisposable
                 continue;
 
             // Unique edges with the vertices opposite them (one per adjacent triangle).
-            var edges = new Dictionary<long, (int C, int D)>();
+            var edges = new Dictionary<long, (int C, int D)>(Geometry.EdgeKey.Comparer);
             for (int t = 0; t < mesh.Triangles.Length; t += 3)
             {
                 for (int k = 0; k < 3; k++)
@@ -245,7 +251,7 @@ public sealed partial class ClothSolver : IDisposable
             // Set creases: the bending springs rest at the folded shape instead of flat, so the folds come back.
             float[]? crease = cloth.Piece.HasCreasesFor(mesh.Key, mesh.VertexCount) ? cloth.Piece.Crease : null;
             float creaseMix = Math.Clamp(cloth.Piece.CreaseStrength, 0f, 1f);
-            var rim = rims[mesh] = new Dictionary<long, int>();
+            var rim = rims[mesh] = new Dictionary<long, int>(Geometry.EdgeKey.Comparer);
             foreach (var (key, opposite) in edges)
             {
                 if (opposite.D < 0)
@@ -457,9 +463,10 @@ public sealed partial class ClothSolver : IDisposable
             }
         }
         solver._pieceLayer = pieces.Select(p => p.Source.Layer).ToArray();
-        if (settings.SelfCollision)
+        solver._collides = collides;
+        if (collides)
         {
-            foreach (var g in obstacles)
+            foreach (var g in registered)
             {
                 foreach (var stitch in g.Stitches)
                     welds.Add((offsets[g.Pieces[stitch.PieceA]] + stitch.VertexA, offsets[g.Pieces[stitch.PieceB]] + stitch.VertexB));
@@ -597,19 +604,21 @@ public sealed partial class ClothSolver : IDisposable
         var fullGravity = new Vector3(0, Settings.Gravity, 0);
 
         // Cloth pairs have to be found before they touch, so fast-moving cloth is searched several times a frame:
-        // often enough that nothing travels further than the search distance in between.
-        float travel = 2f * PeakSpeed * h * substeps;
-        int searchEvery = Math.Max(1, substeps / Math.Clamp((int)MathF.Ceiling(travel / (0.75f * ContactMargin)), 1, substeps));
+        // often enough that nothing travels further than the search distance in between. The speed that counts is
+        // that of nearly all the cloth, not of the fastest particle: one swinging hem or a pinch set the pace for a
+        // whole layered outfit and searching four to eight times a frame made it crawl. The few faster particles
+        // that slip past in between are worked back out gently by the contacts.
+        float travel = 2f * (_collides ? SearchSpeed() : PeakSpeed) * h * substeps;
+        int searchEvery = Math.Max(1,
+            substeps / Math.Clamp((int)MathF.Ceiling(travel / (0.75f * ContactMargin)), 1, substeps));
 
         UpdatePinch();
 
-        if (_accelerator != null && !IsPinching)
+        if (_accelerator != null)
         {
-            if (_gpuDirty)
-            {
-                _accelerator.UploadState(x, _velocity);
-                _gpuDirty = false;
-            }
+            // A pinch runs on the accelerator too: stepping a large garment on the CPU while it is held made the
+            // view crawl the moment the cloth was grabbed.
+            var pinchHands = PinchForAccelerator(substeps, h);
             for (int i = 0; i < n; i++)
                 _openStitchBytes[i] = _openStitch[i] ? (byte)1 : (byte)0;
             var stepParams = new ClothStepParams
@@ -618,25 +627,21 @@ public sealed partial class ClothSolver : IDisposable
                 SubstepDt = h,
                 GravityY = Settings.Gravity,
                 GroundPlane = Settings.GroundPlane,
-                SelfCollision = Settings.SelfCollision,
+                SelfCollision = _collides,
                 SearchEvery = searchEvery,
                 Sewing = _sewing,
                 OpenStitch = _openStitchBytes,
+                PinchHands = pinchHands,
             };
             PeakSpeed = _accelerator.StepFrame(stepParams,
-                Settings.SelfCollision ? _acceleratorBroadphase ??= FindContactsForAccelerator : null);
+                _collides ? _acceleratorBroadphase ??= FindContactsForAccelerator : null);
             _accelerator.DownloadPositions(x);
             return;
         }
 
-        // The accelerator owns the velocities while it steps. The first CPU frame after it (a pinch has started)
-        // fetches them, so the cloth carries on with the motion it has instead of the last one the CPU saw.
-        if (_accelerator != null && !_gpuDirty)
-            _accelerator.DownloadVelocities(_velocity);
-        _gpuDirty = true;
         for (int step = 0; step < substeps; step++)
         {
-            if (Settings.SelfCollision && step % searchEvery == 0)
+            if (_collides && step % searchEvery == 0)
                 FindContacts();
             for (int i = 0; i < n; i++)
             {
@@ -656,7 +661,7 @@ public sealed partial class ClothSolver : IDisposable
             SolveDistances(h);
             SolveSeamHinges(h);
             SolveSeams(h, false);
-            if (Settings.SelfCollision)
+            if (_collides)
                 SolveContacts();
             SolveBody();
 
@@ -678,6 +683,34 @@ public sealed partial class ClothSolver : IDisposable
     /// Runs CPU broadphase contact discovery for an accelerator on broadphase refresh substeps and packs the active
     /// point-triangle and hem edge-edge contacts for GPU-side resolution.
     /// </summary>
+    private Vector3[]? _lastFrame;
+    private readonly float[] _speedSample = new float[512];
+
+    /// <summary>
+    /// How fast nearly all the moving cloth travelled over the last frame (m/s): the 98th percentile of a sample, or
+    /// the peak speed on the first frame.
+    /// </summary>
+    private float SearchSpeed()
+    {
+        int moving = _simulatedParticleCount > 0 ? _simulatedParticleCount : _realParticleCount;
+        var x = Positions;
+        float speed = PeakSpeed;
+        if (_lastFrame != null && moving > 0)
+        {
+            int count = Math.Min(_speedSample.Length, moving);
+            for (int k = 0; k < count; k++)
+            {
+                int i = (int)((long)k * moving / count);
+                _speedSample[k] = Vector3.Distance(x[i], _lastFrame[i]) / FrameTime;
+            }
+            Array.Sort(_speedSample, 0, count);
+            speed = MathF.Min(PeakSpeed, _speedSample[Math.Min(count - 1, (int)(count * 0.98f))]);
+        }
+        _lastFrame ??= new Vector3[x.Length];
+        Array.Copy(x, _lastFrame, x.Length);
+        return speed;
+    }
+
     private ContactBroadphaseResult FindContactsForAccelerator(Vector3[] positions)
     {
         Array.Copy(positions, Positions, Positions.Length);

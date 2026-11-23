@@ -777,5 +777,17 @@
   "Hood pushed down": "Capuz para baixo",
   "Round the roll": "Perímetro do rolo",
   "Length": "Comprimento",
-  "Only round the back of the neck (under a jacket collar)": "Apenas à volta da nuca (sob a gola de um casaco)"
+  "Only round the back of the neck (under a jacket collar)": "Apenas à volta da nuca (sob a gola de um casaco)",
+  "Pinch applied and kept. Ctrl+Z undoes it.": "Beliscão aplicado e mantido. Ctrl+Z desfaz.",
+  "Freeze garment": "Congelar a peça",
+  "Unfreeze garment": "Descongelar a peça",
+  "“{0}” is frozen. Unfreeze it in the layers panel to simulate it.": "“{0}” está congelada. Descongele-a no painel de camadas para simulá-la.",
+  "“{0}” is frozen: it holds still, and the garments you simulate collide with it.": "“{0}” está congelada: fica parada e as peças que simular colidem com ela.",
+  "“{0}” can move again.": "“{0}” pode voltar a mover-se.",
+  "“{0}” is frozen. Unfreeze it in the layers panel to pull it.": "“{0}” está congelada. Descongele-a no painel de camadas para puxá-la.",
+  "Keep Shape": "Manter forma",
+  "Letting go keeps the shape the cloth was pulled into. Off, stiff cloth springs back to the shape it had.": "Ao soltar, o tecido mantém a forma em que foi puxado. Desligado, o tecido rígido volta à forma que tinha.",
+  "Frozen: it holds still, and the garments you simulate collide with it. Click to let it move again.": "Congelada: fica parada e as peças que simular colidem com ela. Clique para voltar a mover.",
+  "Freeze: hold this garment still and build the next layer on top of it": "Congelar: manter esta peça parada e construir a camada seguinte por cima",
+  "Frozen": "Congelada"
 }

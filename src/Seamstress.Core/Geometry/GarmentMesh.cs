@@ -344,7 +344,7 @@ public static class Mesher
     private static int[][] PairIntoQuads(Vector2[] points, List<int> triangles)
     {
         int count = triangles.Count / 3;
-        var owner = new Dictionary<long, int>();
+        var owner = new Dictionary<long, int>(EdgeKey.Comparer);
         var candidates = new List<(float Score, int A, int B, int[] Quad)>();
         for (int t = 0; t < count; t++)
         {
@@ -493,7 +493,7 @@ public static class Mesher
 
         // Edges that belong to exactly one triangle are the boundary; remember the third corner so the wall normal
         // can point away from the cloth.
-        var edges = new Dictionary<long, (int Count, int Opposite)>();
+        var edges = new Dictionary<long, (int Count, int Opposite)>(EdgeKey.Comparer);
         void AddEdge(int a, int b, int c)
         {
             long key = a < b ? ((long)a << 32) | (uint)b : ((long)b << 32) | (uint)a;

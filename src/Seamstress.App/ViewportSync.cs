@@ -63,6 +63,28 @@ internal sealed class ViewportSync : IDisposable
     }
 
     private readonly Dictionary<string, StitchAnchors> _stitchAnchors = new();
+
+    /// <summary>A garment's shape as last shown, kept while its mesh, drapes and arrangement stay the same.</summary>
+    private sealed record GarmentShape(GarmentMesh Mesh, int Hash, object?[] Drapes, Vector3[][] Positions, Vector3[][] Normals,
+        List<Vector3> SeamLines);
+
+    private readonly Dictionary<string, GarmentShape> _shapes = new();
+
+    // A texture's file and the maps next to it, looked up on disk at most every few seconds rather than every frame.
+    private readonly Dictionary<string, (long Checked, (string, string, string, string) Urls)> _textures = new();
+
+    private (string Texture, string Normal, string Rough, string Metal) TextureUrls(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return ("", "", "", "");
+        long now = Environment.TickCount64;
+        if (_textures.TryGetValue(path, out var known) && now - known.Checked < 3000)
+            return known.Urls;
+        var urls = (File.Exists(path) ? ToUrl(path) : "", SidecarUrl(path, "_normal.png"), SidecarUrl(path, "_rough.png"),
+            SidecarUrl(path, "_metal.png"));
+        _textures[path] = (now, urls);
+        return urls;
+    }
     private readonly Queue<string> _stitchFiles = new();
     private string _stitchUrl = "";
 
@@ -223,8 +245,39 @@ internal sealed class ViewportSync : IDisposable
                 continue;
             var mesh = workspace.MeshFor(garment);
             var layout = UvLayout.For(garment);
+            // A garment that has not moved since the last update (everything but what is being simulated) keeps the
+            // positions, normals and seam threads worked out then: recomputing all of them every frame for a layered
+            // outfit took most of the time of each update.
+            var drapes = new object?[mesh.Pieces.Count];
+            var shape = new HashCode();
+            shape.Add(garment.ShownThicknessMm);
+            for (int i = 0; i < mesh.Pieces.Count; i++)
+            {
+                var piece = garment.FindPiece(mesh.Pieces[i].PieceId)!;
+                drapes[i] = piece.Drape;
+                shape.Add(piece.DrapeKey);
+                shape.Add(piece.Placement.Position);
+                shape.Add(piece.Placement.Rotation);
+                shape.Add(piece.Placement.Curvature);
+                shape.Add(piece.FlipNormals);
+                shape.Add(Workspace.IsEffectivelyVisible(garment, piece));
+            }
+            int shapeHash = shape.ToHashCode();
+            if (_shapes.TryGetValue(garment.Id, out var known) && ReferenceEquals(known.Mesh, mesh) && known.Hash == shapeHash
+                && known.Drapes.Length == drapes.Length && known.Drapes.Zip(drapes).All(d => ReferenceEquals(d.First, d.Second)))
+            {
+                seamLines.AddRange(known.SeamLines);
+                if (shownPositions != null)
+                {
+                    for (int i = 0; i < mesh.Pieces.Count; i++)
+                        shownPositions[mesh.Pieces[i].PieceId] = known.Positions[i];
+                }
+                PieceModels(known.Positions, known.Normals);
+                continue;
+            }
             var positions = new Vector3[mesh.Pieces.Count][];
             var normals = new Vector3[mesh.Pieces.Count][];
+            var garmentSeams = new List<Vector3>();
             for (int i = 0; i < mesh.Pieces.Count; i++)
             {
                 var piece = garment.FindPiece(mesh.Pieces[i].PieceId)!;
@@ -260,14 +313,19 @@ internal sealed class ViewportSync : IDisposable
                         var nb = normals[stitch.PieceB][stitch.VertexB];
                         float ha = garment.ShownThicknessMm * 0.0005f + 0.001f;
                         float hb = garment.ShownThicknessMm * 0.0005f + 0.001f;
-                        seamLines.Add(a + na * ha);
-                        seamLines.Add(b + nb * hb);
-                        seamLines.Add(a - na * ha);
-                        seamLines.Add(b - nb * hb);
+                        garmentSeams.Add(a + na * ha);
+                        garmentSeams.Add(b + nb * hb);
+                        garmentSeams.Add(a - na * ha);
+                        garmentSeams.Add(b - nb * hb);
                     }
                 }
             }
+            seamLines.AddRange(garmentSeams);
+            _shapes[garment.Id] = new GarmentShape(mesh, shapeHash, drapes, positions, normals, garmentSeams);
+            PieceModels(positions, normals);
 
+            void PieceModels(Vector3[][] positions, Vector3[][] normals)
+            {
             for (int i = 0; i < mesh.Pieces.Count; i++)
             {
                 var pieceMesh = mesh.Pieces[i];
@@ -304,7 +362,7 @@ internal sealed class ViewportSync : IDisposable
                 if (wireLines != null)
                 {
                     // Face outlines, lifted a hair off the surface on both sides so they are not hidden by it.
-                    var drawn = new HashSet<long>();
+                    var drawn = new HashSet<long>(EdgeKey.Comparer);
                     foreach (var face in pieceMesh.Faces())
                     {
                         for (int k = 0; k < face.Length; k++)
@@ -364,10 +422,7 @@ internal sealed class ViewportSync : IDisposable
                 first = false;
                 sb.Append("{\"id\":\"").Append(piece.Id).Append("\",\"source\":\"").Append(entry.Url).Append('"');
                 sb.Append(",\"color\":\"").Append(material.Color).Append('"');
-                string texture = !string.IsNullOrEmpty(material.Texture) && File.Exists(material.Texture) ? ToUrl(material.Texture) : "";
-                string normalMap = SidecarUrl(material.Texture, "_normal.png");
-                string roughMap = SidecarUrl(material.Texture, "_rough.png");
-                string metalMap = SidecarUrl(material.Texture, "_metal.png");
+                var (texture, normalMap, roughMap, metalMap) = TextureUrls(material.Texture);
                 sb.Append(",\"texture\":").Append(System.Text.Json.JsonSerializer.Serialize(texture));
                 sb.Append(",\"normalMap\":").Append(System.Text.Json.JsonSerializer.Serialize(normalMap));
                 sb.Append(",\"roughMap\":").Append(System.Text.Json.JsonSerializer.Serialize(roughMap));
@@ -377,7 +432,10 @@ internal sealed class ViewportSync : IDisposable
                 sb.Append(",\"selected\":").Append(workspace.SelectedPieces.Contains(piece.Id) ? "true" : "false");
                 sb.Append('}');
             }
+            }
         }
+        foreach (var id in _shapes.Keys.Where(id => doc.FindGarment(id) == null).ToList())
+            _shapes.Remove(id);
 
         foreach (var id in _entries.Keys.Where(id => !seen.Contains(id)).ToList())
         {

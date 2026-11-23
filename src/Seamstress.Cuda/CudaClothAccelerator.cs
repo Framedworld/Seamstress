@@ -106,6 +106,12 @@ internal sealed class CudaRuntime
     public Action<Index1D, ArrayView<Float3>, ArrayView<float>,
         ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>> ApplyContactDeltasKernel { get; }
 
+    public Action<Index1D, ArrayView<Float3>, ArrayView<int>, ArrayView<float>, ArrayView<Float3>, Float3> ApplyPinchKernel { get; }
+
+    public Action<Index1D, ArrayView<Float3>, ArrayView<int>> StopParticlesKernel { get; }
+
+    public Action<Index1D, ArrayView<float>, ArrayView<int>, ArrayView<float>> ScatterKernel { get; }
+
     private CudaRuntime(Context context, Accelerator accelerator)
     {
         Context = context;
@@ -158,6 +164,15 @@ internal sealed class CudaRuntime
         ApplyContactDeltasKernel = accelerator.LoadAutoGroupedStreamKernel<
             Index1D, ArrayView<Float3>, ArrayView<float>,
             ArrayView<float>, ArrayView<float>, ArrayView<float>, ArrayView<int>>(Kernels.ApplyContactDeltas);
+
+        ApplyPinchKernel = accelerator.LoadAutoGroupedStreamKernel<
+            Index1D, ArrayView<Float3>, ArrayView<int>, ArrayView<float>, ArrayView<Float3>, Float3>(Kernels.ApplyPinch);
+
+        StopParticlesKernel = accelerator.LoadAutoGroupedStreamKernel<
+            Index1D, ArrayView<Float3>, ArrayView<int>>(Kernels.StopParticles);
+
+        ScatterKernel = accelerator.LoadAutoGroupedStreamKernel<
+            Index1D, ArrayView<float>, ArrayView<int>, ArrayView<float>>(Kernels.Scatter);
     }
 
     public static string? LastError { get; private set; }
@@ -191,6 +206,8 @@ internal sealed class CudaRuntime
     {
         private const float MaxSpeed = 8f;
         private const float ContactGap = 0.0022f;
+        private const float ContactStep = 0.0015f;   // as ClothSolver.ContactStep
+        private const float UntangleStep = 0.0003f;  // as ClothSolver.UntangleStep
 
         private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
 
@@ -598,7 +615,8 @@ internal sealed class CudaRuntime
             var beside = r - normal * height;
             if (beside.LengthSquared() > separation * separation)
                 return;
-            float depth = XMath.Min(separation - height, separation);
+            // Worked off over several substeps, as in ClothSolver.SolveContacts.
+            float depth = XMath.Min(separation - height, height < 0f ? UntangleStep : ContactStep);
             if (depth <= 0f)
                 return;
 
@@ -669,6 +687,32 @@ internal sealed class CudaRuntime
                 AccumulateDelta(b2, push * (-w2b * m2b), deltaX, deltaY, deltaZ, contactHits);
         }
 
+        /// <summary>Draws the held cloth towards the hand, as ClothSolver.ApplyPinch does.</summary>
+        public static void ApplyPinch(
+            Index1D k,
+            ArrayView<Float3> pos,
+            ArrayView<int> pinched,
+            ArrayView<float> strength,
+            ArrayView<Float3> offsets,
+            Float3 hand)
+        {
+            int i = pinched[k];
+            var x = pos[i];
+            pos[i] = x + (hand + offsets[k] - x) * strength[k];
+        }
+
+        /// <summary>Writes values at the listed indices.</summary>
+        public static void Scatter(Index1D k, ArrayView<float> target, ArrayView<int> indices, ArrayView<float> values)
+        {
+            target[indices[k]] = values[k];
+        }
+
+        /// <summary>Stops the listed particles (the cloth a pinch lets go of).</summary>
+        public static void StopParticles(Index1D k, ArrayView<Float3> vel, ArrayView<int> particles)
+        {
+            vel[particles[k]] = new Float3(0f, 0f, 0f);
+        }
+
         public static void ApplyContactDeltas(
             Index1D i,
             ArrayView<Float3> pos,
@@ -737,6 +781,13 @@ public sealed class CudaClothAccelerator : IClothAccelerator
     private MemoryBuffer1D<GpuHemContact, Stride1D.Dense>? _hemContacts;
     private int _hemCapacity;
     private int _hemCount;
+    private MemoryBuffer1D<int, Stride1D.Dense>? _pinched;
+    private MemoryBuffer1D<float, Stride1D.Dense>? _pinchStrength;
+    private MemoryBuffer1D<Float3, Stride1D.Dense>? _pinchOffset;
+    private int _pinchCount;
+    private readonly float[] _hostInvMass;
+    private MemoryBuffer1D<int, Stride1D.Dense>? _pinchCore;
+    private MemoryBuffer1D<float, Stride1D.Dense>? _pinchCoreMass;
 
     private readonly ColoredConstraints _distColors;
     private readonly MemoryBuffer1D<int, Stride1D.Dense>? _ca, _cb;
@@ -777,6 +828,7 @@ public sealed class CudaClothAccelerator : IClothAccelerator
         _vel.MemSetToZero();
 
         _invMass = acc.Allocate1D(data.InvMass);
+        _hostInvMass = (float[])data.InvMass.Clone();
         _thickness = acc.Allocate1D(data.Thickness);
         _clothThickness = acc.Allocate1D(data.ClothThickness);
         _friction = acc.Allocate1D(data.Friction);
@@ -853,6 +905,43 @@ public sealed class CudaClothAccelerator : IClothAccelerator
         _hostPosValid = false;
     }
 
+    public void SetPinch(int[] particles, float[] strength, Vector3[] offsets, float coreStrength)
+    {
+        if (_pinched != null && _pinchCount > 0)
+            _rt.StopParticlesKernel(_pinchCount, _vel.View, _pinched.View);
+        // The middle of the patch that was held gets its mass back; the middle of the new one is held rigidly.
+        if (_pinchCore != null && _pinchCoreMass != null)
+            _rt.ScatterKernel((int)_pinchCore.Length, _invMass.View, _pinchCore.View, _pinchCoreMass.View);
+        // The kernels above must finish with the old buffers before they are freed.
+        _rt.Accelerator.Synchronize();
+        _pinchCore?.Dispose();
+        _pinchCoreMass?.Dispose();
+        _pinchCore = null;
+        _pinchCoreMass = null;
+        var core = Enumerable.Range(0, particles.Length).Where(k => strength[k] >= coreStrength).Select(k => particles[k]).ToArray();
+        if (core.Length > 0)
+        {
+            _pinchCore = _rt.Accelerator.Allocate1D(core);
+            _pinchCoreMass = _rt.Accelerator.Allocate1D(core.Select(i => _hostInvMass[i]).ToArray());
+            using var zero = _rt.Accelerator.Allocate1D(new float[core.Length]);
+            _rt.ScatterKernel(core.Length, _invMass.View, _pinchCore.View, zero.View);
+            _rt.Accelerator.Synchronize();
+        }
+        _pinched?.Dispose();
+        _pinchStrength?.Dispose();
+        _pinchOffset?.Dispose();
+        _pinched = null;
+        _pinchStrength = null;
+        _pinchOffset = null;
+        _pinchCount = particles.Length;
+        if (_pinchCount == 0)
+            return;
+        var acc = _rt.Accelerator;
+        _pinched = acc.Allocate1D(particles);
+        _pinchStrength = acc.Allocate1D(strength);
+        _pinchOffset = acc.Allocate1D(offsets.Select(o => new Float3(o)).ToArray());
+    }
+
     public void DownloadPositions(Vector3[] positions)
     {
         Download(_pos, positions);
@@ -917,6 +1006,10 @@ public sealed class CudaClothAccelerator : IClothAccelerator
 
             _rt.IntegrateKernel(_n, _pos.View, _prev.View, _vel.View, _invMass.View, _drag.View,
                 _pieceOf.View, _garmentOfPiece.View, _sewing.View, p.GravityY, h);
+
+            if (_pinchCount > 0 && p.PinchHands is { } hands && step < hands.Length)
+                _rt.ApplyPinchKernel(_pinchCount, _pos.View, _pinched!.View, _pinchStrength!.View, _pinchOffset!.View,
+                    new Float3(hands[step]));
 
             SolveSeamsGpu(closing, assist: true);
             SolveDistancesGpu(invH2);
@@ -1079,6 +1172,11 @@ public sealed class CudaClothAccelerator : IClothAccelerator
         _contactHits.Dispose();
         _ptContacts?.Dispose();
         _hemContacts?.Dispose();
+        _pinched?.Dispose();
+        _pinchStrength?.Dispose();
+        _pinchOffset?.Dispose();
+        _pinchCore?.Dispose();
+        _pinchCoreMass?.Dispose();
         _ca?.Dispose();
         _cb?.Dispose();
         _rest?.Dispose();

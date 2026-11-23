@@ -777,5 +777,17 @@
   "Hood pushed down": "Capuche rabattue",
   "Round the roll": "Tour du bourrelet",
   "Length": "Longueur",
-  "Only round the back of the neck (under a jacket collar)": "Seulement autour de la nuque (sous un col de veste)"
+  "Only round the back of the neck (under a jacket collar)": "Seulement autour de la nuque (sous un col de veste)",
+  "Pinch applied and kept. Ctrl+Z undoes it.": "Pincement appliqué et conservé. Ctrl+Z l’annule.",
+  "Freeze garment": "Figer le vêtement",
+  "Unfreeze garment": "Libérer le vêtement",
+  "“{0}” is frozen. Unfreeze it in the layers panel to simulate it.": "« {0} » est figé. Libérez-le dans le panneau des calques pour le simuler.",
+  "“{0}” is frozen: it holds still, and the garments you simulate collide with it.": "« {0} » est figé : il reste immobile et les vêtements simulés entrent en collision avec lui.",
+  "“{0}” can move again.": "« {0} » peut de nouveau bouger.",
+  "“{0}” is frozen. Unfreeze it in the layers panel to pull it.": "« {0} » est figé. Libérez-le dans le panneau des calques pour le tirer.",
+  "Keep Shape": "Garder la forme",
+  "Letting go keeps the shape the cloth was pulled into. Off, stiff cloth springs back to the shape it had.": "En relâchant, le tissu garde la forme dans laquelle il a été tiré. Désactivé, un tissu raide reprend sa forme d’avant.",
+  "Frozen: it holds still, and the garments you simulate collide with it. Click to let it move again.": "Figé : il reste immobile et les vêtements simulés entrent en collision avec lui. Cliquez pour le libérer.",
+  "Freeze: hold this garment still and build the next layer on top of it": "Figer : immobiliser ce vêtement et construire la couche suivante par-dessus",
+  "Frozen": "Figé"
 }
