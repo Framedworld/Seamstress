@@ -121,8 +121,10 @@ ApplicationWindow {
         return used
     }
 
-    // Applies the newest simulation frame about 30 times a second; cheap when nothing is running.
-    Timer { interval: 33; running: true; repeat: true; onTriggered: App.tick() }
+    // Applies the newest simulation frame. While simulating it looks often, so each frame is shown as soon as the
+    // solver has it (polling every 33 ms against a solver taking about as long dropped every few frames); a look that
+    // finds no new frame costs next to nothing. Otherwise about 30 times a second is plenty.
+    Timer { interval: App.simulating ? 8 : 33; running: true; repeat: true; onTriggered: App.tick() }
 
     // Used by automated runs: capture the window, then quit. Every way this can go wrong ends the run with a reason
     // on standard error (App.automationFailed); a run that never gets here is ended by the watchdog in Program.cs.
