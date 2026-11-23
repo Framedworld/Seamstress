@@ -1117,13 +1117,7 @@ public sealed class McpToolRegistry
             followTilt: shape.ToLowerInvariant() is not ("handle" or "cylinder" or "wrench"));
         string color = OptString(args, "color") ?? "#9A7A45";
         float metallic = OptFloat(args, "metallic", 0.9f), roughness = OptFloat(args, "roughness", 0.3f);
-        var mat = _session.Doc.Materials.FirstOrDefault(m => m.Texture == null && string.Equals(m.Color, color, StringComparison.OrdinalIgnoreCase)
-            && MathF.Abs(m.Metallic - metallic) < 0.01f && MathF.Abs(m.Roughness - roughness) < 0.01f);
-        if (mat == null)
-        {
-            mat = new FabricMaterial { Name = _session.Doc.UniqueName(metallic > 0.5f ? "Metal" : "Hard part"), Color = color, Metallic = metallic, Roughness = roughness };
-            _session.Doc.Materials.Add(mat);
-        }
+        var mat = GarmentBlocks.HardMaterial(_session.Doc, color, metallic, roughness);
         piece.MaterialId = mat.Id;
         var garment = _session.Doc.GarmentOfPiece(piece.Id)!;
         return new { garmentId = garment.Id, garment = garment.Name, pieceId = piece.Id, name = piece.Name, pinned = piece.Pins.Count, materialId = mat.Id };

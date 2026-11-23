@@ -42,6 +42,7 @@ public static class KeyBindings
         new("tool.rectangle", "Tools", "Rectangle", new[] { "B" }),
         new("tool.ellipse", "Tools", "Ellipse", new[] { "O" }),
         new("tool.ruler", "Tools", "Ruler", new[] { "M" }),
+        new("tool.trim", "Tools", "Trim (pockets, patches, hardware)", new[] { "J" }),
         new("tool.confirm", "Tools", "Finish (polygon)", new[] { "Return", "Enter" }),
         new("tool.cancel", "Tools", "Cancel", new[] { "Escape" }),
 

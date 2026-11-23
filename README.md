@@ -214,6 +214,7 @@ the finished garment stays put and the new one drapes over it.
 | I | Inset Band | C | Cut pieces along a drawn line |
 | X | Rip cloth in 3D | G | Pinch cloth in 3D |
 | M | Ruler (2D and 3D) | 5 | Orthographic 3D view on / off |
+| J | Trim: pockets, patches, hardware | K | Set creases |
 | 1 / 3 / Ctrl+1 | 3D front / side / back | Right-click | Edit menu |
 
 Every key can be changed under **File ▸ Preferences ▸ Keyboard**. Double-click a piece in the 2D view to select

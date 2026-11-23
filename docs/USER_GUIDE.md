@@ -105,6 +105,7 @@ The toolbar shows each tool as an icon. Hover over an icon to see its name, what
 | 7 | **Polygon** | P | Click to place corners; click the first corner again, double-click, or press Enter to finish. |
 | 8 | **Rectangle** | B | Drag out a rectangular piece. |
 | 9 | **Ellipse** | O | Drag out an elliptical piece. |
+| | **Trim** | J | Drag on a piece to add a pocket, flap or patch, or click to set a snap, button, rivet or buckle (see [Pockets, patches and hardware](#pockets-patches-and-hardware)). |
 | 10 | **Ruler** | M | Measure a distance in the 2D view, or between two points on the cloth or avatar in the 3D view (see [Measuring with the Ruler](#measuring-with-the-ruler)). |
 | 11 | Undo | Ctrl+Z | Undo the last change. Hover to see what it will undo. |
 | 12 | Redo | Ctrl+Shift+Z | Redo. |
@@ -145,6 +146,9 @@ maps what you already know to where it lives here.
 | Reset 3D Arrangement | **Reset** button, or **Simulation ▸ Reset Arrangement** |
 | Gizmo | The arrows and rings on the selected piece in the 3D view |
 | Dragging the cloth while simulating | **Pinch** (**G**) in the 3D view; it also works after the simulation has stopped. **Rip** (**X**) tears the cloth along a dragged stroke |
+| Pockets, flaps, patches, buttons and snaps | **Trim** tool (**J**): drag on a draped piece, then simulate |
+| Avatar-fitted blocks | **Garment ▸ Add Fitted Tee / Trousers / Jacket / Hoodie…**: cut to the avatar, with fit, length, sleeves and an open front |
+| Collars and hoods | **Garment ▸ Add Collar…** and **Add Hood…** on a fitted top |
 | Arrangement points | Not available. Place pieces with the gizmo or the numbers under **3D Arrangement**; **Wrap** curls a piece around an arm or leg |
 | Particle Distance | **Topology ▸ Particle distance** (per garment, with a per-piece override) |
 | Mesh type: Triangle / Quad | **Topology ▸ Faces**: Triangles or Quads |
@@ -397,6 +401,42 @@ A line that does not divide a piece into at least two pieces does nothing; the s
 undoes the cut in one step.
 
 ---
+
+## Fitted garments, collars and hoods
+
+**Garment ▸ Add Fitted Tee, Fitted Trousers, Fitted Jacket** and **Fitted Hoodie** cut the garment to the
+avatar's own measurements and place it round the body, sewn and ready to simulate. A dialog asks first:
+
+- **Fit**: from close fitting to roomy.
+- **Body length** or **Leg length**: longer or shorter than measured. Extra trouser length stacks in folds on the
+  shoes.
+- **Sleeves** (tops): none, short or long.
+- **Front** (jacket and hoodie): open, with the gap between the fronts. **Hood** (hoodie): with or without.
+- **Side seam back** and **Hem opening** (trousers): move the side seam towards the back so pockets sit on the side
+  of the leg; narrow the hems (keep them wider than the shoes).
+
+Add garments from the skin outwards: each one is put on a layer over what is already worn, with room for it.
+
+**Garment ▸ Add Collar…** sews a band round the neckline of a fitted top: a **stand collar**, a **gathered cowl**,
+or a **hood pushed down** into a padded roll round the neck. **Add Hood…** sews a hood that lies down the back;
+tick *Only round the back of the neck* when a jacket collar is worn over it. Both work on the active garment, or
+on the outermost fitted top when the active garment has no neckline (right after adding a collar, for example).
+Simulate the new garment to sew it on.
+
+## Pockets, patches and hardware
+
+Pick **Trim** (**J**), or **Garment ▸ Add Pockets, Patches and Hardware**. A bar at the top of the 2D view chooses
+what to add:
+
+- **Pocket** (open at the top), **Flap** (sewn along the top, lying over what is under it) or **Patch** (sewn all
+  round): drag a rectangle on a piece in the 2D view to place and size it, or click for one of the usual size. A
+  faint rectangle follows the pointer to show where a click puts it.
+- **Snap**, **Button**, **Rivet** or **Buckle**: click on a piece to set it there. Hard parts are pinned, so
+  simulating never moves them.
+
+Sewn trim goes into its own garment one layer out from the piece it is on (a flap one layer further, so it lies
+over a pocket), placed on the cloth where the piece hangs now. Simulate that garment to sew it on. Trim lands
+best on a garment that has already been simulated. Each addition is one undo step.
 
 ## Sewing
 

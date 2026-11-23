@@ -69,6 +69,7 @@ public partial class AppController : INotifyPropertyChanged
                 ? Lang.F("Cut the piece into {0} pieces.", outcome.Pieces.Count)
                 : Lang.F("Cut {0} pieces into {1} pieces.", outcome.SourcePieces, outcome.Pieces.Count));
         };
+        _editor.TrimPlaced += message => StatusText = message;
         _editor.SewMade += count => StatusText = count switch
         {
             0 => Lang.T("Select at least two edges to sew."),
@@ -462,7 +463,12 @@ public partial class AppController : INotifyPropertyChanged
     }
 
     public void PointerDown(double x, double y, double tolerance, bool additive)
-        => _editor.PointerDown(new Vector2((float)x, (float)y), (float)tolerance, additive);
+    {
+        // Trim is sewn onto the cloth where it lies now: not onto cloth that is still moving.
+        if (_editor.Tool == PatternTool.Trim)
+            StopSimulation();
+        _editor.PointerDown(new Vector2((float)x, (float)y), (float)tolerance, additive);
+    }
 
     public void PointerMove(double x, double y, double tolerance)
         => _editor.PointerMove(new Vector2((float)x, (float)y), (float)tolerance);
@@ -1078,6 +1084,119 @@ public partial class AppController : INotifyPropertyChanged
     {
         _workspace.AddTemplate(name, _avatar?.Mesh.Bounds().Max.Y ?? Templates.ReferenceBodyHeight, _avatar?.Mesh);
         StatusText = Lang.F("Added {0}. Press Simulate to sew and drape it.", Lang.T(name));
+    }
+
+    /// <summary>The fitted templates are cut to the avatar and open a dialog of options first.</summary>
+    public bool IsFittedTemplate(string name) => FittedGarments.IsFitted(name);
+
+    /// <summary>
+    /// Adds a fitted template with the options chosen in its dialog. <paramref name="sleeves"/> is "none", "short" or
+    /// "long"; the trouser options are ignored by the tops and the top options by the trousers.
+    /// </summary>
+    public void AddFittedTemplate(string name, double easePercent, double extraLengthCm, string sleeves, bool openFront,
+        double frontGapCm, bool hood, double outseamBackCm, double hemGirthCm)
+    {
+        StopSimulation();
+        var options = new FitOptions
+        {
+            Ease = (float)easePercent / 100f,
+            ExtraLengthCm = (float)extraLengthCm,
+            Sleeves = string.IsNullOrEmpty(sleeves) ? null : sleeves,
+            OpenFront = openFront,
+            FrontGapCm = (float)frontGapCm,
+            Hood = hood,
+            OutseamBackCm = (float)outseamBackCm,
+            HemGirthCm = (float)hemGirthCm,
+        };
+        try
+        {
+            _workspace.AddTemplate(name, _avatar?.Mesh.Bounds().Max.Y ?? Templates.ReferenceBodyHeight, _avatar?.Mesh, options);
+            StatusText = Lang.F("Added {0}. Press Simulate to sew and drape it.", Lang.T(name));
+        }
+        catch (ArgumentException e)
+        {
+            StatusText = e.Message;
+        }
+    }
+
+    /// <summary>What the Trim tool adds: Pocket, Flap, Patch, Snap, Button, Rivet or Buckle.</summary>
+    public string TrimKind
+    {
+        get => _editor.TrimKind;
+        set
+        {
+            if (_editor.TrimKind == value)
+                return;
+            _editor.TrimKind = value;
+            Notify();
+            if (_editor.Tool == PatternTool.Trim)
+                StatusText = _editor.Hint;
+        }
+    }
+
+    public string TrimKinds() => string.Join("|", Workspace.TrimKinds.Concat(Workspace.HardwareKinds));
+    public bool IsHardwareKind(string kind) => PatternEditor.IsHardwareKind(kind);
+    public string TrimKindLabel(string kind) => Workspace.KindLabel(kind);
+
+    /// <summary>
+    /// The garment a collar or hood goes on: the active one when it has a neckline (the fitted tops), otherwise the
+    /// outermost shown garment that has one. Right after adding a collar the collar is active, and a hood still finds
+    /// the jacket under it.
+    /// </summary>
+    private Garment? NeckHost()
+        => Workspace.HasNeckline(_workspace.ActiveGarment) ? _workspace.ActiveGarment
+            : _workspace.Document.Garments.Where(g => g.Visible && Workspace.HasNeckline(g)).MaxBy(g => g.Layer);
+
+    /// <summary>True when there is a garment with a neckline a collar or hood can be sewn to.</summary>
+    public bool ActiveHasNeckline() => NeckHost() != null;
+
+    /// <summary>The name of the garment a collar or hood would be sewn to.</summary>
+    public string NeckHostName() => NeckHost()?.Name ?? "";
+
+    public string CollarStyles() => string.Join("|", Workspace.CollarStyles);
+
+    private BodyMeasurements? MeasuredBody()
+    {
+        if (_avatar == null)
+        {
+            StatusText = Lang.T("Load or choose an avatar first: collars and hoods are cut to its neck.");
+            return null;
+        }
+        return BodyMeasurements.Measure(_avatar.Mesh);
+    }
+
+    /// <summary>A collar round the neck: "Stand", "Cowl" or "Hood roll". A height of 0 uses the style's own.</summary>
+    public void AddCollar(string style, double heightCm)
+    {
+        if (NeckHost() is not { } host || MeasuredBody() is not { } body)
+            return;
+        StopSimulation();
+        try
+        {
+            var collar = _workspace.AddCollar(host.Id, body, style, (float)heightCm);
+            StatusText = Lang.F("Added “{0}” round the neck of “{1}”. Press Simulate to sew and drape it.", collar.Name, host.Name);
+        }
+        catch (ArgumentException e)
+        {
+            StatusText = e.Message;
+        }
+    }
+
+    /// <summary>A hood sewn round the neck, lying down the back.</summary>
+    public void AddHood(double lengthCm, double widthCm, bool behindNeck)
+    {
+        if (NeckHost() is not { } host || MeasuredBody() is not { } body)
+            return;
+        StopSimulation();
+        try
+        {
+            var hood = _workspace.AddHood(host.Id, body, (float)lengthCm, (float)widthCm, behindNeck);
+            StatusText = Lang.F("Added “{0}” to “{1}”. Press Simulate to sew and drape it.", hood.Name, host.Name);
+        }
+        catch (ArgumentException e)
+        {
+            StatusText = e.Message;
+        }
     }
 
     public bool ImportMeshAsPattern(string fileUrl)

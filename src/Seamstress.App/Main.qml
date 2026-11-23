@@ -264,6 +264,7 @@ ApplicationWindow {
         "tool.rectangle": () => App.tool = "Rectangle",
         "tool.ellipse": () => App.tool = "Ellipse",
         "tool.ruler": () => App.tool = "Ruler",
+        "tool.trim": () => App.tool = "Trim",
         "tool.confirm": () => App.confirmTool(),
         "tool.cancel": () => { viewport.clearRuler(); if (App.pinBrush) App.pinBrush = false; else App.cancelTool() },
         "handles.full": () => App.gizmoMode = "Full",
@@ -394,12 +395,26 @@ ApplicationWindow {
                     model: App.templateNames().split("|")
                     delegate: MenuItem {
                         required property string modelData
-                        text: tr("Add %1").arg(tr(modelData))
-                        onTriggered: App.addTemplate(modelData)
+                        readonly property bool fitted: App.isFittedTemplate(modelData)
+                        // The fitted ones are cut to the avatar and ask for fit, length and sleeves first.
+                        text: tr("Add %1").arg(tr(modelData)) + (fitted ? "…" : "")
+                        onTriggered: fitted ? fittedDialog.show(modelData) : App.addTemplate(modelData)
                     }
                     onObjectAdded: (index, object) => garmentMenu.insertItem(index + 3, object)
                     onObjectRemoved: (index, object) => garmentMenu.removeItem(object)
                 }
+                MenuSeparator {}
+                MenuItem {
+                    text: tr("Add Collar…")
+                    enabled: { App.layersRevision; return App.activeHasNeckline() }
+                    onTriggered: neckDialog.show("collar")
+                }
+                MenuItem {
+                    text: tr("Add Hood…")
+                    enabled: { App.layersRevision; return App.activeHasNeckline() }
+                    onTriggered: neckDialog.show("hood")
+                }
+                KeyMenuItem { text: tr("Add Pockets, Patches and Hardware"); command: "tool.trim"; onTriggered: App.tool = "Trim" }
                 MenuSeparator {}
                 MenuItem { text: tr("Import Mesh as Pattern (OBJ)..."); onTriggered: importMeshDialog.open() }
             }
@@ -583,6 +598,7 @@ ApplicationWindow {
                     ToolChoice { label: tr("Polygon"); tool: "Polygon"; command: "tool.polygon"; iconFile: "polygon.svg"; tip: tr("Draw a piece corner by corner") }
                     ToolChoice { label: tr("Rectangle"); tool: "Rectangle"; command: "tool.rectangle"; iconFile: "rectangle.svg"; tip: tr("Drag out a rectangular piece") }
                     ToolChoice { label: tr("Ellipse"); tool: "Ellipse"; command: "tool.ellipse"; iconFile: "ellipse.svg"; tip: tr("Drag out an elliptical piece") }
+                    ToolChoice { label: tr("Trim"); tool: "Trim"; command: "tool.trim"; iconFile: "trim.svg"; tip: tr("Add a pocket, flap or patch by dragging on a piece, or click to set a snap, button, rivet or buckle") }
                 }
 
                 ToolGroup {
@@ -1279,4 +1295,6 @@ ApplicationWindow {
     EditMenu { id: contextMenu }
     PinMenu { id: pinMenu }
     BodyShapeDialog { id: bodyShape }
+    FittedGarmentDialog { id: fittedDialog }
+    NeckBlockDialog { id: neckDialog }
 }

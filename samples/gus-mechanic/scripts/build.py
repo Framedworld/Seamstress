@@ -86,14 +86,14 @@ def stage_pants(m):
     (WORK / "tape.json").write_text(json.dumps(tape))
     print("  arms droop", tape["arms"][0]["droopDegrees"], "| crotch", tape["crotchHeightCm"], "| hips", tape["torso"][0]["circumferenceCm"])
 
-    # Long and roomy: the extra length has to stack in folds on the boots, the width lets the knee break.
-    template(m, "Fitted Trousers", "pants", particleDistance=0.85, extraLengthCm=9, easePercent=3,
+    # Fitted heavy workwear trousers: snug through seat/thighs (easePercent=1, NOT loose!), extraLengthCm=8 for broad shin stacks.
+    template(m, "Fitted Trousers", "pants", particleDistance=0.85, extraLengthCm=8, easePercent=1,
              outseamBackCm=6)          # side seam on the side of the leg, so the cargo pockets and holster sit there
-    # (hemGirthCm narrower than about 55 tangles on Gus's high-top shoes and calves: the leg stays straight.)          # side seam on the side of the leg, so the cargo pockets and holster sit there
+    # Soft pre-drape (bend=58, modest shrinkWarp=1.05 so crotch stays high & fitted, not drop-crotch!)
     for n in ("Front L", "Front R", "Back L", "Back R"):
-        m.set_fabric(pieceId=ids[n], shrinkWarp=1.12, bend=62, stretch=97, shear=88, thickness=3.2, density=560, friction=96)   # soft pass: folds form; set, then stiffened    # length that cannot slide down stacks up the shin
+        m.set_fabric(pieceId=ids[n], shrinkWarp=1.05, bend=58, stretch=97, shear=86, thickness=3.4, density=580, friction=96)
     m.set_material(garmentId=garments["pants"], name="Charcoal canvas", texture=tex("canvas_charcoal"), tileCm=24, roughness=0.9)
-    sim(m, "pants", 190)
+    sim(m, "pants", 160)
     shape_pants(m)
 
     # Named points are where each edge starts on the left piece; the right piece is its mirror image (x negated).
@@ -102,40 +102,50 @@ def stage_pants(m):
     knee_x = (knee_in[0] + knee_out[0]) / 2                                   # middle of the leg at the knee
     out_at = lambda y: knee_out[0] + (hip[0] - knee_out[0]) * (y - knee_out[1]) / (hip[1] - knee_out[1])   # outseam x at height y
     for s, sx, front in (("l", 1, "Front L"), ("r", -1, "Front R")):
-        # double-front knee panel: a patch over the kneecap, base cloth showing either side
-        patch(m, f"knee_{s}", front, kind="patch", x=sx * knee_x - 8, y=knee_out[1] - 13, widthCm=16, heightCm=21, easePercent=3, bend=62)
-        # bellows cargo pocket right on the outseam, cut full so it stands off the leg, its flap over the top
-        y0 = knee_out[1] + 7.0
-        w, h = 17.0, 21.0
+        # double-front knee panel: crisp heavy-canvas reinforcement over the kneecap/upper shin
+        patch(m, f"knee_{s}", front, kind="patch", x=sx * knee_x - 8, y=knee_out[1] - 13, widthCm=16, heightCm=21, easePercent=2, bend=84)
+        # 3D bellows cargo pocket on the outer mid-thigh (easePercent=9 -> clean stable 3D box with selfCollision=True!)
+        y0 = knee_out[1] + 6.5
+        w, h = 16.5, 20.0
         xo = out_at(y0) - 0.5
         x = xo - w if s == "l" else -xo
-        patch(m, f"cargo_{s}", front, kind="patch", x=x, y=y0, widthCm=w, heightCm=h, easePercent=6, bend=88)        # on the side seam: fuller puffs the hips out
-        # the flap is tacked down all round (level 2, over the pocket), cut as full as the pocket so it sits over its bulge
-        patch(m, f"cargo_flap_{s}", front, kind="patch", level=2, x=x - 0.8, y=y0 + h - 5.5, widthCm=w + 1.6, heightCm=7.5, easePercent=5, bend=92)
+        patch(m, f"cargo_{s}", front, kind="patch", x=x, y=y0, widthCm=w, heightCm=h, easePercent=9, bend=88)
+        # crisp overhanging cargo flap (level 2, over the bellows bulge)
+        patch(m, f"cargo_flap_{s}", front, kind="patch", level=2, x=x - 0.8, y=y0 + h - 5.5, widthCm=w + 1.6, heightCm=7.2, easePercent=6, bend=94)
     garments["pants trim"] = garments[next(k for k in garments if k.endswith("trim"))]
     garments["pants flaps"] = garments[next(k for k in garments if k.endswith("trim 2"))]
-    sim(m, "pants trim", 90, self_collision=True)      # against the trousers under it, not just the body: loose folds poke through otherwise
+    sim(m, "pants trim", 90, self_collision=True)      # against the trousers under it, not just the body: folds poke through otherwise
     sim(m, "pants flaps", 80, self_collision=True)
 
 
 def shape_pants(m):
-    """Worn-in canvas, the way a garment artist gets it: drape it soft so folds form, push the knees down towards the
-    shoes so the shins stack, set creases there, then make it stiff canvas. It keeps big crisp folds instead of
-    springing flat."""
+    """Worn-in heavy duck canvas shaped by multi-zone cloth pulling:
+    1) Radiating diagonal crotch/upper-thigh whiskers
+    2) Crisp knee break right above the knee panel
+    3) Broad alternating 3-tier S-fold stacks climbing up the lower shin (not a crumpled ankle ring)
+    Locked with set_creases(88%), unpinned, then stiffened to 14 oz canvas (bend=90)."""
     p = points["Front L"]
     knee_x = (p["in_lo"][0] + p["out_hi"][0]) / 2
+    knee_in_x = p["in_lo"][0]
     knee_y = p["out_hi"][1]
+    crotch_y = p["crotch"][1]
     for sx, front, back in ((1, "Front L", "Back L"), (-1, "Front R", "Back R")):
-        m.pull_cloth(pieceId=ids[front], x=sx * knee_x, y=knee_y - 4, radiusCm=10, offsetCm=[0, -7, 1.5], steps=6, framesPerStep=12, settleFrames=0, hold=True)
-        m.pull_cloth(pieceId=ids[front], x=sx * knee_x, y=knee_y - 22, radiusCm=8, offsetCm=[0, -5, 1.0], steps=5, framesPerStep=12, settleFrames=0, hold=True)
-        # (back pieces run the other way: pattern x = -body x)
-        m.pull_cloth(pieceId=ids[back], x=-sx * knee_x, y=knee_y - 4, radiusCm=10, offsetCm=[0, -6, -1], steps=6, framesPerStep=12, settleFrames=0, hold=True)
-    r = m.set_creases(garmentId=garments["pants"], strengthPercent=85)
+        # 1. Broad lower-shin alternating S-stacks pushed toward the boot tops
+        m.pull_cloth(pieceId=ids[front], x=sx * (knee_x + 1.5), y=knee_y - 14, radiusCm=11, offsetCm=[sx * 1.6, -7.8, 2.6], steps=6, framesPerStep=12, settleFrames=0, hold=True)
+        m.pull_cloth(pieceId=ids[front], x=sx * (knee_x - 1.5), y=knee_y - 25, radiusCm=9,  offsetCm=[-sx * 1.5, -5.5, 2.6], steps=5, framesPerStep=12, settleFrames=0, hold=True)
+        # 2. Strong heavy-canvas break right across/above the knee
+        m.pull_cloth(pieceId=ids[front], x=sx * knee_x, y=knee_y + 3, radiusCm=10, offsetCm=[sx * 1.8, -6.0, 2.0], steps=5, framesPerStep=12, settleFrames=0, hold=True)
+        # 3. Diagonal radiating crotch/upper-thigh tension whiskers (inner thigh gently up/in, outer thigh slightly down)
+        m.pull_cloth(pieceId=ids[front], x=sx * (knee_in_x + 4.5), y=crotch_y - 6, radiusCm=8, offsetCm=[-sx * 2.2, 2.8, 1.0], steps=4, framesPerStep=10, settleFrames=0, hold=True)
+        # 4. Back knee/calf counter-stack (back pieces run the other way: pattern x = -body x)
+        m.pull_cloth(pieceId=ids[back], x=-sx * knee_x, y=knee_y - 6,  radiusCm=10, offsetCm=[0, -6.0, -1.8], steps=6, framesPerStep=12, settleFrames=0, hold=True)
+        m.pull_cloth(pieceId=ids[back], x=-sx * knee_x, y=knee_y - 20, radiusCm=9,  offsetCm=[0, -4.5, -1.5], steps=5, framesPerStep=12, settleFrames=0, hold=True)
+    r = m.set_creases(garmentId=garments["pants"], strengthPercent=88)
     print(f"  creases set in {r['creasedPieces']} pieces")
     for n in ("Front L", "Front R", "Back L", "Back R"):
         m.pin_piece(pieceId=ids[n], pinned=False)
-        m.set_fabric(pieceId=ids[n], bend=86, shrinkWarp=1.08)
-    sim(m, "pants", 90)
+        m.set_fabric(pieceId=ids[n], bend=90, stretch=98, shear=90, shrinkWarp=1.05, thickness=3.4)
+    sim(m, "pants", 70)
 
 
 def stage_tee(m):
@@ -162,50 +172,66 @@ def stage_hoodie(m):
 
 
 def stage_jacket(m):
-    r = template(m, "Fitted Jacket", "jacket", sleeves="none", openFront=True, frontGapCm=15, particleDistance=0.85, extraLengthCm=3)
+    r = template(m, "Fitted Jacket", "jacket", sleeves="none", openFront=True, frontGapCm=12, particleDistance=0.85, extraLengthCm=5.5)
     g = r["garments"][0]
     names = {key: next(p["name"] for p in g["pieces"] if p["name"].startswith(prefix)) for key, prefix in
              (("jb", "Back"), ("jf_l", "Front L"), ("jf_r", "Front R"), ("jhem_b", "Back hem"), ("jhem_l", "Front hem L"), ("jhem_r", "Front hem R"))}
     names["jb"] = next(p["name"] for p in g["pieces"] if p["name"].startswith("Back") and "hem" not in p["name"])
     for key, n in names.items():
         ids[key], points[key] = ids[n], points[n]
+    # Soft pre-drape for torso folds before gentle pulling & setting creases, then stiffen to heavy 14 oz duck canvas (bend=89)!
     for key in ("jb", "jf_l", "jf_r"):
-        m.set_fabric(pieceId=ids[key], bend=84, stretch=97, shear=88, thickness=3.2, density=520, shrinkWarp=1.08)   # stiff canvas, a little long: it blouses over the hem band
+        m.set_fabric(pieceId=ids[key], bend=68, stretch=97, shear=88, thickness=3.4, density=560, shrinkWarp=1.03)
     for key in ("jhem_b", "jhem_l", "jhem_r"):
-        m.set_fabric(pieceId=ids[key], shrinkWeft=0.91, friction=88)   # the cinched band it blouses over
+        m.set_fabric(pieceId=ids[key], bend=95, shrinkWeft=0.92, friction=92, thickness=3.6)   # stiff cinched band sitting at the beltline
     p = points["jf_l"]
-    tmp = stay(m, "jacket", "jf_l", "jf_r", 15, p["hem"][1], p["cf"][1], 33)
+    tmp = stay(m, "jacket", "jf_l", "jf_r", 12, p["hem"][1], p["cf"][1], 33)
     m.set_material(garmentId=garments["jacket"], name="Navy canvas", texture=tex("canvas_navy"), tileCm=24, roughness=0.88)
     m.set_garment(garmentId=garments["jacket"], bodyOffsetMm=g["bodyOffsetMm"] + 2.5)     # clear of the hoodie's folds at the armholes
     sim(m, "jacket", 140)
 
-    # Sleeves: wide and long, sewn to both armholes, with cuffs that are then held while the cloth above is pushed up.
+    # Sleeves: 46cm circumference clears 34.2cm arm + 11.3cm layer room (open=0!), then cuff grips snugly at shrinkWeft=0.91!
     for s in "lr":
         limb = "left_arm" if s == "l" else "right_arm"
-        r = m.add_tube(name=f"sl_{s}", limb=limb, endCircCm=47, lengthCm=21, capCm=3,
+        r = m.add_tube(name=f"sl_{s}", limb=limb, endCircCm=46, lengthCm=22, capCm=3,
                        sewStartTo=[{"pieceId": ids[f"jf_{s}"], "edge": "arm"}, {"pieceId": ids["jb"], "edge": f"arm_{s}"}])
         ids[f"sl_{s}"] = r["pieceId"]
-        m.set_fabric(pieceId=ids[f"sl_{s}"], shrinkWarp=0.92, bend=80, stretch=97, thickness=3.2)
-        r = m.add_tube(name=f"cuff_{s}", limb=limb, offsetCm=17.5, startCircCm=47, endCircCm=46, lengthCm=8,
+        m.set_fabric(pieceId=ids[f"sl_{s}"], shrinkWarp=0.92, bend=74, stretch=97, thickness=3.4)
+        r = m.add_tube(name=f"cuff_{s}", limb=limb, offsetCm=18.5, startCircCm=46, endCircCm=46, lengthCm=7.5,
                        sewStartTo=[{"pieceId": ids[f"sl_{s}"], "edge": "end"}])
         if r.get("fitWarning"):
             print("  !", r["fitWarning"])
         ids[f"cuff_{s}"] = r["pieceId"]
-        m.set_fabric(pieceId=ids[f"cuff_{s}"], bend=96, stretch=95, friction=99, shrinkWeft=0.97, thickness=3.0)
+        m.set_fabric(pieceId=ids[f"cuff_{s}"], bend=97, stretch=96, friction=99, shrinkWeft=0.91, thickness=4.0)
     sim(m, "jacket", 150)
+
+    # Pin cuffs, expand sleeve length for broad stiff rolls, AND shape both sleeves + torso fronts with pull_cloth + set_creases!
     for s in "lr":
         m.pin_piece(pieceId=ids[f"cuff_{s}"])
-        m.set_fabric(pieceId=ids[f"sl_{s}"], shrinkWarp=1.14, shrinkWeft=1.06, bend=93, stretch=98, thickness=3.6)   # a few broad stiff rolls: pushed harder, canvas crumples like a sweater
-    sim(m, "jacket", 140)
-    for s in "lr":
-        m.pin_piece(pieceId=ids[f"cuff_{s}"], pinned=False)
-    # Drag folds: each front's lower edge pulled down and in, so the canvas runs taut from the armpit to the placket.
-    # (Done while the stay still holds the open fronts: simulated without it they swing open.)
+        m.set_fabric(pieceId=ids[f"sl_{s}"], shrinkWarp=1.15, shrinkWeft=1.04, bend=84, stretch=98, shear=86, thickness=3.6)
+    sim(m, "jacket", 130)
+
+    # Shape big stiff diagonal rolls into both sleeves by pushing mid-sleeve cloth down toward the pinned cuff
+    for s, sx in (("l", 1), ("r", -1)):
+        m.pull_cloth(pieceId=ids[f"sl_{s}"], x=23, y=12, radiusCm=10, offsetCm=[sx * 2.0, -3.5, 1.2], steps=5, framesPerStep=12, settleFrames=0, hold=True)
+
+    # Gentle broad diagonal tension pull on jacket fronts (clean sweeping heavy-canvas creases, ZERO rolled lip over waistband!)
     p = points["jf_l"]
-    cf, hem_y = abs(p["hem"][0]), p["hem"][1]
+    cf, hem_y, under_y = abs(p["hem"][0]), p["hem"][1], p["arm"][1]
     for key, sx in (("jf_l", 1), ("jf_r", -1)):
-        out = m.pull_cloth(pieceId=ids[key], x=sx * (cf + 4), y=hem_y + 5, radiusCm=7, offsetCm=[-sx * 2.5, -3.5, 0.5], steps=5, framesPerStep=12, settleFrames=10, creasePercent=80)
-        print(f"  pull {key}: {out['grabbedPoints']} points, {out['pulledCm']} cm")
+        m.pull_cloth(pieceId=ids[key], x=sx * (cf + 9), y=hem_y + 11, radiusCm=13, offsetCm=[-sx * 1.8, -2.2, 0.8], steps=4, framesPerStep=12, settleFrames=0, hold=True)
+    # Subtle back fullness above back waistband
+    m.pull_cloth(pieceId=ids["jb"], x=0, y=hem_y + 11, radiusCm=16, offsetCm=[0, -1.8, -0.6], steps=4, framesPerStep=12, settleFrames=0, hold=True)
+
+    r_cr = m.set_creases(garmentId=garments["jacket"], strengthPercent=88)
+    print(f"  jacket creases set in {r_cr['creasedPieces']} pieces")
+    for k in ("jb", "jf_l", "jf_r", "sl_l", "sl_r", "cuff_l", "cuff_r"):
+        m.pin_piece(pieceId=ids[k], pinned=False)
+    for key in ("jb", "jf_l", "jf_r"):
+        m.set_fabric(pieceId=ids[key], bend=89, stretch=98, shear=90, thickness=3.4, density=560)
+    for s in "lr":
+        m.set_fabric(pieceId=ids[f"sl_{s}"], bend=93, stretch=98, shear=90, thickness=3.6)
+    sim(m, "jacket", 60)
     m.delete_piece(pieceId=tmp)
 
 
@@ -216,22 +242,28 @@ def stage_trim(m):
     for s, sx in (("l", 1), ("r", -1)):
         host = f"jf_{s}"
         top = under_y + 9.5
-        px = cf + 5.0
-        x = px if s == "l" else -(px + 13.5)
-        patch(m, f"chest_pocket_{s}", host, kind="patch", level=2, x=x, y=top - 15.0, widthCm=13.0, heightCm=15.0, easePercent=3, bend=90)
+        px = cf + 4.5
+        x = px if s == "l" else -(px + 13.0)
+        patch(m, f"chest_pocket_{s}", host, kind="patch", level=2, x=x, y=top - 14.5, widthCm=12.8, heightCm=14.5, easePercent=4, bend=92)
         # diagonal welt of the hand pocket
-        w = [(cf + 5.5, hem_y + 7.5), (cf + 7.6, hem_y + 6.3), (cf + 14.6, hem_y + 18.3), (cf + 12.5, hem_y + 19.5)]
+        w = [(cf + 5.0, hem_y + 7.5), (cf + 7.2, hem_y + 6.3), (cf + 14.2, hem_y + 18.3), (cf + 12.0, hem_y + 19.5)]
         if s == "r":
             w = [(-x_, y_) for x_, y_ in reversed(w)]
-        patch(m, f"welt_{s}", host, kind="patch", points=poly(*w), easePercent=0, bend=90)
-        # collar leaf, sewn along the neckline, lying open on the chest
-        mid = (0.25 * abs(neck[0]) + 0.5 * (cf + 1) + 0.25 * cf, 0.25 * neck[1] + 0.5 * (neck[1] - 7) + 0.25 * cf_top[1])
-        leaf = [(abs(neck[0]) + 0.6, neck[1] - 0.4), (mid[0] + 0.6, mid[1]), (cf + 0.6, cf_top[1] + 0.2), (cf + 7.0, cf_top[1] - 5.5), (abs(neck[0]) + 4.0, neck[1] - 5.0)]
+        patch(m, f"welt_{s}", host, kind="patch", points=poly(*w), easePercent=0, bend=92)
+        # Crisp wide chore-jacket spread collar leaf (broad flat workwear lapel, NOT a pointy hanging triangle!)
+        mid = (0.5 * abs(neck[0]) + 0.5 * cf, 0.5 * neck[1] + 0.5 * cf_top[1])
+        leaf = [
+            (abs(neck[0]) + 0.4, neck[1] - 0.6),
+            (mid[0] + 0.4, mid[1] - 0.4),
+            (cf + 0.5, cf_top[1] - 0.2),
+            (cf + 4.8, cf_top[1] - 4.4),
+            (abs(neck[0]) + 6.4, neck[1] - 5.0),
+        ]
         if s == "l":
-            patch(m, f"collar_{s}", host, points=poly(*leaf), level=2, easePercent=0, bend=92)       # tacked flat: it lies open on the chest
+            patch(m, f"collar_{s}", host, points=poly(*leaf), level=2, easePercent=0, bend=94)
         else:
             mirrored = [(-leaf[0][0], leaf[0][1])] + [(-x_, y_) for x_, y_ in reversed(leaf[1:])]
-            patch(m, f"collar_{s}", host, points=poly(*mirrored), level=2, easePercent=0, bend=92)
+            patch(m, f"collar_{s}", host, points=poly(*mirrored), level=2, easePercent=0, bend=94)
     p = points["jf_l"]
     cf, under_y = abs(p["hem"][0]), p["arm"][1]
     top = under_y + 9.5

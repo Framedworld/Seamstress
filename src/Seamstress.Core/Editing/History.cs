@@ -74,7 +74,18 @@ public sealed class History
         else
         {
             var before = Current.Clone();
-            edit(Current);
+            try
+            {
+                edit(Current);
+            }
+            catch
+            {
+                // An edit that fails half way (a block that finds no surface to sew onto after adding its garment)
+                // leaves nothing behind.
+                Current = before;
+                Changed?.Invoke();
+                throw;
+            }
             Push(name, before);
         }
         _mergeKey = mergeKey;

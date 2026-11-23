@@ -573,18 +573,165 @@ public sealed class Workspace
 
     /// <param name="bodyHeight">Height of the current avatar in metres, so the pieces start at the right level.</param>
     /// <param name="body">The current avatar: the fitted templates are cut to its measurements.</param>
-    public Garment AddTemplate(string template, float bodyHeight = Templates.ReferenceBodyHeight, Simulation.TriMesh? body = null)
+    /// <param name="options">Fitted templates only: fit, length, sleeves, an open front, a hood.</param>
+    public Garment AddTemplate(string template, float bodyHeight = Templates.ReferenceBodyHeight, Simulation.TriMesh? body = null,
+        FitOptions? options = null)
     {
         Garment? added = null;
         History.Execute(Lang.F("Add {0}", Lang.T(template)), doc =>
         {
-            var made = Templates.CreateAll(template, doc, bodyHeight, body);
+            var made = Templates.CreateAll(template, doc, bodyHeight, body, options);
             added = made[0];
             doc.Garments.AddRange(made);
         });
-        SelectLayer(added!.Id);
+        ActiveGarmentId = added!.Id;
+        SelectLayer(added.Id);
         return added;
     }
+
+    // ---------------------------------------------------------------- building blocks
+
+    /// <summary>The kinds of sewn trim <see cref="AddTrim"/> makes, and the hard parts <see cref="AddHardware"/> sets.</summary>
+    public static readonly string[] TrimKinds = { "Pocket", "Flap", "Patch" };
+    public static readonly string[] HardwareKinds = { "Snap", "Button", "Rivet", "Buckle" };
+
+    /// <summary>A trim or hardware kind as a word in a sentence ("Added a pocket").</summary>
+    public static string KindWord(string kind) => kind.ToLowerInvariant() switch
+    {
+        "pocket" => Lang.T("pocket"),
+        "flap" => Lang.T("flap"),
+        "patch" => Lang.T("patch"),
+        "snap" => Lang.T("snap"),
+        "button" => Lang.T("button"),
+        "rivet" => Lang.T("rivet"),
+        "buckle" => Lang.T("buckle"),
+        _ => kind,
+    };
+
+    /// <summary>A trim or hardware kind as a label on its own (a button in the Trim tool's bar).</summary>
+    public static string KindLabel(string kind) => kind.ToLowerInvariant() switch
+    {
+        "pocket" => Lang.T("Pocket"),
+        "flap" => Lang.T("Flap"),
+        "patch" => Lang.T("Patch"),
+        "snap" => Lang.T("Snap"),
+        "button" => Lang.T("Button"),
+        "rivet" => Lang.T("Rivet"),
+        "buckle" => Lang.T("Buckle"),
+        _ => kind,
+    };
+
+    /// <summary>The size a trim piece gets from a click without a drag, in centimetres.</summary>
+    public static Vector2 DefaultTrimSize(string kind) => kind.ToLowerInvariant() switch
+    {
+        "flap" => new Vector2(15, 6),
+        "patch" => new Vector2(10, 8),
+        _ => new Vector2(14, 16),
+    };
+
+    /// <summary>
+    /// Sews a pocket (top left open), flap (top sewn, over what is under it) or patch (sewn all round) onto a piece.
+    /// <paramref name="footprint"/> is where it sits, in the host's own pattern centimetres. The trim goes in its own
+    /// garment one layer out from the host, cut with a little ease, and is placed on the cloth: simulate that garment
+    /// to sew it on.
+    /// </summary>
+    public BlockResult AddTrim(string hostPieceId, IReadOnlyList<Vector2> footprint, string kind)
+    {
+        string k = kind.ToLowerInvariant();
+        bool flap = k == "flap";
+        BlockResult? made = null;
+        History.Execute(Lang.F("Add {0}", KindWord(kind)), doc =>
+        {
+            var host = doc.FindPiece(hostPieceId) ?? throw new ArgumentException(Lang.T("Choose a piece to sew it onto."));
+            float ease = 1f + (flap ? 0f : 0.04f);
+            made = GarmentBlocks.AddPatch(doc, MeshFor, hostPieceId, footprint, k, doc.UniqueName($"{host.Name} {KindWord(k)}"),
+                new Vector2(ease, k == "patch" ? ease : 1f), flap ? 2 : 1);
+        });
+        ActiveGarmentId = made!.Garment.Id;
+        SelectPiece(made.Pieces[0].Id);
+        return made;
+    }
+
+    /// <summary>
+    /// Sets a hard part (snap, button, rivet, buckle) on a piece at <paramref name="at"/> in its pattern centimetres.
+    /// It is pinned, so simulating never moves it.
+    /// </summary>
+    public PatternPiece AddHardware(string hostPieceId, Vector2 at, string kind)
+    {
+        string shape = kind.ToLowerInvariant();
+        var (width, height, thickness, color, metallic, roughness) = shape switch
+        {
+            "button" => (1.8f, 1.8f, 2.6f, "#3A332C", 0.1f, 0.5f),
+            "rivet" => (0.9f, 0.9f, 1.8f, "#8A5A3A", 0.9f, 0.35f),
+            "buckle" => (4.4f, 5.2f, 2.4f, "#8A8D90", 0.9f, 0.35f),
+            _ => (1.4f, 1.4f, 2.2f, "#9A7A45", 0.9f, 0.3f),
+        };
+        PatternPiece? piece = null;
+        History.Execute(Lang.F("Add {0}", KindWord(shape)), doc =>
+        {
+            var host = doc.FindPiece(hostPieceId) ?? throw new ArgumentException(Lang.T("Choose a piece to set it on."));
+            var outline = GarmentBlocks.HardwareShape(shape, width, height);
+            if (shape == "buckle")
+                outline = outline.Select(p => p - new Vector2(0, height / 2)).ToList();   // centred on the click
+            piece = GarmentBlocks.AddHardware(doc, MeshFor, hostPieceId, at, outline, doc.UniqueName($"{KindLabel(shape)} ({host.Name})"),
+                Lang.T("Hardware"), thickness, thickness * 0.5f + 1.5f);
+            piece.MaterialId = GarmentBlocks.HardMaterial(doc, color, metallic, roughness).Id;
+        });
+        SelectPiece(piece!.Id);
+        return piece;
+    }
+
+    /// <summary>Collar styles for <see cref="AddCollar"/>.</summary>
+    public static readonly string[] CollarStyles = { "Stand", "Cowl", "Hood roll" };
+
+    /// <summary>
+    /// A collar round the neckline of <paramref name="garmentId"/> (a fitted jacket, hoodie or tee): a stand, a
+    /// gathered cowl, or the padded roll a hood makes when it is pushed down. <paramref name="heightCm"/> 0 uses the
+    /// style's own height.
+    /// </summary>
+    public Garment AddCollar(string garmentId, Simulation.BodyMeasurements body, string style, float heightCm = 0)
+    {
+        Garment? made = null;
+        History.Execute(Lang.T("Add collar"), doc =>
+        {
+            var host = doc.FindGarment(garmentId) ?? throw new ArgumentException(Lang.T("Choose a garment first."));
+            made = style.ToLowerInvariant() switch
+            {
+                "cowl" => FittedGarments.Collar(doc, host, body, heightCm > 0 ? heightCm : 14, 1.25f, 1f, 1f),
+                "hood roll" => FittedGarments.Collar(doc, host, body, heightCm > 0 ? heightCm : 24, 1.14f, 0.75f, 1f, 4.5f),
+                _ => FittedGarments.Collar(doc, host, body, heightCm > 0 ? heightCm : 7, 1f, 1f, 1.1f),
+            };
+            doc.Garments.Add(made);
+        });
+        ActiveGarmentId = made!.Id;
+        SelectLayer(made.Id);
+        return made;
+    }
+
+    /// <summary>
+    /// A hood sewn round the neckline of <paramref name="garmentId"/>, lying down the back. With
+    /// <paramref name="behindNeck"/> it is sewn only round the back of the neck, so a jacket collar worn over it stays
+    /// in view.
+    /// </summary>
+    public Garment AddHood(string garmentId, Simulation.BodyMeasurements body, float lengthCm = 34, float widthCm = 25, bool behindNeck = false)
+    {
+        Garment? made = null;
+        History.Execute(Lang.T("Add hood"), doc =>
+        {
+            var host = doc.FindGarment(garmentId) ?? throw new ArgumentException(Lang.T("Choose a garment first."));
+            made = FittedGarments.Hood(doc, host, body, lengthCm, widthCm, 1.14f, behindNeck ? 0.3f : 1f);
+            doc.Garments.Add(made);
+        });
+        ActiveGarmentId = made!.Id;
+        SelectLayer(made.Id);
+        return made;
+    }
+
+    /// <summary>True when <paramref name="garment"/> has the named neckline a collar or hood is sewn to.</summary>
+    public static bool HasNeckline(Garment? garment)
+        => garment != null
+            && garment.Pieces.Any(p => p.EdgeNamed("neck_l") >= 0 && p.EdgeNamed("neck_r") >= 0)
+            && garment.Pieces.Count(p => p.EdgeNamed("neck") >= 0) == 2;
 
     /// <summary>Creates a piece from an outline given in pattern space (cm) and adds it to the active garment.</summary>
     public PatternPiece? AddPiece(IReadOnlyList<Vector2> outline, string baseName)

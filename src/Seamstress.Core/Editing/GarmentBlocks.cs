@@ -445,6 +445,19 @@ public static class GarmentBlocks
         return piece;
     }
 
+    /// <summary>An untextured material for hard parts with this colour and finish: reused when one already exists.</summary>
+    public static FabricMaterial HardMaterial(Document document, string color, float metallic, float roughness)
+    {
+        var mat = document.Materials.FirstOrDefault(m => m.Texture == null && string.Equals(m.Color, color, StringComparison.OrdinalIgnoreCase)
+            && MathF.Abs(m.Metallic - metallic) < 0.01f && MathF.Abs(m.Roughness - roughness) < 0.01f);
+        if (mat == null)
+        {
+            mat = new FabricMaterial { Name = document.UniqueName(metallic > 0.5f ? "Metal" : "Hard part"), Color = color, Metallic = metallic, Roughness = roughness };
+            document.Materials.Add(mat);
+        }
+        return mat;
+    }
+
     /// <summary>Outline of a ready-made hard part, centred on the origin, in centimetres.</summary>
     public static List<Vector2> HardwareShape(string shape, float widthCm, float heightCm)
     {

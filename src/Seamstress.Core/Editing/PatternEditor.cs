@@ -31,6 +31,12 @@ public enum PatternTool
 
     /// <summary>Cuts pieces in two along a line drawn across them.</summary>
     Cut,
+
+    /// <summary>
+    /// Adds trim where it is dragged or clicked on a piece: a pocket, flap or patch sewn onto it, or a snap, button,
+    /// rivet or buckle set on it (<see cref="PatternEditor.TrimKind"/>).
+    /// </summary>
+    Trim,
 }
 
 /// <summary>
@@ -109,6 +115,28 @@ public sealed class PatternEditor
 
     /// <summary>Raised after Enter in Sew mode, with how many seams were made.</summary>
     public event Action<int>? SewMade;
+
+    /// <summary>Raised after the Trim tool added something (or could not), with a sentence for the status bar.</summary>
+    public event Action<string>? TrimPlaced;
+
+    private string _trimKind = "Pocket";
+    private string? _trimHost;
+
+    /// <summary>What the Trim tool adds: one of <see cref="Workspace.TrimKinds"/> or <see cref="Workspace.HardwareKinds"/>.</summary>
+    public string TrimKind
+    {
+        get => _trimKind;
+        set
+        {
+            if (_trimKind == value)
+                return;
+            _trimKind = value;
+            _draft.Clear();
+            Changed?.Invoke();
+        }
+    }
+
+    public static bool IsHardwareKind(string kind) => Workspace.HardwareKinds.Contains(kind, StringComparer.OrdinalIgnoreCase);
 
     public PatternEditor(Workspace workspace) => _workspace = workspace;
 
@@ -390,6 +418,9 @@ public sealed class PatternEditor
             PatternTool.Ruler => Lang.T("Drag to measure a distance; the ends catch on pattern points. Hold Shift to keep to 15° steps. Click to clear."),
             PatternTool.InsetBand => Lang.T("Click the edges to cut a band from, on one or more pieces. Drag inward from a chosen edge to set the width (Shift snaps). Enter applies, Esc cancels."),
             PatternTool.Cut => Lang.T("Drag a straight line across the pieces to cut them apart. Hold Shift to keep to 15° steps. Esc cancels."),
+            PatternTool.Trim => IsHardwareKind(_trimKind)
+                ? Lang.F("Click on a piece to set a {0} there. It is pinned, so simulating leaves it in place.", Workspace.KindWord(_trimKind))
+                : Lang.F("Drag on a piece to place a {0}, or click for one of the usual size. Simulate afterwards to sew it on.", Workspace.KindWord(_trimKind)),
             _ => "",
         };
 
@@ -1103,6 +1134,15 @@ public sealed class PatternEditor
             case PatternTool.Ellipse:
                 _drag = Drag.Shape;
                 break;
+            case PatternTool.Trim:
+                _trimHost = HitPiece(world)?.Id;
+                if (_trimHost == null)
+                {
+                    TrimPlaced?.Invoke(Lang.T("Click on a piece of a garment to add it there."));
+                    break;
+                }
+                _drag = Drag.Shape;
+                break;
             case PatternTool.Ruler:
                 // Each drag measures afresh; a click without dragging clears the ruler.
                 _rulerTolerance = tolerance;
@@ -1165,6 +1205,8 @@ public sealed class PatternEditor
                 }
                 return;
             case Drag.Shape:
+                if (_tool == PatternTool.Trim && IsHardwareKind(_trimKind))
+                    return;
                 BuildShape(world);
                 Changed?.Invoke();
                 return;
@@ -1238,7 +1280,15 @@ public sealed class PatternEditor
 
         if (_uvMode)
             return;
-        if (_tool == PatternTool.Polygon && _draft.Count > 0)
+        if (_tool == PatternTool.Trim && !IsHardwareKind(_trimKind))
+        {
+            // A ghost of the usual size follows the pointer over a piece: what a plain click adds.
+            _draft.Clear();
+            if (HitPiece(world) != null)
+                _draft.AddRange(Rectangle(world, Workspace.DefaultTrimSize(_trimKind)));
+            Changed?.Invoke();
+        }
+        else if (_tool == PatternTool.Polygon && _draft.Count > 0)
         {
             _draftCursorRaw = world;
             _draftCursor = PolygonPoint(world);
@@ -1268,7 +1318,7 @@ public sealed class PatternEditor
         }
         var min = Vector2.Min(_dragStart, world);
         var max = Vector2.Max(_dragStart, world);
-        if (_tool == PatternTool.Rectangle)
+        if (_tool is PatternTool.Rectangle or PatternTool.Trim)
         {
             _draft.Add(min);
             _draft.Add(new Vector2(max.X, min.Y));
@@ -1286,6 +1336,47 @@ public sealed class PatternEditor
                 _draft.Add(centre + new Vector2(MathF.Cos(a) * radius.X, MathF.Sin(a) * radius.Y));
             }
         }
+    }
+
+    private static Vector2[] Rectangle(Vector2 centre, Vector2 size)
+    {
+        var h = size / 2;
+        return new[] { centre - h, centre + new Vector2(h.X, -h.Y), centre + h, centre + new Vector2(-h.X, h.Y) };
+    }
+
+    /// <summary>Adds the Trim tool's kind where it was dragged (or clicked) on the piece the drag started on.</summary>
+    private void PlaceTrim(List<Vector2> dragged)
+    {
+        var host = Doc.FindPiece(_trimHost);
+        _trimHost = null;
+        if (host == null)
+            return;
+        string kind = Workspace.KindWord(_trimKind);
+        string message;
+        try
+        {
+            if (IsHardwareKind(_trimKind))
+            {
+                _workspace.AddHardware(host.Id, _dragStart - host.Origin, _trimKind);
+                message = Lang.F("Set a {0} on “{1}”.", kind, host.Name);
+            }
+            else
+            {
+                var lo = dragged.Count > 0 ? dragged.Aggregate(Vector2.Min) : Vector2.Zero;
+                var hi = dragged.Count > 0 ? dragged.Aggregate(Vector2.Max) : Vector2.Zero;
+                // A drag too small to mean a size is a click: the usual size, centred where it was clicked.
+                var outline = _dragMoved && dragged.Count == 4 && hi.X - lo.X >= 2 && hi.Y - lo.Y >= 2
+                    ? dragged
+                    : Rectangle(_dragStart, Workspace.DefaultTrimSize(_trimKind)).ToList();
+                var made = _workspace.AddTrim(host.Id, outline.Select(p => p - host.Origin).ToList(), _trimKind);
+                message = Lang.F("Added a {0} to “{1}”, in the garment “{2}”. Simulate to sew it on.", kind, host.Name, made.Garment.Name);
+            }
+        }
+        catch (ArgumentException e)
+        {
+            message = e.Message;
+        }
+        TrimPlaced?.Invoke(message);
     }
 
     public void PointerUp(Vector2 world)
@@ -1376,6 +1467,14 @@ public sealed class PatternEditor
                         }
                     }
                     _marqueeEnd = null;
+                    Changed?.Invoke();
+                    break;
+                }
+            case Drag.Shape when _tool == PatternTool.Trim:
+                {
+                    var dragged = _draft.ToList();
+                    _draft.Clear();
+                    PlaceTrim(dragged);
                     Changed?.Invoke();
                     break;
                 }
@@ -1537,6 +1636,7 @@ public sealed class PatternEditor
         _insetEdges.Clear();
         _insetDrag = null;
         _referenceId = "";
+        _trimHost = null;
         Changed?.Invoke();
     }
 
@@ -1860,7 +1960,7 @@ public sealed class PatternEditor
             else
             {
                 // Every side of a polygon being drawn; a rectangle's width and height.
-                int sides = _tool == PatternTool.Rectangle ? Math.Min(2, draft.Count - 1) : draft.Count - 1;
+                int sides = _tool is PatternTool.Rectangle or PatternTool.Trim ? Math.Min(2, draft.Count - 1) : draft.Count - 1;
                 sb.Append(",\"draftMeasures\":[");
                 for (int i = 0; i < sides; i++)
                 {

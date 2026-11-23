@@ -404,6 +404,27 @@ QtObject {
         check("pinch grab size", App.pinchRadiusCm === 12)
         App.setCreases()
         check("set creases is one undo step", App.undoText === "Undo Set creases")
+
+        // Trim tool: a click on the draped skirt sews a pocket of the usual size onto it, another sets a snap.
+        const front = scene().pieces.filter(p => p.name === "Skirt Front")[0]
+        App.tool = "Trim"
+        App.trimKind = "Pocket"
+        App.pointerDown(front.label[0], front.label[1], 1, false); App.pointerUp(front.label[0], front.label[1])
+        check("trim tool sews a pocket on", App.undoText === "Undo Add pocket")
+        App.trimKind = "Snap"
+        App.pointerDown(front.label[0], front.label[1], 1, false); App.pointerUp(front.label[0], front.label[1])
+        check("trim tool sets a snap", App.undoText === "Undo Add snap")
+        App.undo(); App.undo()
+        App.tool = "Select"
+        // Fitted templates take their dialog's options; collars and hoods go round a fitted neckline.
+        App.addFittedTemplate("Fitted Jacket", 5, 2, "none", true, 10, true, 0, 0)
+        check("fitted jacket with options", App.undoText === "Undo Add Fitted Jacket" && App.activeHasNeckline())
+        App.addCollar("Stand", 0)
+        check("collar added", App.undoText === "Undo Add collar")
+        App.addHood(34, 25, true)
+        check("hood added", App.undoText === "Undo Add hood")
+        App.undo(); App.undo(); App.undo()
+
         App.selectLayer(JSON.parse(App.layers())[0].id, false)
         check("other garment untouched", selection().piece.draped === false)
 

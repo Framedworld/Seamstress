@@ -763,6 +763,61 @@ Item {
         }
     }
 
+    // Trim tool: what a drag or click on a piece adds.
+    Rectangle {
+        id: trimPill
+        visible: !root.uv && App.tool === "Trim"
+        // Under the view's title, so a narrow 2D view shows both.
+        anchors { right: parent.right; top: parent.top; rightMargin: 8; topMargin: 40 }
+        implicitWidth: trimRow.implicitWidth + 8
+        implicitHeight: 30
+        radius: 6
+        color: Qt.alpha(palette.window, 0.9)
+        border.color: Qt.alpha(palette.windowText, 0.13)
+        border.width: 1
+        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
+        RowLayout {
+            id: trimRow
+            anchors.centerIn: parent
+            spacing: 1
+            Repeater {
+                model: App.trimKinds().split("|")
+                delegate: ToolButton {
+                    id: kindButton
+                    required property string modelData
+                    required property int index
+                    text: { App.languageRevision; return App.trimKindLabel(modelData) }
+                    checkable: true
+                    checked: App.trimKind === modelData
+                    onClicked: { App.trimKind = modelData; root.forceActiveFocus() }
+                    font.pixelSize: 11
+                    font.weight: checked ? Font.DemiBold : Font.Normal
+                    implicitHeight: 24
+                    leftPadding: 7
+                    rightPadding: 7
+                    // A gap between the sewn trim and the hard parts.
+                    Layout.leftMargin: modelData === "Snap" ? 8 : 0
+                    contentItem: Label {
+                        text: kindButton.text
+                        font: kindButton.font
+                        color: kindButton.checked ? palette.highlightedText : palette.windowText
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 4
+                        color: kindButton.checked ? palette.highlight
+                            : kindButton.hovered ? Qt.alpha(palette.windowText, 0.12) : "transparent"
+                    }
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: App.isHardwareKind(modelData) ? root.tr("Click on a piece to set it there")
+                                                                : root.tr("Drag on a piece to size it, or click for the usual size")
+                }
+            }
+        }
+    }
+
     Rectangle {
         visible: coords.text !== ""
         anchors { right: parent.right; bottom: parent.bottom; margins: 8 }
