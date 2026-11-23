@@ -607,8 +607,11 @@ public sealed partial class ClothSolver : IDisposable
         // often enough that nothing travels further than the search distance in between. The speed that counts is
         // that of nearly all the cloth, not of the fastest particle: one swinging hem or a pinch set the pace for a
         // whole layered outfit and searching four to eight times a frame made it crawl. The few faster particles
-        // that slip past in between are worked back out gently by the contacts.
-        float travel = 2f * (_collides ? SearchSpeed() : PeakSpeed) * h * substeps;
+        // that slip past in between are worked back out gently by the contacts. A small simulation searches for its
+        // fastest cloth as before: it costs little, and a free hem swinging past another could otherwise slip through.
+        const int LargeSimulation = 5000;
+        float pace = _collides && _simulatedParticleCount > LargeSimulation ? SearchSpeed() : PeakSpeed;
+        float travel = 2f * pace * h * substeps;
         int searchEvery = Math.Max(1,
             substeps / Math.Clamp((int)MathF.Ceiling(travel / (0.75f * ContactMargin)), 1, substeps));
 
