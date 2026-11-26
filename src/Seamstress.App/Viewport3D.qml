@@ -1186,7 +1186,13 @@ Item {
                     FitMapItem { kind: "stretch"; text: tr("Stretch") }
                     FitMapItem { kind: "pressure"; text: tr("Pressure") }
                     FitMapItem { kind: "distance"; text: tr("Distance to body") }
+                    MenuSeparator {}
+                    MenuItem {
+                        text: tr("Ease Tight Spots…")
+                        onTriggered: easeDialog.show()
+                    }
                 }
+                EaseDialog { id: easeDialog }
             }
             ViewButton {
                 text: tr("Checker")

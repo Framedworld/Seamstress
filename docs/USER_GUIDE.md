@@ -552,6 +552,28 @@ stand for the whole garment). Choose **Off** to see the fabric again.
 Hidden pieces and garments are left out, and the maps measure the cloth against the avatar as it is now. The same
 numbers are available to agents through the `fit_map` tool (see [MCP](MCP.md)).
 
+**Easing tight spots.** Where the stretch map shows a garment pulled tight because its pattern is too narrow, choose
+**Fit Map ▸ Ease Tight Spots…**. It measures how much the active garment's cloth is stretched across each piece (along
+the pattern's width) in rows a few centimetres high, and lets each row out by part of what it would take for the cloth
+to sit at **Stretch that is fine** (2% to start with). Only the tight rows grow, smoothly, so a tight knee gets room at
+the knee and the hip stays as it was. The dialog lists what will change before anything does. **Ease and Simulate**
+changes the pattern as one undo step, keeps the cloth draped where it was and simulates again so it relaxes into the
+new pattern; repeat while red is left. **Correction per pass** below 100% keeps each step small, so the passes settle
+instead of overshooting.
+
+- Only stretch *across* a piece is eased. Stretch along it is left alone, since lengthening a piece moves its hem and
+  the seams at its ends; the `ease_pattern` tool reports it.
+- Pieces that pull in on purpose (**Elastic across** below 1: waistbands, cuffs) and hard parts pinned all over are
+  left alone. Patches sewn onto an eased piece, hard parts attached to it and its pins keep their place on its cloth.
+- **Set creases** on an eased piece are cleared: they hold the cloth at the shape it had when they were set, which is
+  the stretch being eased out. Set them again once the cloth has relaxed. If the stretch map shows red on a creased
+  garment, try **Clear Creases** first: on Gus's trousers the red came from creases set on stretched cloth, not from
+  the pattern.
+- A seam whose two edges now differ in length (an eased piece sewn to one that was not) is eased in when sewn; the
+  dialog says when that is a centimetre or more, and you can let the other side out too.
+- Easing widens rows; it cannot add the shape a dart gives. A tight spot over a bulge (under the arm, over a hip)
+  averages out across its row and is better fixed by hand.
+
 ### Moving, rotating and scaling pieces
 
 Select one or more pieces and the handles appear at their centre:

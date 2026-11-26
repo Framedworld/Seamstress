@@ -408,6 +408,10 @@ QtObject {
         check("simulation stopped", !App.simulating)
         App.selectAll()
         check("skirt draped", selection().piece.draped === true)
+        // Easing measures the drape: a target of 0% with the cloth as it is lists every draped piece, eased or not.
+        const ease = JSON.parse(App.easePlan(0, 0.6))
+        check("ease plan for the draped skirt", ease.pieces.length > 0 && ease.pieces.every(p => p.skipped === null || p.skipped === "not simulated")
+            && ease.pieces.some(p => p.skipped === null))
 
         // Pinching with no simulation running starts one for that garment.
         const skirtPiece = JSON.parse(App.layers()).filter(r => r.kind === "piece" && r.name === "Skirt Front")[0].id
