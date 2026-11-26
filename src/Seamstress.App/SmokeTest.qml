@@ -550,7 +550,46 @@ QtObject {
         check("the picture has the size asked for", written.length === 2 && Math.abs(written[0] - imageWidth) <= 2 && Math.abs(written[1] - imageHeight) <= 2)
         check("pattern exported as SVG", App.exportPatternSvg(base + ".svg", true, true))
 
-        // Crash recovery. The copies go to this check's own folder. A copy is written for unsaved work, dropped when
+        // Internal lines, darts and pleats on a fresh 60 x 40 cm rectangle.
+        App.newDocument()
+        App.tool = "Rectangle"
+        drag(0, 0, 60, 40)
+        App.tool = "InternalLine"
+        App.foldAngle = 90
+        // Both ends catch on the outline; the second one finishes the line.
+        App.pointerDown(20, 0.3, 1, false); App.pointerUp(20, 0.3)
+        App.pointerDown(20, 39.7, 1, false); App.pointerUp(20, 39.7)
+        const folds = () => scene().internalLines || []
+        check("fold line drawn edge to edge", folds().length === 1 && folds()[0].fold === 90 && !folds()[0].valley
+              && App.undoText === "Undo Add fold line")
+        App.pointerDown(20, 20, 1, false); App.pointerUp(20, 20)
+        check("a click selects the line", folds()[0].selected && scene().foldTool.selected)
+        App.foldValley = true
+        check("the selected line becomes a valley fold", folds()[0].valley)
+        App.deleteSelection()
+        check("Delete removes the selected line, not the piece", folds().length === 0 && scene().pieces.length === 1)
+        App.undo()
+        check("undo brings the line back", folds().length === 1)
+        App.foldAngle = 0
+        App.foldValley = false
+
+        App.tool = "Dart"
+        App.pointerDown(40, 22, 1, false); App.pointerUp(40, 22)
+        check("dart point placed", scene().dartDraft !== undefined)
+        App.pointerDown(35, 0.3, 1, false); App.pointerUp(35, 0.3)
+        App.pointerDown(45, 0.3, 1, false); App.pointerUp(45, 0.3)
+        check("dart cut and its legs sewn", scene().pieces[0].points.length === 2 * 7 && scene().seams.length === 1
+              && App.undoText === "Undo Add dart")
+
+        App.tool = "Pleat"
+        App.pleatCount = 3
+        App.pleatDepth = 2
+        drag(52, 40.3, 8, 40.3)
+        check("three pleats along the top, stitched down", folds().length === 1 + 9 && scene().seams.length === 1 + 3
+              && folds().slice(1).filter(l => l.valley).length === 3 && App.undoText === "Undo Add pleats")
+        App.tool = "Select"
+
+                // Crash recovery. The copies go to this check's own folder. A copy is written for unsaved work, dropped when
         // the work is undone or saved, and restored as unsaved changes.
         const copies = () => JSON.parse(App.recoveryCopies())
         App.newDocument()

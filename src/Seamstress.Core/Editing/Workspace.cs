@@ -139,6 +139,17 @@ public sealed partial class Workspace
                 hash.Add(point.Position);
                 hash.Add(point.Curve);
             }
+            // The mesh follows internal lines too.
+            foreach (var line in piece.InternalLines)
+            {
+                hash.Add(line.TackLineId);
+                hash.Add(line.TackLength);
+                foreach (var point in line.Points)
+                {
+                    hash.Add(point.Position);
+                    hash.Add(point.Curve);
+                }
+            }
         }
         foreach (var seam in garment.Seams)
         {
@@ -147,6 +158,7 @@ public sealed partial class Workspace
             hash.Add(seam.B.PieceId);
             hash.Add(seam.B.Edge);
             hash.Add(seam.Reversed);
+            hash.Add(seam.Folded);
         }
         return $"{garment.Pieces.Count}:{garment.Seams.Count}:{hash.ToHashCode()}";
     }
@@ -2140,6 +2152,7 @@ public sealed partial class Workspace
                     }).ToList();
                     piece.Points = Mirror(piece.Points);
                     piece.Holes = piece.Holes.Select(Mirror).ToList();
+                    PatternFolds.TransformLines(piece, p => new Vector2(axis - p.X, p.Y));
                     // Edge k of a loop of n (from its point k) became its edge n-1-k and now runs the other way, so a
                     // seam to an edge that was not mirrored has to swap which ends it pairs up.
                     int Mirrored(int edge)
@@ -2187,6 +2200,7 @@ public sealed partial class Workspace
                     if (point.Curve is { } c)
                         point.Curve = Turn(c);
                 }
+                PatternFolds.TransformLines(piece, Turn);
                 piece.ClearDrape();
             }
         });

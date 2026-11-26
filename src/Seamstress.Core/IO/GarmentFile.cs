@@ -10,7 +10,7 @@ namespace Seamstress.Core.IO;
 /// Reads and writes Seamstress projects as JSON. The file is meant to be read and edited by hand: short values such as
 /// points and vectors stay on one line, and every length names its unit in the "units" header.
 /// </summary>
-public static class GarmentFile
+public static partial class GarmentFile
 {
     public const string FormatName = "seamstress-garment";
     public const int FormatVersion = 1;
@@ -165,7 +165,7 @@ public static class GarmentFile
                 w.WritePropertyName("seams");
                 w.WriteRawValue(Lines(g.Seams.Select(s =>
                     $"{{ \"id\": {Quote(s.Id)}, \"from\": {{ \"piece\": {Quote(s.A.PieceId)}, \"edge\": {s.A.Edge} }}, "
-                    + $"\"to\": {{ \"piece\": {Quote(s.B.PieceId)}, \"edge\": {s.B.Edge} }}, \"reversed\": {(s.Reversed ? "true" : "false")} }}"), 4));
+                    + $"\"to\": {{ \"piece\": {Quote(s.B.PieceId)}, \"edge\": {s.B.Edge} }}, \"reversed\": {(s.Reversed ? "true" : "false")}{(s.Folded ? ", \"folded\": true" : "")} }}"), 4));
                 if (g.SurfaceStitches.Count > 0)
                 {
                     w.WritePropertyName("surfaceStitches");
@@ -220,6 +220,8 @@ public static class GarmentFile
             w.WritePropertyName("holes");
             w.WriteRawValue(Lines(p.Holes.Select(hole => Lines(hole.Select(Point), 7)), 6));
         }
+        if (p.InternalLines.Count > 0)
+            WriteInternalLines(w, p.InternalLines, Point);
 
         w.WritePropertyName("placement");
         w.WriteRawValue($"{{ \"position\": {V(p.Placement.Position)}, \"rotation\": {V(p.Placement.Rotation)}, \"curvature\": {N(p.Placement.Curvature)} }}");
@@ -432,6 +434,7 @@ public static class GarmentFile
                 if (s.TryGetProperty("to", out var to))
                     seam.B = new EdgeRef(Str(to, "piece") ?? "", (int)Num(to, "edge", 0));
                 seam.Reversed = Bool(s, "reversed", false);
+                seam.Folded = Bool(s, "folded", false);
                 garment.Seams.Add(seam);
             }
             // Drop references a hand edit may have broken rather than failing later.
@@ -492,6 +495,7 @@ public static class GarmentFile
             if (hole.Count >= 3)
                 piece.Holes.Add(hole);
         }
+        ReadInternalLines(p, piece, ReadPoint);
         if (p.TryGetProperty("placement", out var placement) && placement.ValueKind == JsonValueKind.Object)
         {
             piece.Placement.Position = Vec3(placement, "position", piece.Placement.Position);

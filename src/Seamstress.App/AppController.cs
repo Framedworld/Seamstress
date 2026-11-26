@@ -71,6 +71,7 @@ public partial class AppController : INotifyPropertyChanged
                 : Lang.F("Cut {0} pieces into {1} pieces.", outcome.SourcePieces, outcome.Pieces.Count));
         };
         _editor.TrimPlaced += message => StatusText = message;
+        _editor.FoldToolMessage += message => StatusText = message;
         _editor.SewMade += count => StatusText = count switch
         {
             0 => Lang.T("Select at least two edges to sew."),
@@ -1112,7 +1113,7 @@ public partial class AppController : INotifyPropertyChanged
     public void DeleteSelection()
     {
         // With the Transform Points tool, Delete removes the selected points rather than the piece.
-        if (!_editor.DeleteSelectedPoints())
+        if (!_editor.DeleteSelectedPoints() && !_editor.DeleteSelectedLine())
             _workspace.DeleteSelection();
     }
     public void Duplicate() => _workspace.DuplicateSelection();

@@ -324,6 +324,9 @@ public sealed class PatternPiece
     /// </summary>
     public List<List<PatternPoint>> Holes { get; set; } = new();
 
+    /// <summary>Lines drawn inside the piece that the cloth mesh follows: fold lines, pleat folds, placement lines.</summary>
+    public List<InternalLine> InternalLines { get; set; } = new();
+
     public Placement Placement { get; set; } = new();
     public FabricPhysics Physics { get; set; } = new();
     public string? MaterialId { get; set; }
@@ -383,6 +386,7 @@ public sealed class PatternPiece
         Origin = Origin,
         Points = Points.Select(p => p.Clone()).ToList(),
         Holes = Holes.Select(h => h.Select(p => p.Clone()).ToList()).ToList(),
+        InternalLines = InternalLines.Select(l => l.Clone()).ToList(),
         Placement = Placement.Clone(),
         Physics = Physics.Clone(),
         MaterialId = MaterialId,
@@ -524,7 +528,13 @@ public sealed class Seam
     /// </summary>
     public bool Reversed { get; set; }
 
-    public Seam Clone() => new() { Id = Id, A = A.Clone(), B = B.Clone(), Reversed = Reversed };
+    /// <summary>
+    /// The two edges are sewn lying face to face, folded onto each other (the tack at the top of a pleat), so the
+    /// seam does not try to open out flat the way an ordinary seam does.
+    /// </summary>
+    public bool Folded { get; set; }
+
+    public Seam Clone() => new() { Id = Id, A = A.Clone(), B = B.Clone(), Reversed = Reversed, Folded = Folded };
 }
 
 /// <summary>

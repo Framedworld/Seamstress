@@ -103,6 +103,9 @@ The toolbar shows each tool as an icon. Hover over an icon to see its name, what
 | 4 | **Sew** | S | Click one edge, then another, to sew them together, or drag a box around several edges and press Enter. |
 | 5 | **Inset Band** | I | Cut a waistband, collar band or facing off pieces along the edges you click, already sewn on (see [Cutting bands from edges](#cutting-bands-from-edges)). |
 | 6 | **Cut** | C | Drag a line across pieces to cut them into separate pieces (see [Cutting pieces apart](#cutting-pieces-apart)). |
+| | **Internal Line** | L | Draw a line inside a piece for the cloth to follow; with a fold angle it is a fold line (see [Fold lines, darts and pleats](#fold-lines-darts-and-pleats)). |
+| | **Dart** | D | Click a dart's point inside a piece, then its two leg ends on an edge: the wedge is cut out and the legs sewn together. |
+| | **Pleat** | Y | Drag along an edge to pleat that stretch with knife pleats, tacked at the edge. |
 | 7 | **Polygon** | P | Click to place corners; click the first corner again, double-click, or press Enter to finish. |
 | 8 | **Rectangle** | B | Drag out a rectangular piece. |
 | 9 | **Ellipse** | O | Drag out an elliptical piece. |
@@ -141,6 +144,9 @@ maps what you already know to where it lives here.
 | Add Point / Split Line | **Edit Points** tool: double-click an edge |
 | Internal shape ▸ Cut / Convert to Hole | **Cut** (**C**) splits pieces along a drawn line; for a hole, draw the shape as a piece on top, select both, **Edit ▸ Cut Hole** |
 | Offset as Internal Line, then Cut & Sew (for a waistband or facing) | **Inset Band** tool (**I**): click the edges, set the width, Apply |
+| Internal Line, with Fold Angle and Fold Strength | **Internal Line** tool (**L**), with the fold angle and strength in its panel |
+| Dart | **Dart** tool (**D**): the point, then both leg ends on the edge |
+| Pleat (Knife) | **Pleat** tool (**Y**): drag along the edge, count and depth in its panel |
 | Segment Sewing | **Sew** tool (**S**): click one edge, then the other |
 | Edit Sewing ▸ reverse a twisted seam | Select the seam, then **Reverse Direction** in Properties |
 | Simulate (Space) | **Simulate** (Space) |
@@ -401,6 +407,47 @@ divided is removed, because that edge is no longer one edge.
 
 A line that does not divide a piece into at least two pieces does nothing; the status bar says why. **Ctrl+Z**
 undoes the cut in one step.
+
+### Fold lines, darts and pleats
+
+Three tools add shape inside a piece rather than at its edges. Each one is a single undo step, and all of them are
+saved with the project.
+
+![A pleated skirt: five knife pleats on each panel, the fold lines orange (mountain) and blue (valley) in the 2D view](images/pleated-skirt.png)
+
+**Internal lines and fold lines.** Pick **Internal Line** (**L**) and click inside a piece to start a line. Each
+click adds a point; drag while clicking to bend the stretch to that point into a curve. Double-click, press
+**Enter** or click on the piece's outline to finish. A click near the outline catches on it, so a line can run from
+edge to edge. The cloth's mesh always has edges along the line.
+
+With a **Fold angle** above 0 in the tool's panel, the line is a fold line. The cloth folds there when simulated, and
+stays folded: use it for a pressed crease, a turned-back cuff or a lapel's roll line. 90° is a right angle; 180° folds
+the cloth right back onto itself. A **mountain** fold (the default) makes a ridge on the outside of the garment; tick
+**Valley fold** for a groove instead. **Strength** is how firmly the fold holds its angle. In the 2D view plain lines
+are finely dashed, mountain folds are orange and valley folds are blue.
+
+To change a line later, click it with the Internal Line tool: the panel then shows and edits that line, and
+**Delete** removes it.
+
+**Darts.** Pick **Dart** (**D**), click where the point of the dart goes inside a piece, then click the two places
+on one edge where its legs end. The wedge between them is cut out of the piece and its two legs are sewn together, so
+the flat cloth takes a cone shape around the point: over the bust, the waist, the hips or the shoulder blades. The
+edge is split where the legs meet it. A seam on that edge is taken off, because it would now only cover part of it;
+sew the new edges again.
+
+**Pleats.** Pick **Pleat** (**Y**) and drag along an edge over the stretch you want pleated. The tool's panel sets how
+many pleats there are, how deep each one is (how much cloth it folds under) and how far down they are **stitched**;
+pulling the pointer into the piece while you drag sets the depth too. The preview shows the folds before you let go.
+Each pleat is a knife pleat: a mountain fold and a valley fold running straight across the piece from the edge, its
+top sewn shut, so the edge comes in by twice the depth for each pleat. Each fold is also stitched onto the cloth it
+lies on, 8 cm down from the edge unless you change it; below that the pleats open and swing. The stitching is what
+carries a pleated skirt: set it to 0 and the pleats are only tacked along the edge, and the garment then needs a
+waistband to stay up. Pleat a skirt panel's waist before sewing it at the sides: the waist must still fit the body
+once the pleats take it in.
+
+A flat pleated piece starts its simulation already folded, so its stitching begins closed. Pleats drape with or
+without **Cloth-to-cloth collision**; the layers of one pleat are folded against each other on purpose, so they do
+not collide with each other.
 
 ---
 
