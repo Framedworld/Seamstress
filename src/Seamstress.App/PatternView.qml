@@ -705,6 +705,9 @@ Item {
             opacity: 0.9
         }
     }
+    // Internal lines and folds, and the Internal Line, Dart and Pleat tools: over the pattern, under the panels.
+    FoldOverlay { view: root }
+
     // Inset Band: the width of the bands, and Apply / Cancel, while edges are chosen.
     Pane {
         id: insetPanel

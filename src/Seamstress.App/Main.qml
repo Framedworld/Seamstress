@@ -265,6 +265,9 @@ ApplicationWindow {
         "tool.sew": () => App.tool = "Sew",
         "tool.insetBand": () => App.tool = "InsetBand",
         "tool.cut": () => App.tool = "Cut",
+        "tool.internalLine": () => App.tool = "InternalLine",
+        "tool.dart": () => App.tool = "Dart",
+        "tool.pleat": () => App.tool = "Pleat",
         "tool.polygon": () => App.tool = "Polygon",
         "tool.rectangle": () => App.tool = "Rectangle",
         "tool.ellipse": () => App.tool = "Ellipse",
@@ -597,6 +600,12 @@ ApplicationWindow {
                     ToolChoice { label: tr("Sew"); tool: "Sew"; command: "tool.sew"; iconFile: "sew.svg"; tip: tr("Click two edges to sew them together") }
                     ToolChoice { label: tr("Inset Band"); tool: "InsetBand"; command: "tool.insetBand"; iconFile: "inset-band.svg"; tip: tr("Cut a band (a waistband, collar band or facing) off pieces along the edges you click, already sewn on") }
                     ToolChoice { label: tr("Cut"); tool: "Cut"; command: "tool.cut"; iconFile: "cut.svg"; tip: tr("Draw a line across pieces to cut them into separate pieces") }
+                }
+
+                ToolGroup {
+                    ToolChoice { label: tr("Internal Line"); tool: "InternalLine"; command: "tool.internalLine"; iconFile: "internal-line.svg"; tip: tr("Draw a line inside a piece for the cloth to follow; give it a fold angle for a pressed crease, a cuff or a lapel roll") }
+                    ToolChoice { label: tr("Dart"); tool: "Dart"; command: "tool.dart"; iconFile: "dart.svg"; tip: tr("Click a dart's point inside a piece, then its two leg ends on an edge: the wedge is cut out and the legs sewn together") }
+                    ToolChoice { label: tr("Pleat"); tool: "Pleat"; command: "tool.pleat"; iconFile: "pleat.svg"; tip: tr("Drag along an edge to pleat that stretch: folds that alternate mountain and valley, tacked at the edge") }
                 }
 
                 ToolGroup {

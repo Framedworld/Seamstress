@@ -37,13 +37,22 @@ public enum PatternTool
     /// rivet or buckle set on it (<see cref="PatternEditor.TrimKind"/>).
     /// </summary>
     Trim,
+
+    /// <summary>Draws a line inside a piece that the cloth mesh follows; with a fold angle it is a fold line.</summary>
+    InternalLine,
+
+    /// <summary>Cuts a dart into a piece: the point inside it, then both leg ends on an edge, the legs sewn together.</summary>
+    Dart,
+
+    /// <summary>Pleats the stretch of an edge dragged along: mountain and valley fold lines, tacked at the edge.</summary>
+    Pleat,
 }
 
 /// <summary>
 /// Interaction logic of the 2D viewport: turns pointer events (already converted to pattern centimetres, Y up) into
 /// edits on the workspace, and describes what the viewport should draw.
 /// </summary>
-public sealed class PatternEditor
+public sealed partial class PatternEditor
 {
     private enum Drag
     {
@@ -433,6 +442,7 @@ public sealed class PatternEditor
             PatternTool.Trim => IsHardwareKind(_trimKind)
                 ? Lang.F("Click on a piece to set a {0} there. It is pinned, so simulating leaves it in place.", Workspace.KindWord(_trimKind))
                 : Lang.F("Drag on a piece to place a {0}, or click for one of the usual size. Simulate afterwards to sew it on.", Workspace.KindWord(_trimKind)),
+            PatternTool.InternalLine or PatternTool.Dart or PatternTool.Pleat => FoldToolHint,
             _ => "",
         };
 
@@ -1171,6 +1181,11 @@ public sealed class PatternEditor
                 }
                 _drag = Drag.Shape;
                 break;
+            case PatternTool.InternalLine:
+            case PatternTool.Dart:
+            case PatternTool.Pleat:
+                FoldToolDown(world, tolerance);
+                break;
             case PatternTool.Ruler:
                 // Each drag measures afresh; a click without dragging clears the ruler.
                 _rulerTolerance = tolerance;
@@ -1183,6 +1198,8 @@ public sealed class PatternEditor
 
     public void PointerMove(Vector2 world, float tolerance)
     {
+        if (FoldToolMove(world, tolerance))
+            return;
         var delta = world - _dragLast;
         if (_drag != Drag.None && !_dragMoved)
         {
@@ -1409,6 +1426,8 @@ public sealed class PatternEditor
 
     public void PointerUp(Vector2 world)
     {
+        if (FoldToolUp(world))
+            return;
         var drag = _drag;
         _drag = Drag.None;
         switch (drag)
@@ -1533,7 +1552,7 @@ public sealed class PatternEditor
 
     public void DoubleClick(Vector2 world, float tolerance, bool additive = false)
     {
-        if (_uvMode)
+        if (_uvMode || FoldToolDoubleClick())
             return;
         if (_tool == PatternTool.Polygon)
         {
@@ -1649,6 +1668,8 @@ public sealed class PatternEditor
     /// <summary>Enter: completes the polygon being drawn.</summary>
     public void Confirm()
     {
+        if (FoldToolConfirm())
+            return;
         if (_tool == PatternTool.Polygon && _draft.Count >= 3)
             FinishPolygon();
         else if (_tool == PatternTool.InsetBand)
@@ -1678,6 +1699,7 @@ public sealed class PatternEditor
         _insetDrag = null;
         _referenceId = "";
         _trimHost = null;
+        CancelFoldTools();
         Changed?.Invoke();
     }
 
@@ -2007,6 +2029,7 @@ public sealed class PatternEditor
                 sb.Append(']');
             }
         }
+        AppendFoldScene(sb);
         // Pictures drawn behind the pattern: position and size in pattern centimetres, centre and Y up.
         sb.Append(",\"references\":[");
         if (!_uvMode && _showReferences)

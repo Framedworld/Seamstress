@@ -9,7 +9,7 @@ namespace Seamstress.Core.Editing;
 /// The open project together with everything the UI needs around it: selection, undo history, the current file and a
 /// cache of generated meshes. Every change to the document goes through here so it is undoable.
 /// </summary>
-public sealed class Workspace
+public sealed partial class Workspace
 {
     private readonly Dictionary<string, (string Key, GarmentMesh Mesh)> _meshes = new();
 
@@ -2116,6 +2116,7 @@ public sealed class Workspace
                     }).ToList();
                     piece.Points = Mirror(piece.Points);
                     piece.Holes = piece.Holes.Select(Mirror).ToList();
+                    PatternFolds.TransformLines(piece, p => new Vector2(axis - p.X, p.Y));
                     // Edge k of a loop of n (from its point k) became its edge n-1-k and now runs the other way, so a
                     // seam to an edge that was not mirrored has to swap which ends it pairs up.
                     int Mirrored(int edge)
@@ -2163,6 +2164,7 @@ public sealed class Workspace
                     if (point.Curve is { } c)
                         point.Curve = Turn(c);
                 }
+                PatternFolds.TransformLines(piece, Turn);
                 piece.ClearDrape();
             }
         });
