@@ -21,6 +21,9 @@ public sealed class SimulationRunner : IDisposable
     }
 
     public ClothSolver Solver => _solver;
+
+    /// <summary>A body that moves while the cloth simulates (an animation playing), or null for a still avatar.</summary>
+    public IBodyMotion? Motion { get; init; }
     public bool IsRunning => _running;
 
     /// <summary>Simulation frames completed so far.</summary>
@@ -49,10 +52,12 @@ public sealed class SimulationRunner : IDisposable
             while (_running)
             {
                 double started = clock.Elapsed.TotalMilliseconds;
+                Motion?.BeforeStep(_solver);
                 _solver.Step();
                 lock (_gate)
                 {
                     Array.Copy(_solver.Positions, _front, _front.Length);
+                    Motion?.AfterStep(_solver);
                     _frame++;
                 }
                 double elapsed = clock.Elapsed.TotalMilliseconds - started;
@@ -73,7 +78,15 @@ public sealed class SimulationRunner : IDisposable
     {
         Stop();
         for (int i = 0; i < frames; i++)
+        {
+            Motion?.BeforeStep(_solver);
             _solver.Step();
+            if (Motion != null)
+            {
+                lock (_gate)
+                    Motion.AfterStep(_solver);
+            }
+        }
         lock (_gate)
         {
             Array.Copy(_solver.Positions, _front, _front.Length);

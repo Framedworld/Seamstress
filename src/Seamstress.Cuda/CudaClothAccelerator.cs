@@ -743,7 +743,7 @@ internal sealed class CudaRuntime
 }
 
 /// <summary>CUDA-accelerated XPBD cloth solver backend using ILGPU.</summary>
-public sealed class CudaClothAccelerator : IClothAccelerator
+public sealed partial class CudaClothAccelerator : IClothAccelerator
 {
     private const float SeamClosingSpeed = 0.8f;
 
@@ -1019,8 +1019,9 @@ public sealed class CudaClothAccelerator : IClothAccelerator
             if (gpuContacts)
                 SolveContactsGpu();
 
-            _rt.SolveBodyKernel(_n, _pos.View, _prev.View, _invMass.View, _thickness.View, _friction.View,
-                _openStitch.View, _sdfData.View, _sdfParams, ground);
+            if (!SolveMovingBodyGpu((step + 1f) / p.Substeps, h, ground))
+                _rt.SolveBodyKernel(_n, _pos.View, _prev.View, _invMass.View, _thickness.View, _friction.View,
+                    _openStitch.View, _sdfData.View, _sdfParams, ground);
 
             _rt.UpdateVelocityKernel(_n, _pos.View, _prev.View, _vel.View, _invMass.View, _speedSq.View, invH);
         }
@@ -1188,6 +1189,7 @@ public sealed class CudaClothAccelerator : IClothAccelerator
         _sa?.Dispose();
         _sb?.Dispose();
         _sdfData.Dispose();
+        DisposeMovingBody();
     }
 }
 
