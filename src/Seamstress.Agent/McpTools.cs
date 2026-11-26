@@ -9,7 +9,7 @@ using Seamstress.Core.Simulation;
 
 namespace Seamstress.Mcp;
 
-public sealed class McpToolRegistry
+public sealed partial class McpToolRegistry
 {
     private readonly GarmentSession _session;
 
@@ -393,7 +393,8 @@ public sealed class McpToolRegistry
             ("carryCloth", "boolean", "Carry existing draped garment vertices incrementally via barycentric triangle binding before simulating (default true)."),
             ("allGarments", "boolean", "Simulate all visible garments simultaneously instead of layer-by-layer (default false)."),
             ("selfCollision", "boolean", "Enable cloth self-collision during this pose step (default false)."),
-            ("useGpu", "boolean", "Use CUDA GPU acceleration (default true).")), "targetObjPath")
+            ("useGpu", "boolean", "Use CUDA GPU acceleration (default true).")), "targetObjPath"),
+        PlayAnimationTool()
     );
 
     public object Dispatch(string name, JsonElement args)
@@ -446,6 +447,7 @@ public sealed class McpToolRegistry
             "inspect_metahuman_dna" => MetaHumanDnaLoader.Inspect(ReqString(args, "path")),
             "refit_garment_to_body" => RefitGarmentToBody(args),
             "step_pose" => StepPose(args),
+            "play_animation" => PlayAnimation(args),
             _ => throw new ArgumentException($"Unknown tool '{name}'."),
         };
     }

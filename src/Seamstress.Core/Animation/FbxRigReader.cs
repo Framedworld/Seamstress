@@ -9,6 +9,7 @@ namespace Seamstress.Core.Animation;
 /// Reads the skeleton, skin clusters and animation stacks of a binary FBX file (7.x). Meshes are gathered in the same
 /// order as <see cref="FbxMeshReader"/> does, so skinned vertices line up with the avatar loaded from the same file.
 /// Pivots and rotation offsets are ignored, as they are for the rest pose; rotation order and pre/post rotation are used.
+/// The skin is bound in the rest pose of the node hierarchy (the pose the file's mesh is in).
 /// </summary>
 public static class FbxRigReader
 {
@@ -213,7 +214,6 @@ public static class FbxRigReader
             var meshWorld = self >= 0 ? restWorld[self] : Matrix4x4.Identity;
             var partJoints = new int[count * SkinnedBody.Influences];
             var partWeights = new float[count * SkinnedBody.Influences];
-            Matrix4x4? clusterTransform = null;
             if (skinOfGeometry.TryGetValue(id, out long skin) && clustersOfSkin.TryGetValue(skin, out var clusterIds))
             {
                 foreach (long cid in clusterIds)
@@ -221,10 +221,11 @@ public static class FbxRigReader
                     var cluster = clusters[cid];
                     if (!boneOfCluster.TryGetValue(cid, out long bone) || !jointOf.TryGetValue(bone, out int bj))
                         continue;
-                    if (cluster.Child("Transform")?.Props.FirstOrDefault() is double[] tm && tm.Length == 16)
-                        clusterTransform ??= ToMatrix(tm);
-                    if (!inverseBindSet[bj] && cluster.Child("TransformLink")?.Props.FirstOrDefault() is double[] link && link.Length == 16
-                        && Matrix4x4.Invert(ToMatrix(link), out var inv))
+                    // The skin is bound to the hierarchy's rest pose, where the mesh is the avatar loaded from this file
+                    // (FbxMeshReader places it by its node). The clusters' own bind matrices (Transform, TransformLink)
+                    // do not always agree with that placement: in Character Creator exports they put the body a
+                    // quarter of a metre elsewhere, and the garments are draped on the avatar as loaded.
+                    if (!inverseBindSet[bj] && Matrix4x4.Invert(restWorld[bj], out var inv))
                     {
                         inverseBind[bj] = inv;
                         inverseBindSet[bj] = true;
@@ -246,7 +247,7 @@ public static class FbxRigReader
                 inverseBind[self] = invSelf;
                 inverseBindSet[self] = true;
             }
-            var placeMatrix = clusterTransform ?? meshWorld;
+            var placeMatrix = meshWorld;
             int first = bind.Count;
             for (int i = 0; i < count; i++)
                 bind.Add(Vector3.Transform(new Vector3((float)verts[3 * i], (float)verts[3 * i + 1], (float)verts[3 * i + 2]), placeMatrix));
@@ -356,10 +357,6 @@ public static class FbxRigReader
             _ => x * y * z,
         };
     }
-
-    private static Matrix4x4 ToMatrix(double[] m) => new(
-        (float)m[0], (float)m[1], (float)m[2], (float)m[3], (float)m[4], (float)m[5], (float)m[6], (float)m[7],
-        (float)m[8], (float)m[9], (float)m[10], (float)m[11], (float)m[12], (float)m[13], (float)m[14], (float)m[15]);
 
     private sealed class Curve
     {

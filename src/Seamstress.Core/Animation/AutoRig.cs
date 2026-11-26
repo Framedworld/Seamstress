@@ -53,6 +53,10 @@ public sealed class AutoRig
             if (radii.Count == 0)
                 continue;
             float wristT = radii[^1].T;
+            // The girths nearest the shoulder can take in some of the chest; the upper arm is no thicker than its middle.
+            float upperArm = radii.Take(Math.Max(1, radii.Count / 2)).Select(r => r.R).OrderBy(r => r).ElementAt(Math.Max(0, radii.Count / 4));
+            for (int i = 0; i < radii.Count; i++)
+                radii[i] = (radii[i].T, MathF.Min(radii[i].R, upperArm * 1.15f));
             float Radius(float t)
             {
                 if (t <= radii[0].T)
@@ -83,7 +87,9 @@ public sealed class AutoRig
                     continue;
                 float girth = Radius(MathF.Max(t, 0));
                 float within = 1 - Smooth(1.45f * girth, 2.1f * girth, r);
-                float w = along * within;
+                // Nothing nearer the middle of the body than the joint belongs to the arm.
+                float lateral = Smooth(pivot.X * sign - 0.05f, pivot.X * sign - 0.015f, p.X * sign);
+                float w = along * within * lateral;
                 if (w <= 0)
                     continue;
                 int at = v * SkinnedBody.Influences;

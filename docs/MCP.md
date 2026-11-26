@@ -58,7 +58,7 @@ step named `Agent: <tool>`.
 | Task | Tools |
 |---|---|
 | Project | `new_project`, `open_project`, `save_project`, `get_project_summary`, `export_garment` (.glb .gltf .obj .fbx .svg), `live_link` (work in the open window or headless) |
-| Body | `load_avatar`, `get_avatar_landmarks`, `list_body_profiles`, `save_body_profile`, `load_body_profile`, `step_pose`, `refit_garment_to_body`, `inspect_metahuman_dna` |
+| Body | `load_avatar`, `get_avatar_landmarks`, `list_body_profiles`, `save_body_profile`, `load_body_profile`, `step_pose`, `play_animation`, `refit_garment_to_body`, `inspect_metahuman_dna` |
 | Garments | `create_garment`, `set_garment` (name, layer, body offset, mesh density, thickness, visibility), `add_template_garment` (fitted tee, trousers, jacket and hoodie cut to the body; trousers take `outseamBackCm` and `hemGirthCm`) |
 | Pieces | `add_piece`, `add_rectangle_piece`, `mirror_piece`, `cut_piece`, `inset_band`, `delete_piece`, `arrange_piece_3d`, `layout_pattern`, `import_mesh_as_pattern` |
 | Sewing | `sew_edges`, `sew_named`, `auto_sew`, `sew_surface_stitch`, `reverse_seam`, `delete_seam` |
@@ -69,6 +69,25 @@ step named `Agent: <tool>`.
 
 Edges can be given by number or by name everywhere. A back piece is turned round, so its own pattern x runs the other
 way (pattern x = -body x) when you refer to points on it, for example in `add_patch`.
+
+## Playing an animation
+
+`play_animation` moves the avatar while every visible, unfrozen garment simulates on it, then reports how the cloth
+held up. `animation` is `builtin:t-pose-to-a-pose` (arms lift level, then lower to 45°), `builtin:arm-raise`, or the
+path of a rigged FBX or glTF/GLB with animation clips (`clip` picks one by name or number). A file's skinned body has
+to be the avatar the garments are on (the file loaded with `load_avatar`, or a motion file with the same skeleton).
+
+- `frames` (default: the whole animation), `speed` (0.5 is slow motion), `blendInSeconds` (from the draped pose to
+  the clip's first frame; 1 s for files), `substeps`, `selfCollision`, `cellCm` (the moving body's collision grid;
+  1 cm, coarser is faster).
+- The report: `peakSpeedMetresPerSec`, `widestSeamGapMetres` and `openSeams` at the end, `penetration` (deepest cloth
+  inside the moving body and how many particles went more than 2 mm in), and `timing` (ms per frame for the solver and
+  for skinning and updating the body's collision field).
+- `recordPath` writes the recording as a .glb point cache: one mesh per garment plus the avatar, one morph target per
+  recorded frame (30 a second) and an animation of the weights. Blender imports it as animated shape keys; engines
+  read it as morph-target animation.
+- The drape and the avatar go back to how they were unless `keepResult` is true; then the avatar stays in the last
+  frame's pose.
 
 ## Things that go wrong, and what the server tells you
 

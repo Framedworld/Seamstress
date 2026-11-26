@@ -396,10 +396,10 @@ Item {
         DirectionalLight { eulerRotation: Qt.vector3d(-24, 152, 0); color: "#edf3ff"; brightness: 1.5 }
         DirectionalLight { eulerRotation: Qt.vector3d(58, 175, 0); color: "#b4bfd4"; brightness: 0.14 }
 
-        Model {
+        MeshModel {
             visible: root.showAvatar && root.avatarSource !== ""
             pickable: true      // for the ruler
-            source: root.avatarSource
+            mesh: root.avatarSource     // a file, or a live buffer while an animation moves the avatar
             materials: PrincipledMaterial { baseColor: "#b9afa6"; roughness: 0.68 }
         }
 
@@ -1214,6 +1214,12 @@ Item {
                 onToggled: root.showAvatar = checked
             }
         }
+    }
+
+    AnimationBar {
+        id: animationBar
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 38 }
+        width: Math.min(parent.width - 16, implicitWidth)
     }
 
     Label {

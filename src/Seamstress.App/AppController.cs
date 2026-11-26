@@ -969,6 +969,7 @@ public partial class AppController : INotifyPropertyChanged
         RecoveryTick();
         if (_avatarTask is { IsCompleted: true })
             FinishAvatar();
+        AnimationTick();
 
         if (!_simulation.IsRunning)
 
@@ -1398,6 +1399,11 @@ public partial class AppController : INotifyPropertyChanged
 
     private void StartSimulation()
     {
+        if (_animation != null)
+        {
+            PlayAnimation(); // the avatar is posed by the animation: simulating carries on playing it
+            return;
+        }
         if (_avatarTask != null)
         {
             // The avatar's collision field is still being built; start as soon as it is ready.

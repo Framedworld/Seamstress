@@ -711,6 +711,35 @@ At the bottom of the Properties panel, under **Simulation**:
 - A garment that is too small for the body cannot close all its seams; simulation gives up on those after a
   moment and drapes the rest.
 
+### Animating the avatar
+
+The bar along the bottom of the 3D view plays an animation on the avatar while the garments simulate on the moving
+body, the way Marvelous Designer does.
+
+1. Choose an animation. **T-pose to A-pose** lifts the arms level, holds them, then lowers them to 45°; **Arm raise**
+   lifts both arms above level and brings them back. Both work on any avatar and need no file: Seamstress finds the
+   arms from the body's own measurements. **Load…** adds the clips of a rigged FBX or glTF/GLB file instead. Its body
+   must be the avatar the garments are on: load the rigged file itself as the avatar, or a motion file with the same
+   skeleton as an avatar that was loaded from a rigged file. A file's clip starts after a one-second blend from the
+   pose the garments were draped in.
+2. Press **▶**. Every visible garment that is not frozen simulates while the body moves; frozen garments stay where
+   they are. **❚❚** pauses.
+3. Drag the timeline to look back through what has been recorded (the green line shows how far that reaches). Press
+   ▶ again and playback carries on from the frame you are looking at, recording over what came after it.
+4. The speed box plays slower or faster. Animation time runs at that speed while the cloth simulates in real time,
+   so 0.5× is a slow-motion move the cloth follows more easily.
+5. **Export…** saves the recording as a glTF (.glb) point cache: every garment and the avatar as meshes with one
+   morph target per recorded frame (30 a second) and an animation of the morph weights. Blender imports it as shape
+   keys that play on the timeline; three.js, Godot, Unity (glTFast) and Unreal read the same file.
+6. **■** (Reset) ends playback and puts the garments back in the drape they had before it started.
+
+Good to know:
+
+- A whole outfit simulates more slowly than real time, so playback runs at the speed of the simulation.
+- Fast moves can push cloth into the body for a moment. Play at 0.5×, raise the substeps, or give layered garments
+  more body offset.
+- Agents use `play_animation` to do the same without the window and get a report on how the cloth held up.
+
 ---
 
 ## Layers

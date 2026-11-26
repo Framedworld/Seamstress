@@ -243,8 +243,30 @@ internal sealed class ViewportSync : IDisposable
         return file;
     }
 
+    /// <summary>The avatar's vertices where an animation has moved them, or null for the avatar as loaded.</summary>
+    public Vector3[]? PosedAvatar { get; set; }
+    private Vector3[]? _shownPose;
+    private readonly Queue<string> _avatarFiles = new();
+
     public string AvatarUrl(Avatar? avatar)
     {
+        if (avatar != null && PosedAvatar is { } posed && posed.Length == avatar.Mesh.Positions.Length)
+        {
+            if (!ReferenceEquals(posed, _shownPose) || !ReferenceEquals(avatar, _avatar))
+            {
+                _shownPose = posed;
+                _avatar = avatar;
+                _avatarUrl = PutTriangles("avatar", _avatarFiles, posed, Mesher.ComputeNormals(posed, avatar.Mesh.Triangles), null, avatar.Mesh.Triangles);
+            }
+            return _avatarUrl;
+        }
+        if (_shownPose != null)
+        {
+            // Back to the avatar as loaded.
+            _shownPose = null;
+            _avatar = null;
+            _live.Remove("avatar");
+        }
         if (ReferenceEquals(avatar, _avatar))
             return _avatarUrl;
         _avatar = avatar;

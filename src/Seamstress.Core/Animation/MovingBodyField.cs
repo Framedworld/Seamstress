@@ -27,6 +27,9 @@ public sealed class MovingBodyField
     private readonly Vector2[] _bary;     // weights of the nearest point's second and third corners
     private readonly bool[] _inside;
     private readonly float[] _facing;     // how squarely the nearest triangle faces the cell, used to settle ties
+    private readonly int[] _flood;        // cells reached from outside in the current flood carry the current mark
+    private readonly int[] _queue;
+    private int _floodMark;
     private Vector3[]? _last;
     private (int X0, int Y0, int Z0, int X1, int Y1, int Z1)? _lastRegion;
     private readonly List<int>[] _slices;
@@ -53,6 +56,9 @@ public sealed class MovingBodyField
     public float LastUpdateFraction { get; private set; }
 
     public int CellCount => Distances.Length;
+
+    /// <summary>The box of cells the last update rewrote (inclusive), or null when nothing moved.</summary>
+    public (int X0, int Y0, int Z0, int X1, int Y1, int Z1)? LastRegion { get; private set; }
     public float Cell => _cell;
 
     /// <param name="bounds">Space the body occupies over the whole animation.</param>
@@ -77,6 +83,8 @@ public sealed class MovingBodyField
         _bary = new Vector2[count];
         _inside = new bool[count];
         _facing = new float[count];
+        _flood = new int[count];
+        _queue = new int[count];
         _slices = new List<int>[_nz];
         for (int z = 0; z < _nz; z++)
             _slices[z] = new List<int>();
@@ -106,6 +114,7 @@ public sealed class MovingBodyField
                 region = region is { } now ? Union(now, before) : before;
         }
 
+        LastRegion = region;
         if (region is { } r)
         {
             Rebuild(r, positions, jump ? null : _last, seconds);
@@ -266,47 +275,103 @@ public sealed class MovingBodyField
                 }
             }
 
-            // Signs and velocities. Cells beyond the band take the side of the band cell (or the untouched cell
-            // outside the region) next to them along the row.
+            // Band cells: exact distance, side from the nearest triangle, and the skin's velocity.
             for (int y = r.Y0; y <= r.Y1; y++)
             {
                 int row = Index(0, y, z);
-                int x = r.X0;
-                while (x <= r.X1)
+                for (int x = r.X0; x <= r.X1; x++)
                 {
                     int i = row + x;
-                    if (_nearest[i] >= 0)
-                    {
-                        d[i] = _inside[i] ? -_unsigned[i] : _unsigned[i];
-                        if (last != null && invDt > 0)
-                        {
-                            int t = _nearest[i];
-                            int ia = _triangles[3 * t], ib = _triangles[3 * t + 1], ic = _triangles[3 * t + 2];
-                            var w = _bary[i];
-                            float wa = 1 - w.X - w.Y;
-                            Velocity[i] = ((pos[ia] - last[ia]) * wa + (pos[ib] - last[ib]) * w.X + (pos[ic] - last[ic]) * w.Y) * invDt;
-                        }
-                        x++;
+                    if (_nearest[i] < 0)
                         continue;
+                    d[i] = _inside[i] ? -_unsigned[i] : _unsigned[i];
+                    if (last != null && invDt > 0)
+                    {
+                        int t = _nearest[i];
+                        int ia = _triangles[3 * t], ib = _triangles[3 * t + 1], ic = _triangles[3 * t + 2];
+                        var w = _bary[i];
+                        float wa = 1 - w.X - w.Y;
+                        Velocity[i] = ((pos[ia] - last[ia]) * wa + (pos[ib] - last[ib]) * w.X + (pos[ic] - last[ic]) * w.Y) * invDt;
                     }
-                    int start = x;
-                    while (x <= r.X1 && _nearest[row + x] < 0)
-                        x++;
-                    int end = x - 1;
-                    bool inside;
-                    if (start > r.X0)
-                        inside = _inside[row + start - 1];
-                    else if (start > 0)
-                        inside = d[row + start - 1] < 0;
-                    else if (end < r.X1)
-                        inside = _inside[row + end + 1];
-                    else if (end + 1 < _nx)
-                        inside = d[row + end + 1] < 0;
-                    else
-                        inside = false;
-                    float value = inside ? -_far : _far;
-                    for (int k = start; k <= end; k++)
-                        d[row + k] = value;
+                }
+            }
+        });
+
+        // Cells beyond the band: outside where the space outside the body reaches them without crossing the band,
+        // inside otherwise, as for the still avatar's field. The flood starts from the region's faces that border
+        // flooded outside space (the cells next to them did not change) and from the edge of the grid.
+        int queued = 0, head = 0;
+        float plateau = _far * 0.9999f;
+        void Seed(int x, int y, int z, int ox, int oy, int oz)
+        {
+            int i = Index(x, y, z);
+            if (_nearest[i] >= 0 || _flood[i] == _floodMark)
+                return;
+            // Only flood-filled outside space counts, not a band cell's own side: near a self-intersecting skin
+            // (between the thighs, an armpit) the nearest triangle can face the wrong way.
+            bool exterior = ox < 0 || oy < 0 || oz < 0 || ox >= _nx || oy >= _ny || oz >= _nz || d[Index(ox, oy, oz)] >= plateau;
+            if (!exterior)
+                return;
+            _flood[i] = _floodMark;
+            _queue[queued++] = i;
+        }
+        _floodMark++;
+        if (_floodMark == int.MaxValue)
+        {
+            Array.Clear(_flood);
+            _floodMark = 1;
+        }
+        for (int z = r.Z0; z <= r.Z1; z++)
+        {
+            for (int y = r.Y0; y <= r.Y1; y++)
+            {
+                Seed(r.X0, y, z, r.X0 - 1, y, z);
+                Seed(r.X1, y, z, r.X1 + 1, y, z);
+            }
+            for (int x = r.X0; x <= r.X1; x++)
+            {
+                Seed(x, r.Y0, z, x, r.Y0 - 1, z);
+                Seed(x, r.Y1, z, x, r.Y1 + 1, z);
+            }
+        }
+        for (int y = r.Y0; y <= r.Y1; y++)
+        {
+            for (int x = r.X0; x <= r.X1; x++)
+            {
+                Seed(x, y, r.Z0, x, y, r.Z0 - 1);
+                Seed(x, y, r.Z1, x, y, r.Z1 + 1);
+            }
+        }
+        int sy = _nx, sz = _nx * _ny;
+        while (head < queued)
+        {
+            int i = _queue[head++];
+            int x = i % _nx, y = i / _nx % _ny, z = i / sz;
+            void Visit(int j)
+            {
+                if (_nearest[j] >= 0 || _flood[j] == _floodMark)
+                    return;
+                _flood[j] = _floodMark;
+                _queue[queued++] = j;
+            }
+            if (x > r.X0) Visit(i - 1);
+            if (x < r.X1) Visit(i + 1);
+            if (y > r.Y0) Visit(i - sy);
+            if (y < r.Y1) Visit(i + sy);
+            if (z > r.Z0) Visit(i - sz);
+            if (z < r.Z1) Visit(i + sz);
+        }
+        int mark = _floodMark;
+        Parallel.For(r.Z0, r.Z1 + 1, z =>
+        {
+            for (int y = r.Y0; y <= r.Y1; y++)
+            {
+                int row = Index(0, y, z);
+                for (int x = r.X0; x <= r.X1; x++)
+                {
+                    int i = row + x;
+                    if (_nearest[i] < 0)
+                        d[i] = _flood[i] == mark ? _far : -_far;
                 }
             }
         });

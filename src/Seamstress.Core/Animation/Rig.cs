@@ -349,3 +349,47 @@ public static class Pose
         return x * x * (3 - 2 * x);
     }
 }
+
+/// <summary>
+/// A clip made for another skeleton with the same joint names (a motion file exported from the same character):
+/// each joint gets the clip's change from the clip skeleton's rest pose, applied to its own rest pose. Rigs whose
+/// rest poses differ (a root turned for Z-up, bones of other lengths) then still move the body the same way.
+/// </summary>
+public sealed class RetargetedClip : AnimationClip
+{
+    public required AnimationClip Inner { get; init; }
+    public required Skeleton Source { get; init; }
+
+    private Skeleton? _boundTo;
+    private int[] _sourceOf = Array.Empty<int>();
+    private Matrix4x4[] _sourceLocals = Array.Empty<Matrix4x4>();
+
+    /// <summary>How many of <paramref name="target"/>'s joints the clip's skeleton has.</summary>
+    public int Matched(Skeleton target) => target.Names.Count(n => Source.Find(n) >= 0);
+
+    public override void Sample(Skeleton skeleton, float time, Matrix4x4[] rest, Matrix4x4[] locals)
+    {
+        if (!ReferenceEquals(_boundTo, skeleton))
+        {
+            _sourceOf = skeleton.Names.Select(Source.Find).ToArray();
+            _sourceLocals = new Matrix4x4[Source.Count];
+            _boundTo = skeleton;
+        }
+        Inner.Sample(Source, time, Source.RestLocal, _sourceLocals);
+        Array.Copy(rest, locals, skeleton.Count);
+        for (int j = 0; j < skeleton.Count; j++)
+        {
+            int s = _sourceOf[j];
+            if (s < 0)
+                continue;
+            Pose.Decompose(Source.RestLocal[s], out _, out var restSourceRotation, out var restSourceTranslation);
+            Pose.Decompose(_sourceLocals[s], out _, out var clipRotation, out var clipTranslation);
+            Pose.Decompose(rest[j], out var scale, out var restRotation, out var restTranslation);
+            // The turn from the clip skeleton's parent frame into this one's.
+            var frame = Quaternion.Concatenate(Quaternion.Inverse(restSourceRotation), restRotation);
+            var rotation = Quaternion.Normalize(Quaternion.Concatenate(clipRotation, frame));
+            var translation = restTranslation + Vector3.Transform(clipTranslation - restSourceTranslation, frame);
+            locals[j] = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(translation);
+        }
+    }
+}
