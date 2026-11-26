@@ -871,21 +871,20 @@ public partial class AppController : INotifyPropertyChanged
             if (v != _pinchRadiusCm) { _pinchRadiusCm = v; Notify(); }
         }
     }
-    private long _pinchStopFrame = -1;
-    private const int PinchSettleFrames = 45;
     private string? _pinchGarmentId;
-    private bool _pinchKeepsShape = true;
+    private bool _pinchFreezes;
 
     /// <summary>
-    /// Letting go of a pinch keeps the shape the cloth was pulled into (its folds are set as creases), instead of
-    /// stiff cloth springing back to the shape it had.
+    /// The two ways a pinch ends. Pull (false): the cloth is let go and keeps simulating, settling from where it was
+    /// dropped, until the simulation is stopped. Pull & Freeze (true): the cloth stays where it was dropped: the
+    /// simulation stops there and the pulled folds are set as creases, so stiff cloth does not spring back.
     /// </summary>
-    public bool PinchKeepsShape
+    public bool PinchFreezes
     {
-        get => _pinchKeepsShape;
+        get => _pinchFreezes;
         set
         {
-            if (value != _pinchKeepsShape) { _pinchKeepsShape = value; Notify(); }
+            if (value != _pinchFreezes) { _pinchFreezes = value; Notify(); }
         }
     }
 
@@ -925,7 +924,6 @@ public partial class AppController : INotifyPropertyChanged
         }
         _pinching = true;
         _pinchGarmentId = garment.Id;
-        _pinchStopFrame = -1;
         _simulation.BeginPinch(new Vector3((float)x, (float)y, (float)z), (float)(_pinchRadiusCm / 100.0));
         StatusText = Lang.T("Pinching — drag to pull the cloth, release to let it settle.");
         return true;
@@ -942,7 +940,7 @@ public partial class AppController : INotifyPropertyChanged
         if (!_pinching)
             return;
         _pinching = false;
-        if (_pinchKeepsShape && _pinchGarmentId is { } held)
+        if (_pinchFreezes && _pinchGarmentId is { } held)
         {
             // Stop while the cloth is still held, so the drape is the pulled shape, and set it as the garment's creases.
             bool continuous = !_pinchStartedSimulation;
@@ -956,11 +954,11 @@ public partial class AppController : INotifyPropertyChanged
             ViewportRevision++;
             return;
         }
+        // Pull: let go and keep simulating, so the cloth settles the way it was helped to. A run the pinch started
+        // carries on like any other until Space stops it (one undo step for all of it).
         _simulation.EndPinch();
-        if (_pinchStartedSimulation)
-            _pinchStopFrame = _simulation.Frame + PinchSettleFrames;
-        else
-            StatusText = Lang.T("Simulating — press Space to stop.");
+        _pinchStartedSimulation = false;
+        StatusText = Lang.T("Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.");
     }
 
     /// <summary>Called by a UI timer: applies the newest simulation frame and finishes background avatar loading.</summary>
@@ -998,15 +996,6 @@ public partial class AppController : INotifyPropertyChanged
         if (!_simulation.IsRunning)
         {
             _pinchStartedSimulation = false;
-            _pinchStopFrame = -1;
-            return;
-        }
-        if (_pinchStartedSimulation && !_pinching && _pinchStopFrame >= 0 && _simulation.Frame >= _pinchStopFrame)
-        {
-            // The cloth has had a moment to settle after the pinch that started this run.
-            _simulation.Pump();
-            StopSimulation();
-            StatusText = Lang.T("Pinch applied. Ctrl+Z undoes it.");
             return;
         }
         if (_simulation.Pump())
@@ -1423,7 +1412,6 @@ public partial class AppController : INotifyPropertyChanged
     {
         _pinching = false;
         _pinchStartedSimulation = false;
-        _pinchStopFrame = -1;
         string? error = _simulation.Stop();
         SimInfo = "";
         Notify(nameof(Simulating));

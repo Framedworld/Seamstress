@@ -582,12 +582,13 @@ body.
 
 ![A draped skirt, and the same skirt with its hem pulled outwards by a pinch](images/pinch.png)
 
-- **Keep Shape** (on by default, next to the Grab slider): when you let go, the cloth keeps the shape you pulled
-  it into. Its folds are set as creases, so stiff canvas does not spring back. Turn it off to let the cloth
-  settle freely from where you left it, back towards the shape it had.
-- **During a simulation**, pinching simply adds your hand to it.
-- **After a simulation**, pinching starts the simulation for that garment for as long as you hold on and stops
-  again when you let go. The whole pinch, with its kept shape, is one undo step (**Ctrl+Z**).
+- **Pull** or **Pull & Freeze** (next to the Grab slider) chooses what happens when you let go:
+  - **Pull** (the default): the cloth is let go and keeps simulating, settling from where you dropped it. Grab it
+    again as often as you like to help it settle the way you want; press **Space** to stop. A pinch with no
+    simulation running starts one and leaves it running.
+  - **Pull & Freeze**: the cloth stays where you dropped it. The simulation stops there and the pulled folds are
+    set as creases, so stiff canvas does not spring back.
+- The whole run, with every pull in it (and a frozen shape), is one undo step (**Ctrl+Z**).
 - The cloth still collides with the avatar and other garments, so you can pull it over a shoulder or smooth it
   down against the body, but not drag it through.
 - While Pinch is on, Alt+drag orbits the camera, Shift+drag pans, and the move/rotate handles are hidden. Turn

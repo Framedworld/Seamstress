@@ -399,11 +399,20 @@ QtObject {
         check("pinch takes hold", App.pinchBegin(skirtPiece, 0, 0.45, 0.16))
         check("pinch runs the simulation", App.simulating)
         App.pinchMove(0, 0.5, 0.3)
-        // Letting go keeps the pulled shape (its creases are set) and stops the run, all in the pinch's undo step.
-        check("keep shape is on", App.pinchKeepsShape)
+        // Pull (the default): let go and the cloth keeps simulating until Space; the whole run is one undo step.
+        check("pull is the default", !App.pinchFreezes)
         App.pinchEnd()
-        check("pinch keeps its shape and stops", !App.simulating)
+        check("pull keeps simulating", App.simulating)
+        App.toggleSimulation()
+        check("pull is one undo step", App.undoText === "Undo Pinch cloth")
+        // Pull & Freeze: let go and the cloth stays put; the run stops and the shape is kept, in the same undo step.
+        App.pinchFreezes = true
+        check("pinch takes hold again", App.pinchBegin(skirtPiece, 0, 0.45, 0.16))
+        App.pinchMove(0, 0.5, 0.3)
+        App.pinchEnd()
+        check("pull and freeze stops", !App.simulating)
         check("pinch is one undo step", App.undoText === "Undo Pinch cloth")
+        App.pinchFreezes = false
         // Set creases by hand is its own undo step, and the grab size is adjustable.
         App.pinchRadiusCm = 12
         check("pinch grab size", App.pinchRadiusCm === 12)

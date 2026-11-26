@@ -1097,13 +1097,22 @@ Item {
                 ToolTip.visible: hovered
                 ToolTip.text: tr("How much cloth the pinch takes hold of")
             }
+            // How a pinch ends: let go and keep simulating, or stop the cloth where it was dropped.
             ViewButton {
-                text: tr("Keep Shape")
+                text: tr("Pull")
                 checkable: true
-                checked: App.pinchKeepsShape
-                onToggled: App.pinchKeepsShape = checked
+                checked: !App.pinchFreezes
+                onClicked: { App.pinchFreezes = false; checked = Qt.binding(() => !App.pinchFreezes) }
                 ToolTip.visible: hovered
-                ToolTip.text: tr("Letting go keeps the shape the cloth was pulled into. Off, stiff cloth springs back to the shape it had.")
+                ToolTip.text: tr("Let go and the cloth keeps simulating, settling from where you dropped it. Press Space to stop.")
+            }
+            ViewButton {
+                text: tr("Pull & Freeze")
+                checkable: true
+                checked: App.pinchFreezes
+                onClicked: { App.pinchFreezes = true; checked = Qt.binding(() => App.pinchFreezes) }
+                ToolTip.visible: hovered
+                ToolTip.text: tr("Let go and the cloth stays where you dropped it: the simulation stops and the pulled folds are kept as creases.")
             }
             ViewButton {
                 text: tr("Set Creases")

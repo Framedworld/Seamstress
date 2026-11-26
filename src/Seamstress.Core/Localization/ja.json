@@ -499,7 +499,6 @@
   "Simulated together with the active garment": "アクティブな衣服と一緒にシミュレート",
   "Simulating {0} — press Space to stop.": "{0} をシミュレート中です。Space キーで停止します。",
   "Simulating · {0:N0} particles · {1:0.0} ms/step": "シミュレート中 · 粒子 {0:N0} 個 · {1:0.0} ms/ステップ",
-  "Simulating — press Space to stop.": "シミュレート中です。Space キーで停止します。",
   "Simulation": "シミュレーション",
   "Simulation cancelled.": "シミュレーションを取り消しました。",
   "Simulation stopped.": "シミュレーションを停止しました。",
@@ -785,9 +784,12 @@
   "“{0}” is frozen: it holds still, and the garments you simulate collide with it.": "「{0}」を固定しました。動かず、シミュレーションする衣服がこれに衝突します。",
   "“{0}” can move again.": "「{0}」は再び動けます。",
   "“{0}” is frozen. Unfreeze it in the layers panel to pull it.": "「{0}」は固定されています。引っ張るにはレイヤーパネルで固定を解除してください。",
-  "Keep Shape": "形を保持",
-  "Letting go keeps the shape the cloth was pulled into. Off, stiff cloth springs back to the shape it had.": "放したときに、引っ張った形を布が保ちます。オフにすると、硬い布は元の形に戻ります。",
   "Frozen: it holds still, and the garments you simulate collide with it. Click to let it move again.": "固定中：動かず、シミュレーションする衣服がこれに衝突します。クリックで再び動かせます。",
   "Freeze: hold this garment still and build the next layer on top of it": "固定：この衣服を動かさず、その上に次のレイヤーを作ります",
-  "Frozen": "固定"
+  "Frozen": "固定",
+  "Pull": "引っ張る",
+  "Pull & Freeze": "引っ張って固定",
+  "Let go and the cloth keeps simulating, settling from where you dropped it. Press Space to stop.": "放すと布はシミュレーションを続け、放した位置から落ち着きます。止めるにはスペースキーを押します。",
+  "Let go and the cloth stays where you dropped it: the simulation stops and the pulled folds are kept as creases.": "放すと布はその位置にとどまります。シミュレーションが止まり、引っ張ったしわが折り目として保持されます。",
+  "Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.": "放しました。布はシミュレーションを続けて落ち着きます。もう一度つかむか、スペースキーで止めます。"
 }

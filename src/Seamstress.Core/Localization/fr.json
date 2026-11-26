@@ -499,7 +499,6 @@
   "Simulated together with the active garment": "Simulé avec le vêtement actif",
   "Simulating {0} — press Space to stop.": "Simulation de {0} : appuyez sur Espace pour arrêter.",
   "Simulating · {0:N0} particles · {1:0.0} ms/step": "Simulation · {0:N0} particules · {1:0.0} ms/pas",
-  "Simulating — press Space to stop.": "Simulation en cours : appuyez sur Espace pour arrêter.",
   "Simulation": "Simulation",
   "Simulation cancelled.": "Simulation annulée.",
   "Simulation stopped.": "Simulation arrêtée.",
@@ -785,9 +784,12 @@
   "“{0}” is frozen: it holds still, and the garments you simulate collide with it.": "« {0} » est figé : il reste immobile et les vêtements simulés entrent en collision avec lui.",
   "“{0}” can move again.": "« {0} » peut de nouveau bouger.",
   "“{0}” is frozen. Unfreeze it in the layers panel to pull it.": "« {0} » est figé. Libérez-le dans le panneau des calques pour le tirer.",
-  "Keep Shape": "Garder la forme",
-  "Letting go keeps the shape the cloth was pulled into. Off, stiff cloth springs back to the shape it had.": "En relâchant, le tissu garde la forme dans laquelle il a été tiré. Désactivé, un tissu raide reprend sa forme d’avant.",
   "Frozen: it holds still, and the garments you simulate collide with it. Click to let it move again.": "Figé : il reste immobile et les vêtements simulés entrent en collision avec lui. Cliquez pour le libérer.",
   "Freeze: hold this garment still and build the next layer on top of it": "Figer : immobiliser ce vêtement et construire la couche suivante par-dessus",
-  "Frozen": "Figé"
+  "Frozen": "Figé",
+  "Pull": "Tirer",
+  "Pull & Freeze": "Tirer et figer",
+  "Let go and the cloth keeps simulating, settling from where you dropped it. Press Space to stop.": "En relâchant, le tissu continue d’être simulé et se pose à partir de l’endroit où vous l’avez lâché. Appuyez sur Espace pour arrêter.",
+  "Let go and the cloth stays where you dropped it: the simulation stops and the pulled folds are kept as creases.": "En relâchant, le tissu reste là où vous l’avez lâché : la simulation s’arrête et les plis tirés sont gardés comme pliures.",
+  "Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.": "Relâché : le tissu continue d’être simulé et se pose. Reprenez-le, ou appuyez sur Espace pour arrêter."
 }

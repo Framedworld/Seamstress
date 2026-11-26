@@ -499,7 +499,6 @@
   "Simulated together with the active garment": "Simulada junto com a roupa ativa",
   "Simulating {0} — press Space to stop.": "Simulando {0} — pressione Espaço para parar.",
   "Simulating · {0:N0} particles · {1:0.0} ms/step": "Simulando · {0:N0} partículas · {1:0.0} ms/passo",
-  "Simulating — press Space to stop.": "Simulando — pressione Espaço para parar.",
   "Simulation": "Simulação",
   "Simulation cancelled.": "Simulação cancelada.",
   "Simulation stopped.": "Simulação interrompida.",
@@ -785,9 +784,12 @@
   "“{0}” is frozen: it holds still, and the garments you simulate collide with it.": "“{0}” está congelada: fica parada e as peças que simular colidem com ela.",
   "“{0}” can move again.": "“{0}” pode voltar a mover-se.",
   "“{0}” is frozen. Unfreeze it in the layers panel to pull it.": "“{0}” está congelada. Descongele-a no painel de camadas para puxá-la.",
-  "Keep Shape": "Manter forma",
-  "Letting go keeps the shape the cloth was pulled into. Off, stiff cloth springs back to the shape it had.": "Ao soltar, o tecido mantém a forma em que foi puxado. Desligado, o tecido rígido volta à forma que tinha.",
   "Frozen: it holds still, and the garments you simulate collide with it. Click to let it move again.": "Congelada: fica parada e as peças que simular colidem com ela. Clique para voltar a mover.",
   "Freeze: hold this garment still and build the next layer on top of it": "Congelar: manter esta peça parada e construir a camada seguinte por cima",
-  "Frozen": "Congelada"
+  "Frozen": "Congelada",
+  "Pull": "Puxar",
+  "Pull & Freeze": "Puxar e congelar",
+  "Let go and the cloth keeps simulating, settling from where you dropped it. Press Space to stop.": "Ao soltar, o tecido continua a ser simulado e assenta a partir de onde o largou. Prima Espaço para parar.",
+  "Let go and the cloth stays where you dropped it: the simulation stops and the pulled folds are kept as creases.": "Ao soltar, o tecido fica onde o largou: a simulação para e as dobras puxadas ficam como vincos.",
+  "Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.": "Largado: o tecido continua a ser simulado e assenta. Volte a agarrá-lo ou prima Espaço para parar."
 }

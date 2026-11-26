@@ -131,8 +131,8 @@ Garment-level `thicknessMm` is also what makes cloth render as a shell rather th
 - Creases belong to the mesh they were set on: changing a piece's outline or particle distance drops them. Set them
   last.
 - For people shaping by hand in the app: the Pinch tool (G) drags cloth during a live simulation, its Grab slider
-  sets how much cloth it takes, and with Keep Shape on (the default) letting go sets the pulled folds as creases,
-  in the same undo step. Set Creases (K) does the same for the whole garment. The blocks are there too:
+  sets how much cloth it takes. In Pull mode (the default) letting go leaves the cloth simulating; Pull & Freeze
+  stops it where it was dropped and sets the pulled folds as creases, in the same undo step. Set Creases (K) does the same for the whole garment. The blocks are there too:
   Garment ▸ Add Fitted … (with fit, length, sleeves, open front), Add Collar…, Add Hood…, and the Trim tool (J)
   for pockets, flaps, patches, snaps, buttons, rivets and buckles dragged or clicked onto a piece in 2D.
 
