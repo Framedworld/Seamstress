@@ -14,6 +14,9 @@ namespace Seamstress.App;
 /// </summary>
 internal sealed class ViewportSync : IDisposable
 {
+    /// <summary>How opaque a deactivated garment is drawn: still there to see, but plainly out of the simulation.</summary>
+    private const float DeactivatedOpacity = 0.35f;
+
     private sealed class Entry
     {
         public object? Drape;
@@ -465,7 +468,7 @@ internal sealed class ViewportSync : IDisposable
                 sb.Append(",\"roughMap\":").Append(System.Text.Json.JsonSerializer.Serialize(roughMap));
                 sb.Append(",\"metalMap\":").Append(System.Text.Json.JsonSerializer.Serialize(metalMap));
                 float shownRepeat = material.TextureScale;
-                sb.Append(inv, $",\"repeat\":{shownRepeat:0.####},\"roughness\":{material.Roughness:0.###},\"metallic\":{material.Metallic:0.###},\"opacity\":{material.Opacity:0.###}");
+                sb.Append(inv, $",\"repeat\":{shownRepeat:0.####},\"roughness\":{material.Roughness:0.###},\"metallic\":{material.Metallic:0.###},\"opacity\":{material.Opacity * (garment.Deactivated ? DeactivatedOpacity : 1f):0.###}");
                 sb.Append(",\"selected\":").Append(workspace.SelectedPieces.Contains(piece.Id) ? "true" : "false");
                 sb.Append('}');
             }

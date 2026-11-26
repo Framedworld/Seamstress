@@ -34,7 +34,7 @@ public partial class AppController
         {
             bool active = garment.Id == _workspace.ActiveGarmentId;
             bool simulated = _simulation.SimulatedGarments.Contains(garment.Id);
-            string extra = $",\"active\":{B(active)},\"simulateWithOthers\":{B(garment.SimulateWithOthers)},\"frozen\":{B(garment.Frozen)},\"simulating\":{B(simulated)}"
+            string extra = $",\"active\":{B(active)},\"simulateWithOthers\":{B(garment.SimulateWithOthers)},\"frozen\":{B(garment.Frozen)},\"deactivated\":{B(garment.Deactivated)},\"simulating\":{B(simulated)}"
                          + $",\"faces\":{(garment.Pieces.Count > 0 ? _workspace.MeshFor(garment).FaceCount : 0)}";
             Row(garment.Id, "garment", garment.Name, 0, garment.Visible, garment.Expanded,
                 _workspace.SelectedLayerId == garment.Id, garment.Pieces.Count + garment.Groups.Count > 0, extra);
@@ -143,7 +143,8 @@ public partial class AppController
             sb.Append(",\"wornOver\":[").Append(string.Join(",", doc.Garments.Where(g => g != garment && g.Layer < garment.Layer)
                 .OrderBy(g => g.Layer).Select(g => Q(g.Name)))).Append(']');
             sb.Append(",\"simulateWithOthers\":").Append(B(garment.SimulateWithOthers));
-            sb.Append(",\"frozen\":").Append(B(garment.Frozen)).Append('}');
+            sb.Append(",\"frozen\":").Append(B(garment.Frozen));
+            sb.Append(",\"deactivated\":").Append(B(garment.Deactivated)).Append('}');
         }
 
         if (reference != null)
@@ -229,6 +230,9 @@ public partial class AppController
         var options = Startup;
         if (options.File != null)
             Open(options.File);
+        // "--view ...draft" (a capture, or "livesim,draft" to measure) works at Draft quality.
+        if (options.View.Contains("draft", StringComparison.OrdinalIgnoreCase))
+            _workspace.SetQuality(SimulationQuality.Draft);
         if (options.Gender is { } gender)
         {
             _workspace.Document.Avatar.Kind = AvatarKind.MakeHuman;

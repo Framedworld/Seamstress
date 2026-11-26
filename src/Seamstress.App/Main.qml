@@ -432,6 +432,13 @@ ApplicationWindow {
                     checked: App.simulateAll
                     onTriggered: App.simulateAll = checked
                 }
+                MenuItem {
+                    text: tr("Draft Quality")
+                    checkable: true
+                    checked: App.draftQuality
+                    onTriggered: App.setDraftQuality(checked)
+                }
+                MenuItem { text: tr("Refine to Final"); enabled: App.draftQuality; onTriggered: App.refineToFinal() }
                 MenuSeparator {}
                 KeyMenuItem { text: tr("Reset Arrangement"); command: "sim.reset"; onTriggered: App.resetArrangement() }
                 KeyMenuItem { text: tr("Set Creases"); command: "sim.setCreases"; onTriggered: App.setCreases() }
@@ -645,6 +652,8 @@ ApplicationWindow {
                 }
 
                 Item { Layout.fillWidth: true }
+
+                QualitySwitch { Layout.rightMargin: 6 }
 
                 CheckBox {
                     text: tr("All garments")

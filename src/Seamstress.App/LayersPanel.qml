@@ -405,6 +405,30 @@ Pane {
                                               : tr("Freeze: hold this garment still and build the next layer on top of it")
                     }
 
+                    // Deactivate: the garment is left out of the simulation entirely, and other cloth passes through it.
+                    ToolButton {
+                        id: deactivateBtn
+                        visible: row.modelData.kind === "garment"
+                        implicitWidth: 22; implicitHeight: 22
+                        padding: 0
+                        text: "⊘"
+                        font.pixelSize: 12
+                        checkable: true
+                        checked: row.modelData.kind === "garment" && !!row.modelData.deactivated
+                        opacity: checked ? 1 : (hovered ? 0.85 : 0.38)
+                        palette.buttonText: checked ? "#f59e0b" : palette.windowText
+                        background: Rectangle {
+                            radius: 4
+                            color: deactivateBtn.checked ? Qt.alpha("#f59e0b", 0.22)
+                                : deactivateBtn.hovered ? Qt.alpha(palette.windowText, 0.1) : "transparent"
+                        }
+                        onClicked: App.setDeactivated(row.modelData.id, checked)
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 400
+                        ToolTip.text: checked ? tr("Deactivated: not simulated and not collided with, so other cloth passes through it. Click to switch it back on.")
+                                              : tr("Deactivate: leave this garment out of the simulation, so big outfits simulate faster. Other cloth passes through it.")
+                    }
+
                     ToolButton {
                         id: visBtn
                         implicitWidth: 22; implicitHeight: 22

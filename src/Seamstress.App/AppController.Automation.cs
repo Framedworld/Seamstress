@@ -39,7 +39,7 @@ public partial class AppController
     private int _benchFrames;
     private double _benchStepMs;
 
-    /// <summary>Starts simulating the active garment and starts counting.</summary>
+    /// <summary>Starts simulating the active garment and starts counting. "--view livesim,draft" measures Draft quality.</summary>
     public void BenchmarkStart()
     {
         if (!_simulation.IsRunning)
@@ -85,9 +85,9 @@ public partial class AppController
         _benchClock.Stop();
         _benchArmed = false;
         string line = string.Format(System.Globalization.CultureInfo.InvariantCulture,
-            "livesim: {0:N0} particles, {1:0.0} frames shown/s, solver {2:0.0} ms/step, 3D view update {3:0.0} ms ({4} updates in {5:0.0} s)",
+            "livesim: {6} quality, {0:N0} particles, {1:0.0} frames shown/s, solver {2:0.0} ms/step, 3D view update {3:0.0} ms ({4} updates in {5:0.0} s)",
             _simulation.ParticleCount, _benchFrames / seconds, _benchFrames > 0 ? _benchStepMs / _benchFrames : 0,
-            _benchSyncs > 0 ? _benchSyncMs / _benchSyncs : 0, _benchSyncs, seconds);
+            _benchSyncs > 0 ? _benchSyncMs / _benchSyncs : 0, _benchSyncs, seconds, DraftQuality ? "Draft" : "Final");
         AppLog.Write(line);
         Console.Error.WriteLine(line);
     }

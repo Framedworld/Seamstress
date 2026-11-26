@@ -247,7 +247,7 @@ public sealed class GarmentSession
         var obstacles = new List<Garment>();
         foreach (var g in Doc.Garments)
         {
-            if (!g.Visible || g.Pieces.Count == 0)
+            if (!g.Visible || g.Deactivated || g.Pieces.Count == 0)
                 continue;
             bool sim = !g.Frozen && (allGarments
                 || (garmentId != null ? g.Id == garmentId : (Workspace.ActiveGarment?.Id == g.Id || g.SimulateWithOthers)));

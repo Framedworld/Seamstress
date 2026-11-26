@@ -100,9 +100,19 @@ public sealed class GarmentMesh
 
 public static class Mesher
 {
-    /// <summary>Builds simulation meshes for every piece of a garment at its current particle distance.</summary>
-    public static GarmentMesh Build(Garment garment)
+    /// <summary>Builds simulation meshes for every piece of a garment at its own particle distance (Final quality).</summary>
+    public static GarmentMesh Build(Garment garment) => Build(garment, null);
+
+    /// <summary>
+    /// Builds simulation meshes for every piece of a garment at its current particle distance, or no finer than
+    /// <paramref name="coarsest"/> centimetres when one is given (Draft quality). Pieces in
+    /// <paramref name="keepOwnDistance"/> (hard parts, which never bend) keep their own distance either way.
+    /// </summary>
+    public static GarmentMesh Build(Garment garment, float? coarsest, IReadOnlySet<string>? keepOwnDistance = null)
     {
+        float Distance(PatternPiece piece) => keepOwnDistance != null && keepOwnDistance.Contains(piece.Id)
+            ? garment.EffectiveParticleDistance(piece)
+            : garment.EffectiveParticleDistance(piece, coarsest);
         var pieces = garment.Pieces.Where(p => p.Points.Count >= 3).ToList();
         var pieceIndex = new Dictionary<string, int>();
         for (int i = 0; i < pieces.Count; i++)
@@ -116,7 +126,7 @@ public static class Mesher
         var parent = new int[segments.Length];
         for (int i = 0; i < pieces.Count; i++)
         {
-            float distance = garment.EffectiveParticleDistance(pieces[i]);
+            float distance = Distance(pieces[i]);
             for (int e = 0; e < pieces[i].EdgeCount; e++)
             {
                 int id = edgeOffset[i] + e;
@@ -162,7 +172,7 @@ public static class Mesher
         {
             var counts = new int[pieces[i].EdgeCount];
             Array.Copy(segments, edgeOffset[i], counts, 0, counts.Length);
-            meshes.Add(BuildPiece(pieces[i], counts, garment.EffectiveParticleDistance(pieces[i]), garment.Topology));
+            meshes.Add(BuildPiece(pieces[i], counts, Distance(pieces[i]), garment.Topology));
         }
 
         var stitches = new List<Stitch>();

@@ -111,6 +111,8 @@ public partial class AppController : INotifyPropertyChanged
             Notify(nameof(HasFile));
             Notify(nameof(AvatarType));
             Notify(nameof(PinSelectionCount));
+            Notify(nameof(DraftQuality));
+            Notify(nameof(DraftParticleDistance));
             EnsureAvatar();
         }
         finally

@@ -84,6 +84,13 @@ public sealed class Garment
     /// </summary>
     public bool Frozen { get; set; }
 
+    /// <summary>
+    /// A deactivated garment is left out of the simulation entirely: it is not simulated, nothing collides with it and
+    /// the solver never sees it, so other cloth passes through it. It is still shown, drawn faded. The counterpart of
+    /// <see cref="Frozen"/>, which holds a garment still but keeps it there to collide with.
+    /// </summary>
+    public bool Deactivated { get; set; }
+
     /// <summary>Target edge length of the simulation mesh in centimetres. Smaller means more faces.</summary>
     public float ParticleDistance { get; set; } = 2.0f;
 
@@ -142,6 +149,7 @@ public sealed class Garment
         Expanded = Expanded,
         SimulateWithOthers = SimulateWithOthers,
         Frozen = Frozen,
+        Deactivated = Deactivated,
         ParticleDistance = ParticleDistance,
         Thickness = Thickness,
         Topology = Topology,
@@ -160,6 +168,13 @@ public sealed class Garment
 
     public float EffectiveParticleDistance(PatternPiece piece)
         => Math.Clamp(piece.ParticleDistance ?? ParticleDistance, 0.3f, 20f);
+
+    /// <summary>
+    /// The particle distance a piece is meshed at: its own, or no finer than <paramref name="coarsest"/> (the Draft
+    /// quality's working distance) when one is given.
+    /// </summary>
+    public float EffectiveParticleDistance(PatternPiece piece, float? coarsest)
+        => coarsest is { } draft ? MathF.Max(EffectiveParticleDistance(piece), Math.Clamp(draft, 0.3f, 20f)) : EffectiveParticleDistance(piece);
 
     /// <summary>Collision thickness used by the solver for one of this garment's pieces, in millimetres.</summary>
     public float EffectiveThicknessMm(PatternPiece piece)
@@ -660,7 +675,31 @@ public sealed class SimulationSettings
 
     public bool GroundPlane { get; set; } = true;
 
+    /// <summary>
+    /// Draft meshes every garment no finer than <see cref="DraftParticleDistance"/> so big outfits simulate quickly
+    /// while they are being built; Final uses each garment's own particle distance.
+    /// </summary>
+    public SimulationQuality Quality { get; set; } = SimulationQuality.Final;
+
+    /// <summary>The working particle distance of Draft quality, in centimetres (about 20 mm, like Marvelous Designer).</summary>
+    public float DraftParticleDistance { get; set; } = DefaultDraftParticleDistance;
+
+    public const float DefaultDraftParticleDistance = 2.0f;
+
+    /// <summary>The coarsest particle distance meshes use at the current quality, or null at Final.</summary>
+    public float? CoarsestParticleDistance => Quality == SimulationQuality.Draft ? Math.Clamp(DraftParticleDistance, 0.3f, 20f) : null;
+
     public SimulationSettings Clone() => (SimulationSettings)MemberwiseClone();
+}
+
+/// <summary>How finely garments are meshed for simulation.</summary>
+public enum SimulationQuality
+{
+    /// <summary>Each garment's own particle distance.</summary>
+    Final,
+
+    /// <summary>A coarse working mesh for building and arranging.</summary>
+    Draft,
 }
 
 public enum AvatarKind

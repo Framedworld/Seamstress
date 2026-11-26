@@ -447,6 +447,35 @@ QtObject {
         App.undo()
         check("unfrozen by undo", JSON.parse(App.layers()).filter(r => r.id === skirtGarment.id)[0].frozen === false)
 
+        // Deactivate: the skirt is left out of the simulation and drawn faded; undo switches it back on.
+        const skirtRow = () => JSON.parse(App.layers()).filter(r => r.id === skirtGarment.id)[0]
+        const skirtModel = () => JSON.parse(App.viewportModels()).models.find(m => m.id === skirtPiece)
+        const shownOpacity = skirtModel().opacity
+        App.setDeactivated(skirtGarment.id, true)
+        check("garment deactivated", skirtRow().deactivated === true && App.undoText === "Undo Deactivate garment")
+        check("deactivated garment is drawn faded", skirtModel().opacity < shownOpacity * 0.5)
+        App.selectLayer(skirtGarment.id, false)
+        App.toggleSimulation()
+        check("deactivated garment is not simulated", !App.simulating)
+        check("deactivated garment cannot be pinched", !App.pinchBegin(skirtPiece, 0, 0.45, 0.16) && !App.simulating)
+        App.undo()
+        check("activated by undo", skirtRow().deactivated === false && skirtModel().opacity === shownOpacity)
+
+        // Draft and Final: Draft meshes coarser and keeps the drape; Refine to Final brings the detail back.
+        const finalFaces = skirtRow().faces
+        App.setDraftParticleDistance(4)
+        App.setDraftQuality(true)
+        check("draft quality", App.draftQuality && App.undoText === "Undo Switch to Draft quality")
+        check("draft meshes coarser", skirtRow().faces < finalFaces / 2)
+        App.selectLayer(skirtPiece, false)
+        check("drape carried to the draft mesh", selection().piece.draped === true)
+        App.refineToFinal()
+        check("refined to final", !App.draftQuality && skirtRow().faces === finalFaces && selection().piece.draped === true)
+        App.undo()
+        check("undo goes back to draft", App.draftQuality && skirtRow().faces < finalFaces / 2)
+        App.undo(); App.undo()
+        check("undo goes back to final", !App.draftQuality && skirtRow().faces === finalFaces && App.draftParticleDistance === 2)
+
         // A box dragged from empty space in the 2D view selects every piece it touches.
         App.tool = "Select"
         App.pointerDown(-900, -900, 1, false)
