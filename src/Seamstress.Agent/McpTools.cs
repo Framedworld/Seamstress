@@ -411,7 +411,8 @@ public sealed partial class McpToolRegistry
             ("carryCloth", "boolean", "Carry existing draped garment vertices incrementally via barycentric triangle binding before simulating (default true)."),
             ("allGarments", "boolean", "Simulate all visible garments simultaneously instead of layer-by-layer (default false)."),
             ("selfCollision", "boolean", "Enable cloth self-collision during this pose step (default false)."),
-            ("useGpu", "boolean", "Use CUDA GPU acceleration (default true).")), "targetObjPath")
+            ("useGpu", "boolean", "Use CUDA GPU acceleration (default true).")), "targetObjPath"),
+        PlayAnimationTool()
     ));
 
     public object Dispatch(string name, JsonElement args)
@@ -470,6 +471,7 @@ public sealed partial class McpToolRegistry
             "refit_garment_to_body" => RefitGarmentToBody(args),
             "step_pose" => StepPose(args),
             _ when IsFoldTool(name) => DispatchFolds(name, args),
+            "play_animation" => PlayAnimation(args),
             _ => throw new ArgumentException($"Unknown tool '{name}'."),
         };
     }

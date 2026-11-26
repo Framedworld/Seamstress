@@ -59,7 +59,7 @@ step named `Agent: <tool>`.
 | Task | Tools |
 |---|---|
 | Project | `new_project`, `open_project`, `save_project`, `get_project_summary`, `export_garment` (.glb .gltf .obj .fbx .svg), `live_link` (work in the open window or headless) |
-| Body | `load_avatar`, `get_avatar_landmarks`, `list_body_profiles`, `save_body_profile`, `load_body_profile`, `step_pose`, `refit_garment_to_body`, `inspect_metahuman_dna` |
+| Body | `load_avatar`, `get_avatar_landmarks`, `list_body_profiles`, `save_body_profile`, `load_body_profile`, `step_pose`, `play_animation`, `refit_garment_to_body`, `inspect_metahuman_dna` |
 | Garments | `create_garment`, `set_garment` (name, layer, body offset, mesh density, thickness, visibility, `frozen`, `deactivated`), `add_template_garment` (fitted tee, trousers, jacket and hoodie cut to the body; trousers take `outseamBackCm` and `hemGirthCm`) |
 | Pieces | `add_piece`, `add_rectangle_piece`, `mirror_piece`, `cut_piece`, `inset_band`, `delete_piece`, `arrange_piece_3d`, `layout_pattern`, `import_mesh_as_pattern` |
 | Shaping inside a piece | `add_internal_line` (a line the mesh follows; with `foldAngle` a fold line: crease, cuff, lapel roll), `set_fold_line`, `delete_internal_line`, `add_dart` (`atCm`, `widthCm`, `lengthCm` or the point), `add_pleats` (knife pleats along an edge: `count`, `depthCm`, `fromCm`, `toCm`, `stitchDownCm`) |
@@ -86,6 +86,29 @@ adds the body as a skinned mesh too. The reply's `joints` is the number of joint
 Each garment vertex takes the blended weights of the nearest body point; the weights are then smoothed over the cloth
 so seams and loose cloth do not tear, and each vertex keeps its four strongest joints, normalised. The skeleton is the
 body file's own (same joint names, bind pose as draped), so its animations play on the garments.
+
+## Playing an animation
+
+`play_animation` moves the avatar while every visible, unfrozen garment simulates on it, then reports how the cloth
+held up. `animation` is `builtin:t-pose-to-a-pose` (arms lift level, then lower to 45°), `builtin:arm-raise`, or the
+path of a rigged FBX or glTF/GLB with animation clips (`clip` picks one by name or number). A file's skinned body has
+to be the avatar the garments are on (the file loaded with `load_avatar`, or a motion file with the same skeleton).
+Pinned cloth and hardware ride on the body, keeping their place on it; frozen garments stay where they are.
+
+- `frames` (default: the whole animation), `speed` (0.5 is slow motion), `blendInSeconds` (from the draped pose to
+  the clip's first frame; 1 s for files), `substeps`, `selfCollision`, `cellCm` (the moving body's collision grid;
+  1 cm, coarser is faster).
+- The report: `peakSpeedMetresPerSec` (the fastest particle of the fastest frame), `peakSpeedMedianMetresPerSec`
+  and `peakSpeedLastFrameMetresPerSec` (what `simulate` calls `peakSpeedMetresPerSec`: compare with that one; the
+  highest of many frames is always larger, a body standing still included), `widestSeamGapMetres` and `openSeams` at
+  the end, `penetration` (deepest cloth
+  inside the moving body and how many particles went more than 2 mm in), and `timing` (ms per frame for the solver and
+  for skinning and updating the body's collision field).
+- `recordPath` writes the recording as a .glb point cache: one mesh per garment plus the avatar, one morph target per
+  recorded frame (30 a second) and an animation of the weights. Blender imports it as animated shape keys; engines
+  read it as morph-target animation.
+- The drape and the avatar go back to how they were unless `keepResult` is true; then the avatar stays in the last
+  frame's pose.
 
 ## Things that go wrong, and what the server tells you
 

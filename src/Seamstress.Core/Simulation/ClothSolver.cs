@@ -663,6 +663,7 @@ public sealed partial class ClothSolver : IDisposable
 
         for (int step = 0; step < substeps; step++)
         {
+            RidePinned(step, substeps);
             if (_collides && step % searchEvery == 0)
                 FindContacts();
             for (int i = 0; i < n; i++)
@@ -685,6 +686,7 @@ public sealed partial class ClothSolver : IDisposable
             SolveSeams(h, false);
             if (_collides)
                 SolveContacts();
+            (_bodyBlend, _bodyH) = ((step + 1f) / substeps, h);
             SolveBody();
 
             float invH = 1f / h;
@@ -834,6 +836,11 @@ public sealed partial class ClothSolver : IDisposable
 
     private void SolveBody()
     {
+        if (_movingBody != null)
+        {
+            SolveMovingBody();
+            return;
+        }
         var x = Positions;
         var sdf = Collider;
         bool ground = Settings.GroundPlane;

@@ -31,7 +31,7 @@ public interface ISessionHost
 /// Session holding the active Seamstress workspace, avatar, CUDA acceleration, fit diagnostics, and software 3-view
 /// preview rendering: headless, or the open window's project through an <see cref="ISessionHost"/>.
 /// </summary>
-public sealed class GarmentSession
+public sealed partial class GarmentSession
 {
     private Workspace _workspace = new();
     private Avatar? _avatar;

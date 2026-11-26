@@ -550,6 +550,25 @@ QtObject {
         check("the picture has the size asked for", written.length === 2 && Math.abs(written[0] - imageWidth) <= 2 && Math.abs(written[1] - imageHeight) <= 2)
         check("pattern exported as SVG", App.exportPatternSvg(base + ".svg", true, true))
 
+        // Avatar animation: a built-in pose change moves the avatar while the garments simulate on it, is recorded,
+        // can be scrubbed and exported, and Reset puts everything back.
+        const restAvatar = JSON.parse(App.viewportModels()).avatar
+        App.animationId = "builtin:arm-raise"
+        App.playAnimation()
+        check("animation plays", App.animationPlaying && App.simulating)
+        App.animationRunFrames(40)
+        check("animation time advances", App.animationTime > 0.5 && App.animationRecorded > 0.4)
+        const movingAvatar = JSON.parse(App.viewportModels()).avatar
+        check("the 3D view shows the moving avatar", movingAvatar !== "" && movingAvatar !== restAvatar)
+        App.playAnimation()
+        check("animation pauses", !App.animationPlaying && App.animationActive)
+        App.scrubAnimation(0.2)
+        check("scrubbing shows a recorded frame", Math.abs(App.animationTime - 0.2) < 0.05)
+        check("recording exported", App.exportAnimationRecording(folder + "/smoke-animation.glb"))
+        App.stopAnimation()
+        check("animation reset", !App.animationActive && JSON.parse(App.viewportModels()).avatar.indexOf("live:avatar") !== 0)
+
+
         // Internal lines, darts and pleats on a fresh 60 x 40 cm rectangle.
         App.newDocument()
         App.tool = "Rectangle"
@@ -589,7 +608,7 @@ QtObject {
               && folds().slice(1).filter(l => l.valley).length === 3 && App.undoText === "Undo Add pleats")
         App.tool = "Select"
 
-                // Crash recovery. The copies go to this check's own folder. A copy is written for unsaved work, dropped when
+        // Crash recovery. The copies go to this check's own folder. A copy is written for unsaved work, dropped when
         // the work is undone or saved, and restored as unsaved changes.
         const copies = () => JSON.parse(App.recoveryCopies())
         App.newDocument()

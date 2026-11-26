@@ -51,6 +51,9 @@ public sealed class SdfGrid
     /// <summary>Raw signed-distance volume in (z * Ny + y) * Nx + x order, for GPU upload.</summary>
     public float[] RawValues => _d;
 
+    /// <summary>A grid of zeros for a caller to fill through <see cref="RawValues"/> (a moving body's field).</summary>
+    public static SdfGrid Empty(Vector3 origin, float cell, int nx, int ny, int nz) => new(origin, cell, nx, ny, nz);
+
     /// <summary>Samples an implicit function (negative inside). The result is only used to extract a surface.</summary>
     public static SdfGrid FromFunction(Func<Vector3, float> f, Vector3 min, Vector3 max, float cell)
     {
