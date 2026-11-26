@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The in-app assistant: a conversation with Claude that works on the open project through the agent tools. The
+       Messages API is reached through IAssistantModel, so the conversation runs in tests without a key or network. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Seamstress.Assistant</AssemblyName>
+    <RootNamespace>Seamstress.Assistant</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Anthropic" Version="13.14.0" />
+    <ProjectReference Include="..\Seamstress.Core\Seamstress.Core.csproj" />
+    <ProjectReference Include="..\Seamstress.Agent\Seamstress.Agent.csproj" />
+  </ItemGroup>
+
+</Project>

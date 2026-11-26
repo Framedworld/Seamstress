@@ -26,9 +26,10 @@ open next to it.
 14. [Exporting](#exporting)
 15. [Send to MakeHuman](#send-to-makehuman)
 16. [Preferences](#preferences)
-17. [Working with an AI agent](#working-with-an-ai-agent)
-18. [Keyboard and mouse reference](#keyboard-and-mouse-reference)
-19. [Troubleshooting](#troubleshooting)
+17. [The assistant](#the-assistant)
+18. [Working with an AI agent](#working-with-an-ai-agent)
+19. [Keyboard and mouse reference](#keyboard-and-mouse-reference)
+20. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -1245,6 +1246,8 @@ MakeHuman's body.
 | MakeHuman | **Detect Automatically** | Looks for MakeHuman in the usual places and fills in the two paths. |
 | Textures | **Texture size for texel density** | The texture resolution assumed by the texel density read-outs. |
 | Keyboard | Every shortcut | See [Keyboard shortcuts](#keyboard-shortcuts) below. |
+| Assistant | **Model** | The Claude model the [assistant](#the-assistant) uses: *Claude Sonnet 5.5* (faster, the default) or *Claude Opus 5.5* (more capable, slower). |
+| Assistant | **API key** | Your Anthropic API key. Once saved it is never shown again; type a new one to replace it, or press **Remove**. Left empty, the `ANTHROPIC_API_KEY` environment variable is used. |
 
 Everything except the theme waits for **Save**; **Cancel** leaves it all as it was (a previewed theme is
 switched back too). The renderer in use is shown in the bottom-right corner of the 3D view. You can also
@@ -1340,6 +1343,52 @@ the keys you changed. Keys without Ctrl, Alt or Meta are ignored while you type 
 name never switches tools.
 
 ---
+
+## The assistant
+
+**View ▸ Assistant** opens a chat panel on the right of the window. Describe a change in your own words and Claude
+makes it on the project you have open, with the same tools an [AI agent](#working-with-an-ai-agent) gets:
+
+- "make the jacket baggier"
+- "add a cargo pocket to the left leg"
+- "rough up the hems"
+- "a dark denim jacket over the tee, sleeves pushed up"
+
+You watch it work in the 2D and 3D views. The panel lists each step as it runs (✓ when it worked, ✕ when it did
+not), and Claude says in a sentence or two what it changed.
+
+- **Undo.** Each step is one entry in **Edit ▸ Undo**, named "Agent: …" (for example "Agent: add patch"), so you can
+  take back any of it, one step at a time.
+- **Stop.** While a request runs, **Send** becomes **Stop**. The step that is running finishes (a simulation stops
+  at once) and nothing more is done. What was done stays, and can be undone.
+- **Simulation.** When Claude simulates, the cloth drapes live in the window, as if you had pressed Simulate.
+  Pressing Simulate, pinching or editing stops that run, and Claude is told.
+- **The 3D view.** With **Send the 3D view** ticked, a picture of the 3D view as you see it goes with your message.
+  Claude can also render its own previews to check its work.
+- **What it knows.** Each message carries a short summary of the project: the garments, the avatar and what you have
+  selected. Select a garment or a piece first to say which one you mean.
+- **New Chat** forgets the conversation. The project and its undo steps stay as they are.
+
+### A garment from a picture
+
+Drop a photo or a sketch of clothing on the panel, or press **Picture…**, and send it, with or without a few words
+("make this jacket"). Claude names what it sees, picks the nearest [fitted template](#fitted-garments-collars-and-hoods)
+for each garment, sets its fit, length, sleeves, front and hood to match, simulates it, then adds the details it can
+see: pockets, flaps, a collar, a hood, snaps and buttons, and the fabric's colour and stiffness. It says which parts
+it could not make. Pictures are made smaller (at most 1568 pixels on the longer side) before they are sent.
+
+### Setting it up
+
+The assistant uses Claude, so it needs an Anthropic API key. Without one the panel explains how to get one and does
+nothing else.
+
+1. Create a key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
+2. Paste it into **Preferences ▸ Assistant ▸ API key** and press **Save**, or set the `ANTHROPIC_API_KEY`
+   environment variable and start Seamstress again. A key in Preferences is used before the environment variable.
+
+Requests go to Anthropic and are billed to your key. The key is kept only in your Seamstress settings file on this
+computer (`settings.json` in your configuration folder, as plain text, like the other preferences). It is never
+written into projects or logs. The assistant does not open, save or export files: do those from the menus.
 
 ## Working with an AI agent
 

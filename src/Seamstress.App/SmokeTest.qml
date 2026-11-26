@@ -630,7 +630,48 @@ QtObject {
         check("the copy of a saved project names it", copies().length === 1 && /smoke-recovered\.garment\.json$/.test(copies()[0].file))
         App.newDocument()
         check("closing the project on purpose removes its copy", copies().length === 0)
+        assistant()
+    }
+
+    // The assistant panel: it opens, explains what it needs without a key, and (answered by a script instead of
+    // Claude) runs its tool calls on the open project as undo steps. Ends the smoke test once the request is done.
+    property int assistantWaits: 0
+    function assistant() {
+        App.assistantVisible = true
+        check("assistant panel opens", assistantPanel.visible)
+        if (!App.assistantReady)
+            check("without a key the panel explains how to add one", assistantPanel.needsKey)
+        App.assistantUseScript("skirt-pocket")
+        check("assistant ready with the script", App.assistantReady && !assistantPanel.needsKey)
+        App.assistantSend("A skirt with a pocket", "")
+        check("assistant request running", App.assistantBusy)
+        assistantWait.start()
+    }
+    function assistantDone() {
+        const items = JSON.parse(App.assistantItemsJson())
+        check("assistant panel laid out in the window", assistantPanel.width >= 200 && assistantPanel.height > 0)
+        check("assistant ran two tools", items.filter(i => i.kind === "tool" && !i.failed).length === 2)
+        check("assistant answered", items.some(i => i.kind === "assistant" && i.text === "Added a skirt with a pocket."))
+        check("assistant's pocket is one undo step", App.undoText === "Undo Agent: add patch")
+        App.undo()
+        check("assistant's skirt is another", App.undoText === "Undo Agent: add template garment")
+        App.undo()
+        check("undoing both empties the project", scene().pieces.length === 0)
+        App.assistantNewChat()
+        App.assistantVisible = false
         App.log(failures === 0 ? "smoke test passed" : "smoke test FAILED: " + failures)
         finished = true
+    }
+    property Timer assistantWait: Timer {
+        interval: 100
+        repeat: true
+        onTriggered: {
+            smoke.assistantWaits++
+            if (App.assistantBusy && smoke.assistantWaits < 100)
+                return
+            stop()
+            smoke.check("assistant request finished in time", !App.assistantBusy)
+            smoke.assistantDone()
+        }
     }
 }

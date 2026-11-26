@@ -37,6 +37,7 @@ ApplicationWindow {
     font.family: cjkFont !== "" ? cjkFont : Qt.application.font.family
 
     property bool viewportConfirmed: false
+    property int smokeWaits: 0
     property var afterDiscard: null      // what to do once unsaved changes were dealt with
     property bool closing: false
     property string pendingExport: ""
@@ -135,6 +136,12 @@ ApplicationWindow {
         onTriggered: {
             App.automationStep("the capture timer fired")
             if (App.startupView.indexOf("livesim") >= 0) App.benchmarkReport()
+            // The smoke test's last checks (the assistant's scripted request) may still be running: give them a while.
+            if (App.startupSmoke && !(smokeLoader.item && smokeLoader.item.finished) && smokeWaits++ < 240) {
+                interval = 250
+                restart()
+                return
+            }
             if (App.startupSmoke && !(smokeLoader.item && smokeLoader.item.finished)) {
                 App.automationFailed("the smoke test did not run to its end")
                 return
@@ -515,6 +522,8 @@ ApplicationWindow {
                 }
                 KeyMenuItem { text: tr("3D: Show Avatar"); command: "view.avatar"; checkable: true; checked: viewport.showAvatar; onTriggered: viewport.showAvatar = checked }
                 MenuItem { text: tr("3D: Show Sewing Threads"); checkable: true; checked: viewport.showThreads; onTriggered: viewport.showThreads = checked }
+                MenuSeparator {}
+                MenuItem { text: tr("Assistant"); checkable: true; checked: App.assistantVisible; onTriggered: App.assistantVisible = checked }
             }
             Menu {
                 title: tr("&Help")
@@ -794,6 +803,16 @@ ApplicationWindow {
                 SplitView.minimumWidth: 260
                 onPickColor: (current) => { colorDialog.selectedColor = current; colorDialog.open() }
                 onPickTexture: textureDialog.open()
+            }
+
+            AssistantPanel {
+                id: assistantPanel
+                visible: App.assistantVisible
+                viewport: viewport
+                SplitView.preferredWidth: 340
+                SplitView.minimumWidth: 260
+                onOpenPreferences: preferences.openPage("Assistant")
+                onCloseRequested: App.assistantVisible = false
             }
         }
 
