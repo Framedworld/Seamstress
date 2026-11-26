@@ -850,7 +850,9 @@ ApplicationWindow {
         title: tr("Export")
         fileMode: FileDialog.SaveFile
         currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
-        onAccepted: App.exportTo(window.pendingExport, selectedFile, weldBox.checked, scopeBox.currentIndex === 1)
+        onAccepted: riggedBox.visible && riggedBox.enabled && riggedBox.checked
+                    ? App.exportRiggedTo(window.pendingExport, selectedFile, weldBox.checked, scopeBox.currentIndex === 1, avatarBox.checked)
+                    : App.exportTo(window.pendingExport, selectedFile, weldBox.checked, scopeBox.currentIndex === 1)
     }
     FileDialog {
         id: svgDialog
@@ -922,6 +924,22 @@ ApplicationWindow {
                 checked: true
                 text: tr("Weld sewn seams into one connected mesh")
             }
+            // Rigged export: only glTF and FBX hold a skeleton, and only a rigged body has one to give.
+            CheckBox {
+                id: riggedBox
+                property int joints: 0
+                visible: window.pendingExport !== "obj"
+                enabled: joints > 0
+                text: joints > 0 ? tr("Bind to the avatar's skeleton, ready to animate (%1 joints)").arg(joints)
+                                 : tr("Bind to the avatar's skeleton (load a rigged FBX or glTF body first)")
+            }
+            CheckBox {
+                id: avatarBox
+                visible: riggedBox.visible
+                enabled: riggedBox.enabled && riggedBox.checked
+                leftPadding: 28
+                text: tr("Include the avatar as a skinned mesh")
+            }
             Label {
                 Layout.preferredWidth: 380
                 wrapMode: Text.WordWrap
@@ -930,6 +948,7 @@ ApplicationWindow {
                 text: tr("Exports the garment as it currently looks in the 3D view, in metres with Y up. Set the face count with Particle distance in the Topology panel.")
             }
         }
+        onAboutToShow: riggedBox.joints = App.avatarJointCount()
         onAccepted: {
             const ext = window.pendingExport === "obj" ? ".obj" : window.pendingExport === "fbx" ? ".fbx" : ".glb"
             exportDialog.nameFilters = window.pendingExport === "obj" ? ["Wavefront OBJ (*.obj)"]

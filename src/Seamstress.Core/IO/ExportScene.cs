@@ -45,6 +45,9 @@ public sealed class ExportMesh
     public required Vector2[] Uvs { get; init; }
     public required List<ExportPart> Parts { get; init; }
 
+    /// <summary>Skin weights of each position, set by <see cref="Rigging.RiggedExport.Bind"/> for a rigged export.</summary>
+    public Rigging.VertexWeights? Skin { get; set; }
+
     public int TriangleCount => Parts.Sum(p => p.PositionIndices.Length / 3);
     public int FaceCount => Parts.Sum(p => p.FaceSizes.Length);
 }
@@ -58,6 +61,9 @@ public sealed class ExportScene
     public const float WeldDistance = 0.015f;
 
     public required List<ExportMesh> Meshes { get; init; }
+
+    /// <summary>When set, the meshes with a <see cref="ExportMesh.Skin"/> are written as skinned to this skeleton.</summary>
+    public Rigging.Skeleton? Skeleton { get; set; }
 
     public IEnumerable<FabricMaterial> Materials()
         => Meshes.SelectMany(m => m.Parts).Select(p => p.Material).Distinct();

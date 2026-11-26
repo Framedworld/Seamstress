@@ -1536,6 +1536,7 @@ public partial class AppController : INotifyPropertyChanged
         try
         {
             var scene = BuildExport(weld, activeOnly);
+            ApplyRigExport(scene);
             switch (format)
             {
                 case "obj":

@@ -13,6 +13,9 @@ public sealed class Avatar
     /// <summary>Set when the avatar is the MakeHuman base mesh, which "Send to MakeHuman" binds garments to.</summary>
     public MakeHumanBase? MakeHuman { get; init; }
 
+    /// <summary>Set when the body came from a rigged FBX or glTF: its skeleton and per-vertex skin weights.</summary>
+    public Rigging.AvatarRig? Rig { get; init; }
+
     /// <summary>Built-in stylised figure, about 1.67 m tall, standing on the ground plane facing +Z in an A-pose.</summary>
     public static Avatar CreateMannequin()
     {
@@ -78,14 +81,16 @@ public sealed class Avatar
         string ext = Path.GetExtension(path).ToLowerInvariant();
         if (ext == ".obj")
             return FromObj(path, scale);
-        var mesh = ext switch
+        var file = ext switch
         {
-            ".fbx" => IO.FbxMeshReader.Load(path, includeMesh).ToTriMesh(scale),
-            ".glb" or ".gltf" => IO.GltfMeshReader.Load(path, includeMesh).ToTriMesh(scale),
+            ".fbx" => IO.FbxMeshReader.Load(path, includeMesh),
+            ".glb" or ".gltf" => IO.GltfMeshReader.Load(path, includeMesh),
             _ => throw new InvalidDataException($"Cannot read a body from a '{ext}' file. Use OBJ, FBX or glTF/GLB."),
         };
-        mesh = Ground(mesh, out _);
-        return new Avatar { Name = Path.GetFileNameWithoutExtension(path), Mesh = mesh, Sdf = SdfGrid.FromMesh(mesh) };
+        var mesh = Ground(file.ToTriMesh(scale), out var offset);
+        // A rigged body keeps its skeleton and skin weights, moved the same way, so garments can be exported bound to it.
+        var rig = file.ToRig(Matrix4x4.CreateScale(scale) * Matrix4x4.CreateTranslation(offset));
+        return new Avatar { Name = Path.GetFileNameWithoutExtension(path), Mesh = mesh, Sdf = SdfGrid.FromMesh(mesh), Rig = rig };
     }
 
     public static Avatar FromObj(string path, float scale)

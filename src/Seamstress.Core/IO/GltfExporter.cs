@@ -5,7 +5,10 @@ using Seamstress.Core.Model;
 
 namespace Seamstress.Core.IO;
 
-/// <summary>glTF 2.0 writer. ".glb" produces a single binary file, ".gltf" a JSON file with a ".bin" beside it.</summary>
+/// <summary>
+/// glTF 2.0 writer. ".glb" produces a single binary file, ".gltf" a JSON file with a ".bin" beside it. When the scene
+/// has a skeleton, meshes with skin weights are written as skinned meshes bound to it.
+/// </summary>
 public static class GltfExporter
 {
     public static void Export(ExportScene scene, string path)
@@ -18,6 +21,7 @@ public static class GltfExporter
         var views = new List<(int Offset, int Length, int? Target)>();
         var accessors = new List<string>();
         var materials = scene.Materials().ToList();
+        bool rigged = scene.Skeleton is { Count: > 0 };
 
         int AddView(byte[] data, int? target)
         {
@@ -44,6 +48,7 @@ public static class GltfExporter
                 var normals = new List<Vector3>();
                 var uvs = new List<Vector2>();
                 var indices = new List<uint>();
+                var sources = new List<int>(); // the position each glTF vertex was made from, for its skin weights
                 foreach (var part in group)
                 {
                     for (int k = 0; k < part.PositionIndices.Length; k++)
@@ -54,6 +59,7 @@ public static class GltfExporter
                             vertex = positions.Count;
                             lookup[uvIndex] = vertex;
                             positions.Add(mesh.Positions[part.PositionIndices[k]]);
+                            sources.Add(part.PositionIndices[k]);
                             normals.Add(mesh.Normals[part.PositionIndices[k]]);
                             uvs.Add(new Vector2(mesh.Uvs[uvIndex].X, 1 - mesh.Uvs[uvIndex].Y)); // glTF's V axis points down
                         }
@@ -71,7 +77,8 @@ public static class GltfExporter
                 accessors.Add($"{{\"bufferView\":{AddView(Bytes(normals.ToArray()), 34962)},\"componentType\":5126,\"count\":{count},\"type\":\"VEC3\"}}");
                 accessors.Add($"{{\"bufferView\":{AddView(Bytes(uvs.ToArray()), 34962)},\"componentType\":5126,\"count\":{count},\"type\":\"VEC2\"}}");
                 accessors.Add($"{{\"bufferView\":{AddView(Bytes(indices.ToArray()), 34963)},\"componentType\":5125,\"count\":{indices.Count},\"type\":\"SCALAR\"}}");
-                primitives.Add($"{{\"attributes\":{{\"POSITION\":{positionAccessor},\"NORMAL\":{positionAccessor + 1},\"TEXCOORD_0\":{positionAccessor + 2}}},"
+                string skinAttributes = rigged && mesh.Skin != null ? GltfSkin.VertexAttributes(mesh.Skin, sources, AddView, accessors) : "";
+                primitives.Add($"{{\"attributes\":{{\"POSITION\":{positionAccessor},\"NORMAL\":{positionAccessor + 1},\"TEXCOORD_0\":{positionAccessor + 2}{skinAttributes}}},"
                     + $"\"indices\":{positionAccessor + 3},\"material\":{materials.IndexOf(group.Key)},\"mode\":4}}");
             }
             meshJson.Add($"{{\"name\":{JsonSerializer.Serialize(mesh.Name)},\"primitives\":[{string.Join(",", primitives)}]}}");
@@ -122,6 +129,10 @@ public static class GltfExporter
             materialJson.Add(sb.ToString());
         }
 
+        var skeleton = rigged
+            ? GltfSkin.Skeleton(scene.Skeleton!, scene.Meshes.Count, AddView, accessors)
+            : (Nodes: new List<string>(), Skin: "", Roots: new List<int>());
+
         while (buffer.Length % 4 != 0)
             buffer.WriteByte(0);
         var json = new StringBuilder();
@@ -129,10 +140,13 @@ public static class GltfExporter
         if (usesTransform)
             json.Append("\"extensionsUsed\":[\"KHR_texture_transform\"],");
         json.Append("\"scene\":0,\"scenes\":[{\"name\":\"Scene\",\"nodes\":[");
-        json.Append(string.Join(",", Enumerable.Range(0, scene.Meshes.Count)));
+        json.Append(string.Join(",", Enumerable.Range(0, scene.Meshes.Count).Concat(skeleton.Roots)));
         json.Append("]}],\"nodes\":[");
-        json.Append(string.Join(",", scene.Meshes.Select((m, i) => $"{{\"name\":{JsonSerializer.Serialize(m.Name)},\"mesh\":{i}}}")));
+        json.Append(string.Join(",", scene.Meshes.Select((m, i) => $"{{\"name\":{JsonSerializer.Serialize(m.Name)},\"mesh\":{i}"
+            + (rigged && m.Skin != null ? ",\"skin\":0}" : "}")).Concat(skeleton.Nodes)));
         json.Append("],\"meshes\":[").Append(string.Join(",", meshJson)).Append("],");
+        if (rigged)
+            json.Append("\"skins\":[").Append(skeleton.Skin).Append("],");
         json.Append("\"materials\":[").Append(string.Join(",", materialJson)).Append("],");
         if (textures.Count > 0)
         {

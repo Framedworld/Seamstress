@@ -345,9 +345,11 @@ public sealed class McpToolRegistry
                 ["showAvatar"] = Prop("boolean", "Draw the body (default true)."),
             },
         }),
-        Tool("export_garment", "Export the garment to .glb, .gltf, .obj, .fbx, or .svg (2D sewing pattern).", Props(
+        Tool("export_garment", "Export the garment to .glb, .gltf, .obj, .fbx, or .svg (2D sewing pattern). With rigged, garments are bound to a rigged avatar's skeleton with skin weights, ready to animate in a game engine.", Props(
             ("path", "string", "Output file path with extension (.glb, .gltf, .obj, .fbx, or .svg)."),
-            ("weldSeams", "boolean", "Weld closed seams on 3D export (default true).")), "path"),
+            ("weldSeams", "boolean", "Weld closed seams on 3D export (default true)."),
+            ("rigged", "boolean", "glTF/FBX only: export the avatar's skeleton and bind the garments to it as skinned meshes (default false). Needs an avatar loaded from a rigged FBX or glTF."),
+            ("includeAvatar", "boolean", "With rigged: also export the body as a skinned mesh (default false).")), "path"),
         Tool("import_mesh_as_pattern", "Import a sculpted 3D clothing blockout .obj (e.g. from ZBrush with UV Master UVs or Polygroups) into editable 2D Seamstress pattern pieces with automatic 3D-welded seam detection and 3D placement.", Props(
             ("path", "string", "Path to source .obj file."),
             ("scale", "number", "Unit scale to metres (default 1.0; use 0.01 for cm-scale Unreal/ZBrush/Maya exports)."),
@@ -496,7 +498,13 @@ public sealed class McpToolRegistry
         if (args.TryGetProperty("meshes", out var meshes) && meshes.ValueKind == JsonValueKind.Array && meshes.GetArrayLength() > 0)
             names = meshes.EnumerateArray().Select(m => m.GetString() ?? "").ToHashSet(StringComparer.OrdinalIgnoreCase);
         var parts = _session.LoadAvatar(path, scale, names);
-        return new { meshesUsed = parts.Used, meshesSkipped = parts.Skipped, landmarks = _session.GetAvatarLandmarks() };
+        return new
+        {
+            meshesUsed = parts.Used,
+            meshesSkipped = parts.Skipped,
+            skeletonJoints = _session.ActiveAvatar?.Rig?.Skeleton.Count ?? 0, // > 0: export_garment can use rigged
+            landmarks = _session.GetAvatarLandmarks(),
+        };
     }
 
     private object SaveProject(JsonElement args)
@@ -1533,6 +1541,13 @@ public sealed class McpToolRegistry
 
         var options = new ExportOptions { WeldSeams = OptBool(args, "weldSeams", true) };
         var scene = ExportScene.Build(_session.Doc, _session.Workspace.MeshFor, options);
+        bool rigged = OptBool(args, "rigged", false);
+        if (rigged)
+        {
+            if (ext == ".obj")
+                throw new ArgumentException("OBJ cannot hold a skeleton. Use .glb, .gltf or .fbx for a rigged export.");
+            Seamstress.Core.Rigging.RiggedExport.Bind(scene, _session.Avatar, OptBool(args, "includeAvatar", false));
+        }
         switch (ext)
         {
             case ".obj": ObjExporter.Export(scene, path); break;
@@ -1548,6 +1563,7 @@ public sealed class McpToolRegistry
             path = Path.GetFullPath(path),
             meshes = scene.Meshes.Count,
             triangles = scene.Meshes.Sum(m => m.TriangleCount),
+            joints = scene.Skeleton?.Count ?? 0,
         };
     }
 

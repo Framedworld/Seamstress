@@ -7,9 +7,9 @@ namespace Seamstress.Core.IO;
 /// <summary>
 /// Reads the meshes of a binary FBX file (7.x, as written by Maya, Blender, Character Creator, Unreal...) in their
 /// rest pose, for use as a body: each mesh's own node transform, the file's up axis and its unit are applied, so the
-/// result is in metres with Y up. Skinning, materials and animation are ignored.
+/// result is in metres with Y up. Skin clusters are kept as a skeleton with weights; materials and animation are ignored.
 /// </summary>
-public static class FbxMeshReader
+public static partial class FbxMeshReader
 {
     /// <summary>Meshes that are not part of the surface cloth rests on; left out unless asked for by name.</summary>
     private static readonly string[] NotBody =
@@ -68,6 +68,7 @@ public static class FbxMeshReader
 
         var geometry = new Dictionary<long, Node>();
         var models = new Dictionary<long, (string Name, Matrix4x4 Local)>();
+        var deformers = new Dictionary<long, Node>();
         foreach (var obj in top.FirstOrDefault(n => n.Name == "Objects")?.Children ?? new())
         {
             if (obj.Props.Count < 3 || obj.Props[0] is not long id)
@@ -76,13 +77,17 @@ public static class FbxMeshReader
                 geometry[id] = obj;
             else if (obj.Name == "Model")
                 models[id] = (CleanName(obj.Props[1] as string ?? ""), LocalTransform(obj));
+            else if (obj.Name == "Deformer")
+                deformers[id] = obj;
         }
         var parent = new Dictionary<long, long>();
         var modelOfGeometry = new Dictionary<long, long>();
+        var links = new List<(long, long)>();
         foreach (var c in top.FirstOrDefault(n => n.Name == "Connections")?.Children ?? new())
         {
             if (c.Props.Count < 3 || c.Props[0] as string != "OO" || c.Props[1] is not long child || c.Props[2] is not long owner)
                 continue;
+            links.Add((child, owner));
             if (geometry.ContainsKey(child) && models.ContainsKey(owner))
                 modelOfGeometry[child] = owner;
             else if (models.ContainsKey(child) && models.ContainsKey(owner))
@@ -103,6 +108,8 @@ public static class FbxMeshReader
 
         float metres = (float)(unit * 0.01);
         var file = new MeshFile();
+        var skins = new SkinCollector(deformers, links, parent, World, id => models.TryGetValue(id, out var m) ? m.Name : $"joint{id}",
+            models.ContainsKey, ToSeamstress(upAxis, metres));
         foreach (var (id, node) in geometry)
         {
             string name = modelOfGeometry.TryGetValue(id, out long owner) ? models[owner].Name : CleanName(node.Props[1] as string ?? "");
@@ -145,9 +152,14 @@ public static class FbxMeshReader
                 }
                 polygon.Clear();
             }
-            if (triangles.Count >= 3)
-                file.Parts.Add(new MeshPart(name, positions, triangles.ToArray()));
+            if (triangles.Count < 3)
+                continue;
+            var skin = skins.Read(id, positions.Length);
+            if (skin != null)
+                skins.Skinned(file.Parts.Count);
+            file.Parts.Add(new MeshPart(name, positions, triangles.ToArray()) { Skin = skin });
         }
+        skins.Finish(file);
         if (file.Parts.Count == 0)
             throw new InvalidDataException(file.Skipped.Count > 0
                 ? $"No body mesh was found; the file only has: {string.Join(", ", file.Skipped)}."
@@ -193,8 +205,9 @@ public static class FbxMeshReader
     private static bool Wanted(string? parent, string name) => parent switch
     {
         null => name is "GlobalSettings" or "Objects" or "Connections",
-        "Objects" => name is "Geometry" or "Model",
+        "Objects" => name is "Geometry" or "Model" or "Deformer",
         "Geometry" => name is "Vertices" or "PolygonVertexIndex",
+        "Deformer" => name is "Indexes" or "Weights" or "TransformLink",
         "Model" or "GlobalSettings" => name == "Properties70",
         "Properties70" => name == "P",
         "Connections" => name == "C",
@@ -228,7 +241,7 @@ public static class FbxMeshReader
             pos = end;
             return node;
         }
-        bool arrays = node.Name is "Vertices" or "PolygonVertexIndex";
+        bool arrays = node.Name is "Vertices" or "PolygonVertexIndex" or "Indexes" or "Weights" or "TransformLink";
         for (long i = 0; i < count; i++)
             node.Props.Add(ReadProperty(data, ref pos, arrays));
         while (pos < end)

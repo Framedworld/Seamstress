@@ -42,7 +42,7 @@ step named `Agent: <tool>`.
 ## The short version
 
 1. `load_avatar` a body (OBJ, binary FBX, glTF/GLB). The reply has tape measurements: girths per limb, crotch, armpit
-   and neck heights, arm axes and the shoulder ridge.
+   and neck heights, arm axes and the shoulder ridge, and `skeletonJoints`: above 0 when the body is rigged.
 2. `create_garment` for each layer. Give a garment worn over others a `bodyOffsetMm` (room for what is underneath)
    rather than a large fabric thickness.
 3. `add_piece` with `drawnOn: "front"` or `"back"`: draw in body centimetres (x = cm towards the avatar's left, y = cm
@@ -52,6 +52,7 @@ step named `Agent: <tool>`.
 6. `add_tube` for sleeves and cuffs, `add_patch` for pockets, flaps and patches (also across a seam), `add_hardware`
    for snaps, buttons, pens and tools.
 7. `set_material` with `tileCm` (texture size in real centimetres), `render_preview` to look, `export_garment`.
+   On a rigged body, `export_garment` with `rigged: true` writes `.glb`/`.gltf`/`.fbx` ready to animate (below).
 
 ## Tools
 
@@ -69,6 +70,21 @@ step named `Agent: <tool>`.
 
 Edges can be given by number or by name everywhere. A back piece is turned round, so its own pattern x runs the other
 way (pattern x = -body x) when you refer to points on it, for example in `add_patch`.
+
+## Rigged export
+
+`export_garment` with `"rigged": true` binds the garments to the avatar's skeleton and writes them as skinned meshes,
+ready to animate in a game engine. It needs a body loaded from a rigged FBX or glTF (`load_avatar` reports
+`skeletonJoints` > 0) and a `.glb`, `.gltf` or `.fbx` path; OBJ has no place for a skeleton. `"includeAvatar": true`
+adds the body as a skinned mesh too. The reply's `joints` is the number of joints written.
+
+```json
+{ "path": "out/gus-outfit.glb", "rigged": true, "includeAvatar": true }
+```
+
+Each garment vertex takes the blended weights of the nearest body point; the weights are then smoothed over the cloth
+so seams and loose cloth do not tear, and each vertex keeps its four strongest joints, normalised. The skeleton is the
+body file's own (same joint names, bind pose as draped), so its animations play on the garments.
 
 ## Things that go wrong, and what the server tells you
 

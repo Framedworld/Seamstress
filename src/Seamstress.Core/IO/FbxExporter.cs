@@ -8,7 +8,7 @@ namespace Seamstress.Core.IO;
 /// Binary FBX 7.4 writer implemented from the file format itself (no Autodesk SDK). An FBX file is a tree of named
 /// nodes, each carrying a list of typed properties; this writer builds that tree and serializes it.
 /// </summary>
-public static class FbxExporter
+public static partial class FbxExporter
 {
     private const uint Version = 7400;
 
@@ -148,7 +148,9 @@ public static class FbxExporter
 
         var definitions = new Node("Definitions");
         definitions.Add("Version", 100);
-        definitions.Add("Count", 1 + scene.Meshes.Count * 2 + materials.Count + textured.Count * 2);
+        var rig = SkinCounts(scene);
+        definitions.Add("Count", 1 + scene.Meshes.Count * 2 + materials.Count + textured.Count * 2
+            + (rig.Joints > 0 ? rig.Joints * 2 + rig.Skins + rig.Clusters + 1 : 0));
         definitions.Add("ObjectType", "GlobalSettings").Add("Count", 1);
         void Define(string type, int count, string template)
         {
@@ -158,7 +160,10 @@ public static class FbxExporter
             objectType.Add("Count", count);
             objectType.Add("PropertyTemplate", template).Add("Properties70");
         }
-        Define("Model", scene.Meshes.Count, "FbxNode");
+        Define("Model", scene.Meshes.Count + rig.Joints, "FbxNode");
+        Define("NodeAttribute", rig.Joints, "FbxSkeleton");
+        Define("Deformer", rig.Skins + rig.Clusters, "FbxDeformer");
+        Define("Pose", rig.Joints > 0 ? 1 : 0, "FbxPose");
         Define("Geometry", scene.Meshes.Count, "FbxMesh");
         Define("Material", materials.Count, "FbxSurfacePhong");
         Define("Texture", textured.Count, "FbxFileTexture");
@@ -226,9 +231,11 @@ public static class FbxExporter
             }
         }
 
+        var meshIds = new List<(long Geometry, long Model)>();
         foreach (var mesh in scene.Meshes)
         {
             long geometryId = NewId(), modelId = NewId();
+            meshIds.Add((geometryId, modelId));
             string name = ExportScene.SafeName(mesh.Name);
             var meshMaterials = mesh.Parts.Select(p => p.Material).Distinct().ToList();
 
@@ -327,6 +334,7 @@ public static class FbxExporter
                 connections.Add("C", "OO", materialIds[material], modelId);
         }
 
+        AddSkeleton(scene, objects, connections, NewId, meshIds, cm);
         top.Add(objects);
         top.Add(connections);
         var takes = new Node("Takes");
