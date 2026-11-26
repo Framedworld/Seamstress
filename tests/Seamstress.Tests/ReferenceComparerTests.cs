@@ -45,7 +45,7 @@ public class ReferenceComparerTests : IDisposable
     private static readonly (byte, byte, byte) Light = (210, 210, 214), RenderBackdrop = (124, 130, 142);
     private static readonly (byte, byte, byte) Navy = (40, 48, 90), Charcoal = (50, 50, 54), Red = (170, 40, 40);
 
-    private dynamic Compare(string reference, Action<string, int, int> render)
+    private object Compare(string reference, Action<string, int, int> render)
         => ReferenceComparer.Compare(reference, Path.Combine(_dir, "out.png"), 240, render);
 
     private static T Get<T>(object o, string name) => (T)o.GetType().GetProperty(name)!.GetValue(o)!;
@@ -62,7 +62,10 @@ public class ReferenceComparerTests : IDisposable
         Assert.True(Get<float>(silhouette, "iouSameFrame") < Get<float>(silhouette, "iou"));
         var palette = ((System.Collections.IEnumerable)Get<object>(result, "palette")).Cast<object>().ToList();
         Assert.NotEmpty(palette);
-        Assert.All(palette, p => Assert.True(Get<float>(p, "deltaE") < 6f, $"{Get<string>(p, "region")}: {Get<float>(p, "deltaE")}"));
+        string Describe(object p) => $"{Get<string>(p, "region")}: {Get<float>(p, "deltaE")} ref "
+            + string.Join(" ", ((System.Collections.IEnumerable)Get<object>(p, "reference")).Cast<object>().Select(c => $"{Get<string>(c, "hex")}:{Get<float>(c, "share")}"))
+            + " render " + string.Join(" ", ((System.Collections.IEnumerable)Get<object>(p, "render")).Cast<object>().Select(c => $"{Get<string>(c, "hex")}:{Get<float>(c, "share")}"));
+        Assert.All(palette, p => Assert.True(Get<float>(p, "deltaE") < 6f, Describe(p)));
         Assert.True(File.Exists(Get<string>(result, "sideBySidePath")));
         Assert.True(File.Exists(Get<string>(result, "renderPath")));
     }
@@ -92,7 +95,8 @@ public class ReferenceComparerTests : IDisposable
         Figure(reference, 200, 300, (0, 0, 0), Navy, Charcoal, transparent: true);
         var image = RgbaImage.Load(reference);
         var mask = ReferenceComparer.Segment(image);
-        Assert.Contains("alpha", Get<string>(Compare(reference, (p, w, h) => Figure(p, w, h, RenderBackdrop, Navy, Charcoal)).silhouette, "segmentation"));
+        object result = Compare(reference, (p, w, h) => Figure(p, w, h, RenderBackdrop, Navy, Charcoal));
+        Assert.Contains("alpha", Get<string>(Get<object>(result, "silhouette"), "segmentation"));
         float coverage = mask.Count(m => m) / (float)mask.Length;
         Assert.InRange(coverage, 0.2f, 0.45f);
     }

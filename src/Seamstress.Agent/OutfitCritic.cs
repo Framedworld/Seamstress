@@ -624,31 +624,39 @@ public static class OutfitCritic
         foreach (var pd in scene.Pieces.Where(p => mine(p.Garment) && p.Draped && !p.Hard))
         {
             float sx = Math.Clamp(pd.Piece.Physics.ShrinkWeft, 0.5f, 1.5f), sy = Math.Clamp(pd.Piece.Physics.ShrinkWarp, 0.5f, 1.5f);
-            // Each vertex gets the mean strain of the edges round it: single edges of a solved mesh alternate a few
-            // percent long and short, a stretched area is long all round.
-            var sum = new float[pd.X.Length];
+            // Stretch along the threads: each triangle's deformation from the cut pattern (where the pattern's x and y
+            // directions went), averaged over the triangles round each vertex, then the longer of the two thread
+            // directions. Averaging the deformation cancels the few percent of long-short alternation single edges of a
+            // solved mesh have; shear is left out, since cloth shears freely without growing longer along its threads.
+            var weft = new Vector3[pd.X.Length];
+            var warp = new Vector3[pd.X.Length];
             var count = new int[pd.X.Length];
             var pins = pd.Piece.PinKey == pd.Mesh.Key ? pd.Piece.Pins : null;
             var t = pd.Mesh.Triangles;
             for (int k = 0; k + 2 < t.Length; k += 3)
             {
-                for (int e = 0; e < 3; e++)
+                int a = t[k], b = t[k + 1], c = t[k + 2];
+                if (pins != null && pins.Contains(a) && pins.Contains(b) && pins.Contains(c))
+                    continue;
+                var e1 = (pd.Mesh.Points[b] - pd.Mesh.Points[a]) * new Vector2(sx, sy) * 0.01f;
+                var e2 = (pd.Mesh.Points[c] - pd.Mesh.Points[a]) * new Vector2(sx, sy) * 0.01f;
+                float det = e1.X * e2.Y - e1.Y * e2.X;
+                if (MathF.Abs(det) < 1e-10f)
+                    continue;
+                var f1 = pd.X[b] - pd.X[a];
+                var f2 = pd.X[c] - pd.X[a];
+                var fx = (f1 * e2.Y - f2 * e1.Y) / det;
+                var fy = (f2 * e1.X - f1 * e2.X) / det;
+                foreach (int v in new[] { a, b, c })
                 {
-                    int a = t[k + e], b = t[k + (e + 1) % 3];
-                    if (pins != null && pins.Contains(a) && pins.Contains(b))
-                        continue;
-                    var d = pd.Mesh.Points[b] - pd.Mesh.Points[a];
-                    float rest = new Vector2(d.X * sx, d.Y * sy).Length() * 0.01f;
-                    if (rest < 1e-5f)
-                        continue;
-                    float s = Vector3.Distance(pd.X[a], pd.X[b]) / rest - 1f;
-                    sum[a] += s; count[a]++;
-                    sum[b] += s; count[b]++;
+                    weft[v] += fx;
+                    warp[v] += fy;
+                    count[v]++;
                 }
             }
             var strain = new float[pd.X.Length];
             for (int i = 0; i < strain.Length; i++)
-                strain[i] = count[i] > 0 ? sum[i] / count[i] : 0f;
+                strain[i] = count[i] > 0 ? MathF.Max(weft[i].Length(), warp[i].Length()) / count[i] - 1f : 0f;
             var flagged = Enumerable.Range(0, strain.Length).Where(i => strain[i] > limit).ToList();
             int minimum = Math.Max(4, pd.X.Length / 100);
             foreach (var cluster in Clusters(pd, flagged).Where(c => c.Count >= minimum).Take(1))
@@ -660,10 +668,11 @@ public static class OutfitCritic
                 float across = MathF.Max(hi.X - lo.X, hi.Y - lo.Y) + pd.ParticleCm;
                 float extraCm = mean * across;
                 bool atSeam = cluster.Any(v => pd.Sewn[v]);
-                float score = Math.Clamp(15f + (strain[worst] - limit) * 200f + MathF.Min(15f, MathF.Log2(cluster.Count + 1) * 2f), 15f, 85f);
+                // Judged by the area's mean: a single point pinched at a seam can read several times that.
+                float score = Math.Clamp(15f + (mean - limit) * 300f + MathF.Min(10f, MathF.Log2(cluster.Count + 1) * 1.5f), 15f, 85f);
                 yield return Make(Stretch, score, pd, worst,
-                    $"{pd.Piece.Name} is stretched {strain[worst] * 100:0}% over its cut length here (mean {mean * 100:0}% over "
-                    + $"{cluster.Count} vertices above {limit * 100:0}%){(atSeam ? ", pulling at a seam" : "")}.",
+                    $"{pd.Piece.Name} is stretched {mean * 100:0}% over its cut size across {cluster.Count} vertices here "
+                    + $"(up to {strain[worst] * 100:0}% at the worst point){(atSeam ? ", pulling at a seam" : "")}.",
                     new CritiqueFix(null, null,
                         $"The cloth is too small here: give the piece about {MathF.Max(0.5f, extraCm):0.#} cm more across this area "
                         + "(redraft it with more ease, or a larger easePercent on the template)"

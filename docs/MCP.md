@@ -66,9 +66,44 @@ step named `Agent: <tool>`.
 | Fabric and look | `set_fabric`, `set_material`, `pin_piece`, `set_creases` |
 | Simulation | `simulate`, `pull_cloth`, `reset_drape`, `inspect_fit`, `locate_on_piece` |
 | Looking | `render_preview` (shaded and textured PNG from any angle, framed on the figure, a point or one piece; 2D pattern SVG) |
+| Checking | `critique_outfit` (ranked list of concrete problems, each with a place and a suggested fix), `compare_to_reference` (render with a reference picture's camera, side by side, with silhouette and colour scores) |
 
 Edges can be given by number or by name everywhere. A back piece is turned round, so its own pattern x runs the other
 way (pattern x = -body x) when you refer to points on it, for example in `add_patch`.
+
+## Checking your own work
+
+Before showing a result, check it yourself:
+
+- **`critique_outfit`** (optional `garmentId`, `checkMotion`, `lookWorn`, `maxProblems`) returns the problems worst
+  first. Each one has a `type`, a `severity` (critical, major, minor, hint), the garment and piece, `at` (3D point, m),
+  `patternCm` (the same place on the piece's own pattern: what `pull_cloth` and `locate_on_piece` take), a
+  description, a `fix` (a tool and its arguments where one fits, and a note) and `look` (`render_preview` arguments
+  for a close look). It changes nothing. The checks:
+
+  | type | finds |
+  |---|---|
+  | `open_seam` | seams and surface stitches still apart (as `openSeams`) |
+  | `not_draped` | pieces never simulated, still flat where they were arranged |
+  | `cloth_in_body` | cloth inside the avatar |
+  | `layer_show_through` | an inner layer outside the outer garment where that garment covers it |
+  | `hem_order` | the hem or opening of an inner layer lying over the garment worn over it |
+  | `trim_floating`, `trim_sunk` | a patch standing off its host, or its host's folds poking through it |
+  | `hardware_floating`, `hardware_sunk` | hard parts in the air over their cloth, or sunk into it |
+  | `stretch_hotspot` | cloth stretched more than 8% over its cut size |
+  | `still_moving` | cloth that moves on when simulated: each garment, with its trim, is simulated 24 frames and put back |
+  | `looks_too_clean` | a soft hint: a garment meant to look worn (guessed from names, textures and set creases, or `lookWorn`) that is mostly smooth |
+
+  Fix critical and major problems before showing the outfit; `checkMotion: false` skips the probe when time matters
+  (it takes most of the few seconds a large outfit needs).
+- **`compare_to_reference`** (`referencePath`; `yaw`/`pitch` or `view`, `focus`/`spanCm` or `focusPieceId` like
+  `render_preview`) renders the outfit with the reference's aspect and writes `*_compare.png`: reference, render,
+  and the two silhouettes overlaid with the figures scaled to the same height. It returns `iou` (above 0.85 is
+  close, below 0.7 the outline differs a lot), width ratios at nine heights, and per region (head, shoulders and
+  chest, waist and hips, legs, feet) the two palettes and their CIELAB distance (`deltaE`: under 10 close, over 25
+  clearly different). Look at the picture yourself: the numbers say where. A reference with a transparent or plain
+  background segments well; a dark figure on a dark backdrop is reported as low contrast, and its silhouette numbers
+  are not reliable.
 
 ## Things that go wrong, and what the server tells you
 

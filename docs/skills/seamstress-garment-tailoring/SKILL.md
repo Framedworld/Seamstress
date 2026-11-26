@@ -172,6 +172,10 @@ Garment-level `thicknessMm` is also what makes cloth render as a shell rather th
 ## Verify
 
 1. After every simulate: `openSeams` empty, peak speed under 0.3, `penetratedVertices` 0.
+   Before showing anything, `critique_outfit`: fix every critical and major problem it lists (each has a place, a
+   `fix` with the tool to call and a `look` camera for `render_preview`), then call it again. It finds open seams,
+   undraped pieces, cloth in the body, inner layers showing through, hems in the wrong order, trim and hardware
+   floating or sunk, stretch over 8%, cloth still moving, and (as a hint) worn garments that look too clean.
 2. `render_preview` after every stage: `views: "front,quarter,back"` for the whole figure, then `focusPieceId` or
    `focus` + `spanCm` with `yaw`/`pitch` for close looks at the neck, a pocket, a cuff. Piece edges are drawn darker,
    so same-cloth patches and seams are visible. It needs no window and takes about a second.
@@ -185,3 +189,6 @@ Garment-level `thicknessMm` is also what makes cloth render as a shell rather th
    shade mirror-wise.
 5. Look for: neck and shoulders closed, no inner layer showing through an outer one (dark flecks near hems and side
    seams), hems in the intended order, trim lying flat, hardware seated rather than floating.
+6. With concept art or a photo to match, `compare_to_reference` with the reference's camera: it writes the reference,
+   your render and the overlaid silhouettes side by side, with silhouette overlap (`iou`), width ratios by height and
+   a colour distance per region. Judge the details from the picture; use the numbers to find where to look.

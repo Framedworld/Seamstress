@@ -635,17 +635,23 @@ public static class ReferenceComparer
             for (int x = f.MinX; x <= f.MaxX; x += stride)
             {
                 int i = y * image.Width + x;
-                if (mask[i])
+                // Inside the outline only: edge pixels are blended with the backdrop.
+                if (mask[i] && x > 0 && x < image.Width - 1 && y > 0 && y < image.Height - 1
+                    && mask[i - 1] && mask[i + 1] && mask[i - image.Width] && mask[i + image.Width])
                     samples.Add((Lab(image.Rgba[4 * i], image.Rgba[4 * i + 1], image.Rgba[4 * i + 2]), 1f));
             }
         if (samples.Count < 8)
             return new();
         float total = samples.Count;
-        return KMeans(samples, 3)
-            .Where(c => c.Weight > 0)
+        // A few stray pixels (a speck of backdrop, a bright highlight) would take seeds of their own: cluster into more
+        // colours than are kept, and keep the main ones.
+        var main = KMeans(samples, 6)
+            .Where(c => c.Weight >= 0.03f * total)
             .OrderByDescending(c => c.Weight)
-            .Select(c => new PaletteColour(Hex(c.Centre), MathF.Round(c.Weight / total, 2), c.Centre))
+            .Take(4)
             .ToList();
+        float kept = main.Sum(c => c.Weight);
+        return main.Select(c => new PaletteColour(Hex(c.Centre), MathF.Round(c.Weight / kept, 2), c.Centre)).ToList();
     }
 
     private static Vector3 MeanLab(List<PaletteColour> p)

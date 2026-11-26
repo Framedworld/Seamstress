@@ -336,10 +336,13 @@ public class OutfitCriticTests
     [Fact]
     public void ProblemsAreRankedWorstFirst()
     {
-        var s = Tube(0.12f);
-        var g = s.Doc.Garments[0];
+        // Cloth deep in the body, and a seam left 30 cm open.
+        var s = new Scene();
+        var g = s.Garment("Tee", 0);
+        var front = Rect(g, "Front", 30, 25);
         var extra = Rect(g, "Loose", 10, 10);
-        g.Seams.Add(new Seam { A = new EdgeRef(g.Pieces[0].Id, 0), B = new EdgeRef(extra.Id, 2) });
+        g.Seams.Add(new Seam { A = new EdgeRef(front.Id, 0), B = new EdgeRef(extra.Id, 2) });
+        Drape(s, g, front, q => Wrap(q, 0.12f, u0: 15));
         Drape(s, g, extra, q => Wrap(q, 0.2f, y0: 0.6f, u0: 5));
         var problems = s.Critique();
         Assert.True(problems.Count >= 2);
