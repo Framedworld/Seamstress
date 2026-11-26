@@ -21,6 +21,7 @@ public partial class AppController : ISessionHost
     {
         "get_project_summary", "get_avatar_landmarks", "locate_on_piece", "inspect_fit", "render_preview",
         "list_body_profiles", "inspect_metahuman_dna", "export_garment", "save_project", "save_body_profile",
+        "critique_outfit", "compare_to_reference",
     };
 
     private readonly ConcurrentQueue<Action> _agentWork = new();

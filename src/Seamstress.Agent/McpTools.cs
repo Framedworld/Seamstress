@@ -327,6 +327,8 @@ public sealed class McpToolRegistry
             ("substeps", "integer", "XPBD substeps per frame (default 12)."))),
         Tool("reset_drape", "Clear simulated drape and return pieces to their flat 3D arrangement.", Props(("garmentId", "string", "Optional garment ID (defaults to all garments)."))),
         Tool("inspect_fit", "Inspect seam length mismatches, avatar penetrations, vertex/triangle counts, and 3D bounding box.", Props(("garmentId", "string", "Optional garment ID."))),
+        CritiqueTools.CritiqueDefinition(),
+        CritiqueTools.CompareDefinition(),
         Tool("render_preview", "Render a shaded, textured PNG of the draped outfit without the desktop app (and/or a 2D pattern SVG). Any camera: named views side by side, or yaw/pitch; frame the whole figure, a point, or one piece for a close look.", new JsonObject
         {
             ["type"] = "object",
@@ -438,6 +440,8 @@ public sealed class McpToolRegistry
             "reset_drape" => ResetDrape(args),
             "inspect_fit" => _session.InspectFit(OptString(args, "garmentId")),
             "render_preview" => RenderPreview(args),
+            "critique_outfit" => CritiqueTools.Critique(_session, args),
+            "compare_to_reference" => CritiqueTools.CompareToReference(_session, args),
             "export_garment" => ExportGarment(args),
             "import_mesh_as_pattern" => ImportMeshAsPattern(args),
             "list_body_profiles" => ListBodyProfiles(),
