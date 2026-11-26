@@ -48,6 +48,8 @@
     <ProjectReference Include="..\Seamstress.Cuda\Seamstress.Cuda.csproj" />
     <!-- The agent tools, so the window can run them on its own project over the live link. -->
     <ProjectReference Include="..\Seamstress.Agent\Seamstress.Agent.csproj" />
+    <!-- The assistant panel: a conversation with Claude that uses the same agent tools. -->
+    <ProjectReference Include="..\Seamstress.Assistant\Seamstress.Assistant.csproj" />
   </ItemGroup>
 
   <ItemGroup>

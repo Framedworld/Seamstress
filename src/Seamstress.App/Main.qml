@@ -505,6 +505,8 @@ ApplicationWindow {
                 }
                 KeyMenuItem { text: tr("3D: Show Avatar"); command: "view.avatar"; checkable: true; checked: viewport.showAvatar; onTriggered: viewport.showAvatar = checked }
                 MenuItem { text: tr("3D: Show Sewing Threads"); checkable: true; checked: viewport.showThreads; onTriggered: viewport.showThreads = checked }
+                MenuSeparator {}
+                MenuItem { text: tr("Assistant"); checkable: true; checked: App.assistantVisible; onTriggered: App.assistantVisible = checked }
             }
             Menu {
                 title: tr("&Help")
@@ -776,6 +778,16 @@ ApplicationWindow {
                 SplitView.minimumWidth: 260
                 onPickColor: (current) => { colorDialog.selectedColor = current; colorDialog.open() }
                 onPickTexture: textureDialog.open()
+            }
+
+            AssistantPanel {
+                id: assistantPanel
+                visible: App.assistantVisible
+                viewport: viewport
+                SplitView.preferredWidth: 340
+                SplitView.minimumWidth: 260
+                onOpenPreferences: preferences.openPage("Assistant")
+                onCloseRequested: App.assistantVisible = false
             }
         }
 

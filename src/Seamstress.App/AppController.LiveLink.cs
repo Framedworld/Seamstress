@@ -16,17 +16,20 @@ namespace Seamstress.App;
 /// </summary>
 public partial class AppController : ISessionHost
 {
-    // Tools that only look: they leave no undo step.
-    private static readonly HashSet<string> LookingTools = new()
-    {
-        "get_project_summary", "get_avatar_landmarks", "locate_on_piece", "inspect_fit", "render_preview",
-        "list_body_profiles", "inspect_metahuman_dna", "export_garment", "save_project", "save_body_profile",
-    };
-
     private readonly ConcurrentQueue<Action> _agentWork = new();
     private LiveLinkServer? _liveLink;
     private GarmentSession? _agentSession;
-    private McpToolRegistry? _agentTools;
+    private UndoableTools? _agentTools;
+
+    /// <summary>The agent tools on the window's project, for the live link and the assistant panel.</summary>
+    private UndoableTools AgentTools
+    {
+        get
+        {
+            _agentSession ??= new GarmentSession(this);
+            return _agentTools ??= new UndoableTools(_workspace, new McpToolRegistry(_agentSession));
+        }
+    }
 
     /// <summary>Starts listening for an agent's tool calls (not in automated runs, which must not be driven from outside).</summary>
     private void StartLiveLink()
@@ -35,8 +38,7 @@ public partial class AppController : ISessionHost
             return;
         try
         {
-            _agentSession = new GarmentSession(this);
-            _agentTools = new McpToolRegistry(_agentSession);
+            _ = AgentTools;
             _liveLink = new LiveLinkServer(HandleAgentCall);
             _liveLink.Start();
             AppLog.Write($"Live link for agents listening on 127.0.0.1:{_liveLink.Port}");
@@ -98,26 +100,15 @@ public partial class AppController : ISessionHost
 
     private object RunAgentTool(string tool, JsonElement args)
     {
-        string label = tool.Replace('_', ' ');
-        StatusText = Lang.F("Agent: {0}", label);
-        if (LookingTools.Contains(tool) || tool is "new_project" or "open_project")
-            return _agentTools!.Dispatch(tool, args);
+        StatusText = Lang.F("Agent: {0}", tool.Replace('_', ' '));
+        if (!UndoableTools.Changes(tool))
+            return AgentTools.Run(tool, args);
         if (_simulation.IsRunning)
             StopSimulation();
-        _workspace.History.BeginGroup(Lang.F("Agent: {0}", label));
-        try
-        {
-            var result = _agentTools!.Dispatch(tool, args);
-            _workspace.History.EndGroup(keep: true);
-            ViewportRevision++;
-            return result;
-        }
-        catch
-        {
-            // A tool that fails half way leaves nothing behind in the user's project.
-            _workspace.History.EndGroup(keep: false);
-            throw;
-        }
+        // One undo step; a tool that fails half way leaves nothing behind in the user's project.
+        var result = AgentTools.Run(tool, args);
+        ViewportRevision++;
+        return result;
     }
 
     /// <summary>

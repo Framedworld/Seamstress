@@ -18,8 +18,8 @@ AppDialog {
 
     // Set while the Keyboard page waits for a key, so the key does not also run its command.
     readonly property bool recording: keyboard.recordingRow >= 0
-    readonly property var pages: ["General", "Themes", "Viewport", "MakeHuman", "Textures", "Keyboard"]
-    readonly property var pageTitles: [tr("General"), tr("Themes"), tr("Viewport"), tr("MakeHuman"), tr("Textures"), tr("Keyboard")]
+    readonly property var pages: ["General", "Themes", "Viewport", "MakeHuman", "Textures", "Keyboard", "Assistant"]
+    readonly property var pageTitles: [tr("General"), tr("Themes"), tr("Viewport"), tr("MakeHuman"), tr("Textures"), tr("Keyboard"), tr("Assistant")]
     // [{code, name}], each language named in itself.
     readonly property var languages: JSON.parse(App.languagesJson())
     property int page: 0
@@ -59,6 +59,7 @@ AppDialog {
         themeChoice = App.themeChoice
         syncTheme()
         keyboard.load()
+        assistantPage.load()
     }
 
     // The grid size and snap step are typed in the units chosen in this dialog and stored in centimetres.
@@ -92,6 +93,7 @@ AppDialog {
         App.saveKeyBindings(JSON.stringify(keyboard.chosen()))
         App.saveTheme(themeChoice)
         App.setAutosaveMinutes(autosaveMinutes[Math.max(0, autosave.currentIndex)])
+        assistantPage.save()
     }
     // The choices for how often a recovery copy is written, in minutes; 0 is never.
     readonly property var autosaveMinutes: [0, 1, 2, 3, 5, 10, 15, 30]
@@ -713,6 +715,9 @@ AppDialog {
                 }
                 Note { text: tr("Changes take effect when you press Save.") }
             }
+
+            // ---------------------------------------------------------- Assistant
+            AssistantPreferences { id: assistantPage }
         }
     }
 

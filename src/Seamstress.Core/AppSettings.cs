@@ -58,6 +58,16 @@ public sealed class AppSettings
 
     /// <summary>Licence written into MakeHuman assets, e.g. "CC0" or "CC-BY".</summary>
     public string MakeHumanLicense { get; set; } = "CC0";
+
+    /// <summary>The Claude model the assistant panel uses; empty is the default (Sonnet).</summary>
+    public string AssistantModel { get; set; } = "";
+
+    /// <summary>
+    /// The Anthropic API key typed into Preferences ▸ Assistant; empty uses ANTHROPIC_API_KEY. It stays in this file
+    /// only: never in logs or projects.
+    /// </summary>
+    public string AssistantApiKey { get; set; } = "";
+
     public List<string> RecentFiles { get; set; } = new();
 
     public static string DefaultPath
