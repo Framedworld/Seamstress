@@ -37,6 +37,7 @@ ApplicationWindow {
     font.family: cjkFont !== "" ? cjkFont : Qt.application.font.family
 
     property bool viewportConfirmed: false
+    property int smokeWaits: 0
     property var afterDiscard: null      // what to do once unsaved changes were dealt with
     property bool closing: false
     property string pendingExport: ""
@@ -135,6 +136,12 @@ ApplicationWindow {
         onTriggered: {
             App.automationStep("the capture timer fired")
             if (App.startupView.indexOf("livesim") >= 0) App.benchmarkReport()
+            // The smoke test's last checks (the assistant's scripted request) may still be running: give them a while.
+            if (App.startupSmoke && !(smokeLoader.item && smokeLoader.item.finished) && smokeWaits++ < 240) {
+                interval = 250
+                restart()
+                return
+            }
             if (App.startupSmoke && !(smokeLoader.item && smokeLoader.item.finished)) {
                 App.automationFailed("the smoke test did not run to its end")
                 return

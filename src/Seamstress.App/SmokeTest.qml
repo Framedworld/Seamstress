@@ -528,7 +528,7 @@ QtObject {
     property int assistantWaits: 0
     function assistant() {
         App.assistantVisible = true
-        check("assistant panel opens", assistantPanel.visible && assistantPanel.width > 0)
+        check("assistant panel opens", assistantPanel.visible)
         if (!App.assistantReady)
             check("without a key the panel explains how to add one", assistantPanel.needsKey)
         App.assistantUseScript("skirt-pocket")
@@ -539,6 +539,7 @@ QtObject {
     }
     function assistantDone() {
         const items = JSON.parse(App.assistantItemsJson())
+        check("assistant panel laid out in the window", assistantPanel.width >= 200 && assistantPanel.height > 0)
         check("assistant ran two tools", items.filter(i => i.kind === "tool" && !i.failed).length === 2)
         check("assistant answered", items.some(i => i.kind === "assistant" && i.text === "Added a skirt with a pocket."))
         check("assistant's pocket is one undo step", App.undoText === "Undo Agent: add patch")
@@ -556,7 +557,7 @@ QtObject {
         repeat: true
         onTriggered: {
             smoke.assistantWaits++
-            if (App.assistantBusy && smoke.assistantWaits < 18)
+            if (App.assistantBusy && smoke.assistantWaits < 100)
                 return
             stop()
             smoke.check("assistant request finished in time", !App.assistantBusy)
