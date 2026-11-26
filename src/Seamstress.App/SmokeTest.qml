@@ -148,6 +148,21 @@ QtObject {
         App.showWire = true
         check("wire overlay", JSON.parse(App.viewportModels()).wire !== "")
         App.showWire = false
+        // Fit maps: each one rebuilds the cloth with vertex colours and gives the legend its range; Off puts the fabric back.
+        const plainMesh = shownMesh(JSON.parse(App.viewportModels()).models[0])
+        for (const map of ["stretch", "pressure", "distance"]) {
+            App.fitMap = map
+            const shown = JSON.parse(App.viewportModels())
+            check("fit map " + map + " on", App.fitMap === map && shown.fitMap.kind === map && shown.fitMap.colours.length === 5
+                && shownMesh(shown.models[0]) !== plainMesh)
+            const summary = JSON.parse(App.fitMapSummary(map))
+            // Without a body under it (the pieces lie flat, off to the side), only stretch has numbers for every vertex.
+            check("fit map " + map + " summed up", Array.isArray(summary.maps[map])
+                && (map !== "stretch" || (shown.fitMap.max !== undefined && summary.maps[map].length > 0 && summary.maps[map][0].worst.length > 0)))
+        }
+        App.fitMap = "off"
+        check("fit map off", JSON.parse(App.viewportModels()).fitMap.kind === "off"
+            && shownMesh(JSON.parse(App.viewportModels()).models[0]) !== plainMesh)
         const startX = selection().piece.posX
         check("handles appear for the selection", JSON.parse(App.viewportModels()).gizmo !== undefined)
         check("handle drag begins", App.gizmoBegin())
@@ -393,6 +408,10 @@ QtObject {
         check("simulation stopped", !App.simulating)
         App.selectAll()
         check("skirt draped", selection().piece.draped === true)
+        // Easing measures the drape: a target of 0% with the cloth as it is lists every draped piece, eased or not.
+        const ease = JSON.parse(App.easePlan(0, 0.6))
+        check("ease plan for the draped skirt", ease.pieces.length > 0 && ease.pieces.every(p => p.skipped === null || p.skipped === "not simulated")
+            && ease.pieces.some(p => p.skipped === null))
 
         // Pinching with no simulation running starts one for that garment.
         const skirtPiece = JSON.parse(App.layers()).filter(r => r.kind === "piece" && r.name === "Skirt Front")[0].id

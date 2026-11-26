@@ -209,12 +209,12 @@ internal sealed class ViewportSync : IDisposable
     /// (its URL). Either way the result is what the QML model is given in place of a source.
     /// </summary>
     private string PutTriangles(string name, Queue<string> history, Vector3[] positions, Vector3[] normals, Vector2[]? uvs,
-        int[] triangles)
+        int[] triangles, Vector4[]? colours = null)
     {
         if (_live.Available)
-            return _live.SetTriangles(name, positions, normals, uvs, triangles);
+            return _live.SetTriangles(name, positions, normals, uvs, triangles, colours);
         string file = NextFile(name, history);
-        QtMesh.WriteTriangles(file, positions, normals, uvs, triangles);
+        QtMesh.WriteTriangles(file, positions, normals, uvs, triangles, colours);
         return ToUrl(file);
     }
 
@@ -258,6 +258,9 @@ internal sealed class ViewportSync : IDisposable
         return _avatarUrl = ToUrl(file);
     }
 
+    /// <summary>The fit map the cloth is coloured by, if any (see <see cref="FitMapPainter"/>).</summary>
+    public FitMapPainter FitMap { get; } = new();
+
     /// <summary>True while the Pin tool is on: every pin is then marked, also on pieces that are pinned in full.</summary>
     public bool PinToolActive { get; set; }
 
@@ -277,6 +280,7 @@ internal sealed class ViewportSync : IDisposable
         // Where the vertices of every shown piece are now, for the surface stitches drawn after the pieces.
         bool anyStitches = doc.Garments.Any(g => g.Visible && g.SurfaceStitches.Count > 0);
         var shownPositions = anyStitches ? new Dictionary<string, Vector3[]>() : null;
+        FitMap.BeginUpdate();
 
         foreach (var garment in doc.Garments)
         {
@@ -372,6 +376,7 @@ internal sealed class ViewportSync : IDisposable
                 if (!Workspace.IsEffectivelyVisible(garment, piece) || pieceMesh.TriangleCount == 0)
                     continue;
                 seen.Add(piece.Id);
+                FitMap.Shown(piece.Id);
                 float halfThickness = garment.ShownThicknessMm * 0.0005f;
                 // A piece pinned in full is a hard part (a snap, a pen, a held cuff): marking every one of its points
                 // would bury it in markers, so it shows its pins only while the Pin tool is in use.
@@ -436,6 +441,7 @@ internal sealed class ViewportSync : IDisposable
                 hash.Add(piece.FlipNormals);
                 hash.Add(halfThickness);
                 hash.Add(fitPieceUv);
+                hash.Add(FitMap.Signature(garment, piece, avatar));
                 // A tile size is built into the UVs (UvLayout.MapMaterial), so changing it, or adding or removing the
                 // texture it needs, rewrites the mesh; without a tile size the repeat is applied by the material.
                 hash.Add(!string.IsNullOrEmpty(material.Texture) && material.TileSizeCm > 0 ? material.TileSizeCm : 0f);
@@ -449,7 +455,7 @@ internal sealed class ViewportSync : IDisposable
                         pieceMesh.ShownTriangles(piece.FlipNormals), halfThickness * 2f);
                     entry.Revision = ++_generation;
                     entry.Url = PutTriangles("p" + piece.Id, entry.Files, shell.Positions, shell.Normals, shell.Uvs,
-                        shell.Triangles);
+                        shell.Triangles, FitMap.Colours(garment, piece, pieceMesh, positions[i], shell, avatar));
                     entry.Key = pieceMesh.Key;
                     entry.Hash = signature;
                     entry.Drape = usesDrape ? piece.Drape : null;
@@ -486,6 +492,7 @@ internal sealed class ViewportSync : IDisposable
             }
             _entries.Remove(id);
             _live.Remove("p" + id);
+            FitMap.Remove(id);
             anyChanged = true;
         }
 
@@ -512,6 +519,7 @@ internal sealed class ViewportSync : IDisposable
         if (workspace.SelectionCentre() is { } centre)
             sb.Append(inv, $",\"gizmo\":[{centre.X:0.#####},{centre.Y:0.#####},{centre.Z:0.#####}]");
         sb.Append(",\"avatar\":\"").Append(AvatarUrl(avatar)).Append('"');
+        FitMap.AppendJson(sb);
         sb.Append('}');
         return sb.ToString();
     }

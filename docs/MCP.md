@@ -65,7 +65,7 @@ step named `Agent: <tool>`.
 | Sewing | `sew_edges`, `sew_named`, `auto_sew`, `sew_surface_stitch`, `reverse_seam`, `delete_seam` |
 | Blocks | `add_patch` (patch, pocket, flap; on a piece or centred on a seam), `add_tube` (sleeve, cuff, leg), `add_collar` (stand, gathered cowl, or with `rollCm` a padded roll such as a pushed-down hood), `add_hood`, `add_hardware` (snap, button, rivet, bar, buckle, pen, handle, wrench, custom) |
 | Fabric and look | `set_fabric`, `set_material`, `pin_piece`, `set_creases` |
-| Simulation | `simulate`, `set_quality` (draft or final), `pull_cloth`, `reset_drape`, `inspect_fit`, `locate_on_piece` |
+| Simulation | `simulate`, `set_quality` (draft or final), `pull_cloth`, `reset_drape`, `inspect_fit`, `fit_map` (stretch, pressure and distance to the body, with the worst places), `ease_pattern` (let the pattern out where it is stretched across, row by row; reports first, `apply` changes it), `locate_on_piece` |
 | Looking | `render_preview` (shaded and textured PNG from any angle, framed on the figure, a point or one piece; 2D pattern SVG) |
 
 Edges can be given by number or by name everywhere. A back piece is turned round, so its own pattern x runs the other
@@ -91,6 +91,15 @@ body file's own (same joint names, bind pose as draped), so its animations play 
 - **A seam will not close.** `simulate` and `inspect_fit` list it under `openSeams` with a hint: sewn the wrong way
   round (use `reverse_seam`), blocked by the body or cut too short (add ease or move the seam line), or simply not
   finished (`advice` says to simulate again).
+- **Is it too tight, too loose?** `fit_map` gives the numbers behind the 3D view's fit maps for each garment: the range
+  and mean of its stretch (strain against the pattern, 0.1 = 10%), pressure (0 free, 0.25 touching, 1 tight) and
+  distance to the body (cm of air), the share of the cloth over and under each map's thresholds, and the worst places
+  at least 8 cm apart with the piece, a body region ("front, left, chest"), the 3D position and the local pattern
+  point that `locate_on_piece` takes. Simulate first: it measures the cloth as it lies.
+- **Stretched because the pattern is too narrow.** `ease_pattern` (without `apply`) says which pieces it would widen, by
+  how much and where, and which seams would then join edges of different lengths; with `apply: true` it changes the
+  pattern, keeps the drape, and clears set creases on the eased pieces (they hold the stretch). Simulate, check
+  `fit_map`, repeat while still over. Clear creases first if the garment has them: they can be the whole cause.
 - **A cuff or sleeve is too narrow.** `add_tube` with `limb` compares the tube with the measured arm plus the room the
   garment keeps for the layers under it and returns `fitWarning` with the smallest circumference that can close.
 - **A patch floats or sinks.** It belongs in a trim garment one layer out from its host with a little more body offset;

@@ -78,6 +78,9 @@ public sealed class SurfaceShell
     public required Vector3[] Normals { get; init; }
     public required Vector2[] Uvs { get; init; }
     public required int[] Triangles { get; init; }
+
+    /// <summary>For each shell vertex, the vertex of the sheet it was made from (to carry per-vertex values over).</summary>
+    public int[] Sources { get; init; } = Array.Empty<int>();
 }
 
 /// <summary>A pair of mesh vertices joined by a seam.</summary>
@@ -524,8 +527,10 @@ public static class Mesher
         var shellNormals = new Vector3[shellPositions.Length];
         var shellUvs = new Vector2[shellPositions.Length];
         var shellTriangles = new List<int>(triangles.Length * 2 + boundary.Count * 6);
+        var sources = new int[shellPositions.Length];
         for (int i = 0; i < count; i++)
         {
+            sources[i] = sources[count + i] = i;
             shellPositions[i] = positions[i] + normals[i] * half;
             shellNormals[i] = normals[i];
             shellUvs[i] = uvs[i];
@@ -559,6 +564,8 @@ public static class Mesher
                 side = -side;
 
             int v = wallStart + w * 4;
+            sources[v] = sources[v + 2] = a;
+            sources[v + 1] = sources[v + 3] = b;
             shellPositions[v] = positions[a] + normals[a] * half;
             shellPositions[v + 1] = positions[b] + normals[b] * half;
             shellPositions[v + 2] = positions[a] - normals[a] * half;
@@ -575,6 +582,7 @@ public static class Mesher
             Normals = shellNormals,
             Uvs = shellUvs,
             Triangles = shellTriangles.ToArray(),
+            Sources = sources,
         };
     }
 

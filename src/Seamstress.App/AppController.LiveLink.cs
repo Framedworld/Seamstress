@@ -19,7 +19,7 @@ public partial class AppController : ISessionHost
     // Tools that only look: they leave no undo step.
     private static readonly HashSet<string> LookingTools = new()
     {
-        "get_project_summary", "get_avatar_landmarks", "locate_on_piece", "inspect_fit", "render_preview",
+        "get_project_summary", "get_avatar_landmarks", "locate_on_piece", "inspect_fit", "fit_map", "render_preview",
         "list_body_profiles", "inspect_metahuman_dna", "export_garment", "save_project", "save_body_profile",
     };
 

@@ -2015,7 +2015,7 @@ public sealed partial class Workspace
     /// Reads positions off a piece's simulated surface by pattern position: the point of the surface that was at a
     /// given place in the flat pattern, and the surface normal there.
     /// </summary>
-    private sealed class SurfaceSampler
+    internal sealed class SurfaceSampler
     {
         private readonly PieceMesh _mesh;
         private readonly Vector3[] _positions;

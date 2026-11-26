@@ -332,6 +332,17 @@ public sealed class McpToolRegistry
             ("substeps", "integer", "XPBD substeps per frame (default 12)."))),
         Tool("reset_drape", "Clear simulated drape and return pieces to their flat 3D arrangement.", Props(("garmentId", "string", "Optional garment ID (defaults to all garments)."))),
         Tool("inspect_fit", "Inspect seam length mismatches, avatar penetrations, vertex/triangle counts, and 3D bounding box.", Props(("garmentId", "string", "Optional garment ID."))),
+        Tool("fit_map", "The numbers behind the 3D view's fit maps, per garment: stretch (strain against the pattern), pressure (how hard the cloth presses on the body) and distance (cm of air off the body). Each gives min, max, mean, the share over and under its thresholds, and the worst places with the piece, a body region, the 3D position and the local pattern point. Simulate first: it measures the cloth as it lies now.", Props(
+            ("map", "string", "Optional: stretch, pressure or distance (default: all three)."),
+            ("garmentId", "string", "Optional garment ID (default: every visible garment)."),
+            ("worst", "integer", "Optional number of worst places per garment (default 5)."))),
+        Tool("ease_pattern", "Let the pattern out where the draped cloth is stretched across by more than a target: each piece is widened row by row, only where it is tight, and stays draped where it was. Without apply it only reports what it would change (per piece: stretch across and along, cm added and where, edge lengths; seams whose two edges now differ). Simulate again after applying and check with fit_map; repeat while still over. Stretch along a piece is reported, not eased; elastic and fully pinned pieces are skipped.", Props(
+            ("garmentId", "string", "Optional garment ID (default: the active garment)."),
+            ("targetStretchPercent", "number", "Stretch across that is fine (default 2)."),
+            ("strength", "number", "Share of the correction to make in one pass, 0.05..1 (default 0.6)."),
+            ("pieceIds", "string", "Optional comma-separated piece IDs to ease (default: every visible piece)."),
+            ("includeElastic", "boolean", "Also ease pieces with elastic across below 1 (default false)."),
+            ("apply", "boolean", "Change the pattern (default false: only report)."))),
         Tool("render_preview", "Render a shaded, textured PNG of the draped outfit without the desktop app (and/or a 2D pattern SVG). Any camera: named views side by side, or yaw/pitch; frame the whole figure, a point, or one piece for a close look.", new JsonObject
         {
             ["type"] = "object",
@@ -445,6 +456,10 @@ public sealed class McpToolRegistry
             "simulate" => Simulate(args),
             "reset_drape" => ResetDrape(args),
             "inspect_fit" => _session.InspectFit(OptString(args, "garmentId")),
+            "ease_pattern" => EaseReport.Run(_session.Workspace, OptString(args, "garmentId"), OptFloat(args, "targetStretchPercent", 2f),
+                OptFloat(args, "strength", 0.6f), OptString(args, "pieceIds"), OptBool(args, "includeElastic", false), OptBool(args, "apply", false)),
+            "fit_map" => FitMapReport.Build(_session.Doc, _session.Workspace.MeshFor, _session.ActiveAvatar,
+                FitMaps.Parse(OptString(args, "map")), OptString(args, "garmentId"), Math.Clamp(OptInt(args, "worst", 5), 1, 50)),
             "render_preview" => RenderPreview(args),
             "export_garment" => ExportGarment(args),
             "import_mesh_as_pattern" => ImportMeshAsPattern(args),
