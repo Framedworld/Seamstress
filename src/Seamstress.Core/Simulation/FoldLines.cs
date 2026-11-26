@@ -72,6 +72,7 @@ public static class FoldLines
     {
         if (piece.Drape != null && piece.DrapeKey == mesh.Key && piece.Drape.Length == mesh.VertexCount * 3)
             return;
+        PreFoldPleats(garment, piece, mesh, positions);
         var darts = Darts(garment, piece, mesh);
         if (darts.Count == 0 && !piece.InternalLines.Any(l => l.IsFold))
             return;
@@ -106,6 +107,82 @@ public static class FoldLines
         }
         for (int i = 0; i < positions.Length; i++)
             positions[i] += shift[i];
+    }
+
+    /// <summary>
+    /// A knife pleat: the stretch of edge from <see cref="A"/> to <see cref="B"/> folded under and tacked face to face
+    /// to the stretch from <see cref="B"/> on (both local cm), so that <see cref="A"/> comes to lie on the point
+    /// <see cref="Depth"/> x 2 further along.
+    /// </summary>
+    public readonly record struct Pleat(Vector2 A, Vector2 B, float Depth);
+
+    /// <summary>The tacked pleats of a piece: folded seams joining two of its own edges that follow each other.</summary>
+    public static List<Pleat> Pleats(Garment garment, PatternPiece piece)
+    {
+        var result = new List<Pleat>();
+        foreach (var seam in garment.Seams)
+        {
+            if (!seam.Folded || seam.A.PieceId != piece.Id || seam.B.PieceId != piece.Id
+                || seam.A.Edge < 0 || seam.A.Edge >= piece.EdgeCount || piece.NextPoint(seam.A.Edge) != seam.B.Edge)
+                continue;
+            var a = Outline.EdgeStart(piece, seam.A.Edge);
+            var b = Outline.EdgeEnd(piece, seam.A.Edge);
+            float depth = Vector2.Distance(a, b);
+            if (depth > 1e-3f)
+                result.Add(new Pleat(a, b, depth));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Lays a flat piece's tacked knife pleats already folded: from each pleat's fold the cloth turns back under
+    /// itself for the pleat's depth, then forward again, and everything beyond moves along by twice the depth. The
+    /// tacks then start closed, so the garment is sewn at the width it will have rather than falling while its
+    /// pleats are still being pulled in. Only the pleats' folds lying square to the edge, as the Pleat tool makes
+    /// them, are folded this way.
+    /// </summary>
+    public static void PreFoldPleats(Garment garment, PatternPiece piece, PieceMesh mesh, Vector3[] positions)
+    {
+        var pleats = Pleats(garment, piece);
+        if (pleats.Count == 0)
+            return;
+        // All pleats along one straight edge share its direction.
+        var along = Vector2.Normalize(pleats[0].B - pleats[0].A);
+        if (pleats.Any(p => Vector2.Dot(Vector2.Normalize(p.B - p.A), along) < 0.999f))
+            return;
+        float layer = MathF.Max(garment.EffectiveThicknessMm(piece), 1f) * 0.0015f;
+        float inward = piece.FlipNormals ? 1f : -1f;   // the folded-under layers go behind, towards the body
+        for (int i = 0; i < mesh.VertexCount; i++)
+        {
+            var p = mesh.Points[i];
+            float shift = 0;
+            int depth = 0;
+            foreach (var pleat in pleats)
+            {
+                float u = Vector2.Dot(p - pleat.A, along);
+                if (u <= 0)
+                    continue;
+                if (u < pleat.Depth)
+                {
+                    shift -= 2 * u;           // turned back under the fold
+                    depth = 1;
+                }
+                else if (u < 2 * pleat.Depth)
+                {
+                    shift -= 2 * pleat.Depth; // and forward again, under that
+                    depth = 2;
+                }
+                else
+                {
+                    shift -= 2 * pleat.Depth; // beyond the pleat: moved along by what it takes in
+                }
+            }
+            if (shift == 0 && depth == 0)
+                continue;
+            var (position, rotation) = Mesher.ArrangedFrame(piece, p + along * shift);
+            var normal = Vector3.TransformNormal(Vector3.UnitZ, rotation);
+            positions[i] = position + normal * (inward * layer * depth);
+        }
     }
 
     /// <summary>

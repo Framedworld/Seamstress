@@ -1,4 +1,6 @@
 using System.Numerics;
+using System.Text.Json;
+using Seamstress.Mcp;
 using Seamstress.Core.Editing;
 using Seamstress.Core.Geometry;
 using Seamstress.Core.IO;
@@ -280,5 +282,40 @@ public class FoldsDartsPleatsTests
         Assert.Equal(new Vector2(30, 0), Outline.EdgeStart(front, 4));
 
         Assert.Throws<ArgumentException>(() => PatternFolds.AddDart(garment, front, 2, new Vector2(25, 30), new Vector2(5, 30), new Vector2(15, 50)));
+    }
+
+    [Fact]
+    public void AgentsCanDrawFoldLinesDartsAndPleats()
+    {
+        var session = new GarmentSession();
+        var tools = new McpToolRegistry(session);
+        foreach (string name in new[] { "add_internal_line", "set_fold_line", "delete_internal_line", "add_dart", "add_pleats" })
+            Assert.Contains(tools.GetToolDefinitions(), t => t!["name"]!.GetValue<string>() == name);
+        object Call(string name, string json)
+        {
+            using var args = JsonDocument.Parse(json);
+            return tools.Dispatch(name, args.RootElement);
+        }
+        Call("add_template_garment", "{\"template\":\"Skirt\"}");
+        var front = session.Doc.Garments[0].Pieces[0];
+        string id = front.Id;
+        // The skirt front: 0 hem (0,0)-(70,0), 1 side, 2 waist (55,50)-(15,50), 3 side.
+        Call("add_internal_line", $"{{\"pieceId\":\"{id}\",\"points\":[{{\"x\":35,\"y\":0}},{{\"x\":35,\"y\":50}}],\"foldAngle\":120,\"name\":\"press\"}}");
+        Assert.Equal(120, front.InternalLines.Single().FoldAngle, 0.01f);
+        Call("set_fold_line", $"{{\"pieceId\":\"{id}\",\"lineId\":\"press\",\"valley\":true,\"strengthPercent\":40}}");
+        Assert.True(front.InternalLines[0].Valley);
+        Assert.Equal(0.4f, front.InternalLines[0].FoldStrength, 0.001f);
+        Call("delete_internal_line", $"{{\"pieceId\":\"{id}\",\"lineId\":\"press\"}}");
+        Assert.Empty(front.InternalLines);
+
+        Call("add_dart", $"{{\"pieceId\":\"{id}\",\"edge\":2,\"widthCm\":3,\"lengthCm\":12}}");
+        Assert.Equal(7, front.Points.Count);
+        Assert.Contains(session.Doc.Garments[0].Seams, s => s.A.PieceId == id && s.B.PieceId == id && !s.Folded);
+        // The side seam on edge 3 followed its edge to 6.
+        Assert.Contains(session.Doc.Garments[0].Seams, s => s.A.Matches(id, 6) || s.B.Matches(id, 6));
+
+        Call("add_pleats", $"{{\"pieceId\":\"{id}\",\"edge\":0,\"count\":3,\"depthCm\":2}}");
+        Assert.Equal(6, front.InternalLines.Count);
+        Assert.Equal(3, session.Doc.Garments[0].Seams.Count(s => s.Folded));
     }
 }

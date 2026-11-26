@@ -9,13 +9,13 @@ using Seamstress.Core.Simulation;
 
 namespace Seamstress.Mcp;
 
-public sealed class McpToolRegistry
+public sealed partial class McpToolRegistry
 {
     private readonly GarmentSession _session;
 
     public McpToolRegistry(GarmentSession session) => _session = session;
 
-    public JsonArray GetToolDefinitions() => new(
+    public JsonArray GetToolDefinitions() => WithFoldTools(new(
         Tool("new_project", "Start a fresh empty Seamstress project.", Props(("name", "string", "Optional project name."))),
         Tool("open_project", "Open an existing *.garment.json project file.", Props(("path", "string", "Path to .garment.json file.")), "path"),
         Tool("save_project", "Save the current project to a *.garment.json file (can be opened directly in the Seamstress desktop GUI).", Props(("path", "string", "Output .garment.json path.")), "path"),
@@ -394,7 +394,7 @@ public sealed class McpToolRegistry
             ("allGarments", "boolean", "Simulate all visible garments simultaneously instead of layer-by-layer (default false)."),
             ("selfCollision", "boolean", "Enable cloth self-collision during this pose step (default false)."),
             ("useGpu", "boolean", "Use CUDA GPU acceleration (default true).")), "targetObjPath")
-    );
+    ));
 
     public object Dispatch(string name, JsonElement args)
     {
@@ -446,6 +446,7 @@ public sealed class McpToolRegistry
             "inspect_metahuman_dna" => MetaHumanDnaLoader.Inspect(ReqString(args, "path")),
             "refit_garment_to_body" => RefitGarmentToBody(args),
             "step_pose" => StepPose(args),
+            _ when IsFoldTool(name) => DispatchFolds(name, args),
             _ => throw new ArgumentException($"Unknown tool '{name}'."),
         };
     }
