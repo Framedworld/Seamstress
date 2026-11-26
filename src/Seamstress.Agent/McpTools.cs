@@ -88,7 +88,12 @@ public sealed class McpToolRegistry
             ("bodyOffsetMm", "number", "Room in mm kept between this garment and the skin for what is worn under it."),
             ("particleDistance", "number", "Target mesh edge length in cm. Changing it re-meshes the garment and clears its drape."),
             ("thicknessMm", "number", "Garment-wide collision thickness in mm."),
-            ("visible", "boolean", "Show or hide the garment."))),
+            ("visible", "boolean", "Show or hide the garment."),
+            ("frozen", "boolean", "Freeze: it holds still, and the garments you simulate still collide with it."),
+            ("deactivated", "boolean", "Deactivate: leave it out of the simulation entirely (not simulated, not collided with; other cloth passes through it). It stays visible, drawn faded. False switches it back on."))),
+        Tool("set_quality", "Switch simulation quality for the whole project. Draft meshes every garment no finer than about 2 cm (hard parts keep their detail), so big outfits simulate several times faster while you build and arrange; Final uses each garment's own particle distance. Drapes, pins and creases are carried across to the other meshes through the 2D pattern. Refine to final before exporting or judging fine folds; creases carried from Draft are softer and may need setting again.", Props(
+            ("quality", "string", "draft or final."),
+            ("draftParticleDistance", "number", "Optional: the Draft mesh's particle distance in cm (default 2)."))),
         Tool("add_piece", "Draft a custom 2D pattern piece with counter-clockwise polygon points (cm, Y up), optional quadratic Bezier curve control points, optional holes, 3D placement (metres), fabric preset, and color.", new JsonObject
         {
             ["type"] = "object",
@@ -412,6 +417,7 @@ public sealed class McpToolRegistry
             "add_collar" => AddCollar(args),
             "create_garment" => CreateGarment(args),
             "set_garment" => SetGarment(args),
+            "set_quality" => SetQuality(args),
             "add_piece" => AddPiece(args),
             "add_rectangle_piece" => AddRectanglePiece(args),
             "add_patch" => AddPatch(args),
@@ -518,11 +524,14 @@ public sealed class McpToolRegistry
             cudaAvailable = _session.CudaAvailable,
             server = BuildInfo.Describe(GetToolDefinitions().Count),
             avatar = _session.ActiveAvatar?.Name,
+            quality = doc.Simulation.Quality.ToString().ToLowerInvariant(),
             garments = doc.Garments.Select(g => new
             {
                 id = g.Id,
                 name = g.Name,
                 visible = g.Visible,
+                frozen = g.Frozen,
+                deactivated = g.Deactivated,
                 particleDistance = g.ParticleDistance,
                 topology = g.Topology.ToString(),
                 thicknessMm = g.Thickness,
@@ -673,7 +682,42 @@ public sealed class McpToolRegistry
         }
         if (args.TryGetProperty("visible", out var visible) && visible.ValueKind is JsonValueKind.True or JsonValueKind.False)
             g.Visible = visible.GetBoolean();
-        return new { garmentId = g.Id, name = g.Name, layer = g.Layer, bodyOffsetMm = g.BodyOffset, particleDistance = g.ParticleDistance, thicknessMm = g.Thickness, visible = g.Visible };
+        if (args.TryGetProperty("frozen", out var frozen) && frozen.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            g.Frozen = frozen.GetBoolean();
+        if (args.TryGetProperty("deactivated", out var off) && off.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            g.Deactivated = off.GetBoolean();
+        return new
+        {
+            garmentId = g.Id, name = g.Name, layer = g.Layer, bodyOffsetMm = g.BodyOffset, particleDistance = g.ParticleDistance,
+            thicknessMm = g.Thickness, visible = g.Visible, frozen = g.Frozen, deactivated = g.Deactivated,
+        };
+    }
+
+    private object SetQuality(JsonElement args)
+    {
+        var quality = ReqString(args, "quality").Trim().ToLowerInvariant() switch
+        {
+            "draft" => SimulationQuality.Draft,
+            "final" => SimulationQuality.Final,
+            var other => throw new ArgumentException($"quality must be 'draft' or 'final', not '{other}'."),
+        };
+        var draftChange = TryOptFloat(args, "draftParticleDistance") is { } draft
+            ? _session.Workspace.SetDraftParticleDistance(draft) : default;
+        var change = _session.Workspace.SetQuality(quality);
+        var doc = _session.Doc;
+        return new
+        {
+            quality = doc.Simulation.Quality.ToString().ToLowerInvariant(),
+            draftParticleDistance = doc.Simulation.DraftParticleDistance,
+            remeshedPieces = Math.Max(change.Pieces, draftChange.Pieces),
+            drapesCarried = Math.Max(change.Draped, draftChange.Draped),
+            pinsCarried = Math.Max(change.Pinned, draftChange.Pinned),
+            creasesCarried = Math.Max(change.Creased, draftChange.Creased),
+            particles = doc.Garments.Where(g => g.Pieces.Count > 0).Sum(g => _session.Workspace.MeshFor(g).VertexCount),
+            note = change.Creased > 0 && quality == SimulationQuality.Final
+                ? "Creases were carried over from the coarser Draft mesh and are softer; set them again (set_creases) where fine folds matter."
+                : null,
+        };
     }
 
     private Garment ResolveGarment(string? garmentId)

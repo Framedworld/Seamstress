@@ -117,6 +117,9 @@ public sealed partial class ClothSolver : IDisposable
     public static ClothSolver Create(IReadOnlyList<GarmentMesh> simulated, IReadOnlyList<GarmentMesh> obstacles,
         SdfGrid? collider, SimulationSettings settings)
     {
+        // Deactivated garments are left out entirely: not simulated, not collided with, not even registered.
+        simulated = simulated.Where(g => !g.Garment.Deactivated).ToList();
+        obstacles = obstacles.Where(g => !g.Garment.Deactivated).ToList();
         var pieces = new List<ClothPiece>();
         int count = 0;
         var offsets = new Dictionary<PieceMesh, int>();
@@ -177,8 +180,11 @@ public sealed partial class ClothSolver : IDisposable
         solver._simulatedParticleCount = simulatedCount;
         foreach (var cp in pieces)
         {
-            if (cp.Simulated)
-                solver._fineMeshSubsteps = Math.Max(solver._fineMeshSubsteps, SubstepsForMesh(cp.Source.EffectiveParticleDistance(cp.Piece)));
+            // Hard parts (pinned in every vertex) never bend or stretch, so however fine their mesh, they need no extra
+            // substeps; the cloth around them decides.
+            if (cp.Simulated && !Editing.Attachments.IsHardPart(cp.Piece, cp.Mesh))
+                solver._fineMeshSubsteps = Math.Max(solver._fineMeshSubsteps,
+                    SubstepsForMesh(cp.Source.EffectiveParticleDistance(cp.Piece, settings.CoarsestParticleDistance)));
         }
         // For every piece: boundary edge -> the vertex opposite it, used to resist folding across seams.
         var rims = new Dictionary<PieceMesh, Dictionary<long, int>>();

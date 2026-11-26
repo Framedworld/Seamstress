@@ -48,6 +48,11 @@ public static class GarmentFile
             w.WriteNumber("timeScale", doc.Simulation.TimeScale);
             w.WriteBoolean("selfCollision", doc.Simulation.SelfCollision);
             w.WriteBoolean("groundPlane", doc.Simulation.GroundPlane);
+            // Drapes, pins and creases are stored for the meshes of the quality the project was saved at.
+            if (doc.Simulation.Quality == SimulationQuality.Draft)
+                w.WriteString("quality", "draft");
+            if (doc.Simulation.DraftParticleDistance != SimulationSettings.DefaultDraftParticleDistance)
+                w.WriteNumber("draftParticleDistance", doc.Simulation.DraftParticleDistance);
             w.WriteEndObject();
 
             w.WriteStartObject("avatar");
@@ -117,6 +122,8 @@ public static class GarmentFile
                 w.WriteBoolean("simulateWithOthers", g.SimulateWithOthers);
                 if (g.Frozen)
                     w.WriteBoolean("frozen", true);
+                if (g.Deactivated)
+                    w.WriteBoolean("deactivated", true);
                 w.WriteNumber("particleDistance", g.ParticleDistance);
                 if (g.Thickness is { } thickness)
                     w.WriteNumber("thickness", thickness);
@@ -327,6 +334,9 @@ public static class GarmentFile
             doc.Simulation.TimeScale = Num(sim, "timeScale", doc.Simulation.TimeScale);
             doc.Simulation.SelfCollision = Bool(sim, "selfCollision", doc.Simulation.SelfCollision);
             doc.Simulation.GroundPlane = Bool(sim, "groundPlane", doc.Simulation.GroundPlane);
+            doc.Simulation.Quality = string.Equals(Str(sim, "quality"), "draft", StringComparison.OrdinalIgnoreCase)
+                ? SimulationQuality.Draft : SimulationQuality.Final;
+            doc.Simulation.DraftParticleDistance = Math.Clamp(Num(sim, "draftParticleDistance", SimulationSettings.DefaultDraftParticleDistance), 0.3f, 20f);
         }
         if (root.TryGetProperty("avatar", out var avatar) && avatar.ValueKind == JsonValueKind.Object)
         {
@@ -384,6 +394,7 @@ public static class GarmentFile
             garment.Visible = Bool(g, "visible", true);
             garment.SimulateWithOthers = Bool(g, "simulateWithOthers", false);
             garment.Frozen = Bool(g, "frozen", false);
+            garment.Deactivated = Bool(g, "deactivated", false);
             garment.ParticleDistance = Math.Clamp(Num(g, "particleDistance", garment.ParticleDistance), 0.3f, 20f);
             if (g.TryGetProperty("thickness", out var thickness) && thickness.ValueKind == JsonValueKind.Number)
                 garment.Thickness = Math.Clamp(thickness.GetSingle(), 1f, 50f);

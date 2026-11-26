@@ -9,7 +9,7 @@ namespace Seamstress.Core.Editing;
 /// The open project together with everything the UI needs around it: selection, undo history, the current file and a
 /// cache of generated meshes. Every change to the document goes through here so it is undoable.
 /// </summary>
-public sealed class Workspace
+public sealed partial class Workspace
 {
     private readonly Dictionary<string, (string Key, GarmentMesh Mesh)> _meshes = new();
 
@@ -55,23 +55,47 @@ public sealed class Workspace
 
     // ---------------------------------------------------------------- meshes
 
-    /// <summary>Simulation mesh of a garment, rebuilt only when its outlines, seams or particle distances change.</summary>
+    /// <summary>Simulation mesh of a garment, rebuilt only when its outlines, seams, particle distances or the quality change.</summary>
     public GarmentMesh MeshFor(Garment garment)
     {
+        var mesh = CachedMesh(garment, Document.Simulation.CoarsestParticleDistance, out bool built);
+        if (built)
+            PrunePins(garment, mesh);
+        return mesh;
+    }
+
+    /// <summary>
+    /// The mesh of a garment at Final quality (<paramref name="coarsest"/> null) or at Draft, from the cache when its
+    /// fingerprint still matches. Draft and Final are cached apart, so switching back and forth does not mesh again.
+    /// </summary>
+    private GarmentMesh CachedMesh(Garment garment, float? coarsest, out bool built)
+    {
+        string slot = garment.Id;
         string key = MeshKey(garment);
-        if (_meshes.TryGetValue(garment.Id, out var cached) && cached.Key == key)
+        IReadOnlySet<string>? hardParts = null;
+        if (coarsest is { } draft)
+        {
+            // Hard parts (snaps, tools) are pinned stiff and cost the solver nothing, so Draft keeps them at their own
+            // detail. They are told apart on the Final mesh, which they share with Draft.
+            var fine = CachedMesh(garment, null, out _);
+            hardParts = garment.Pieces.Where(p => Attachments.IsHardPart(p, fine.Find(p.Id))).Select(p => p.Id).ToHashSet();
+            slot = $"{garment.Id}@{draft}";
+            key = $"{key}@{draft}:{string.Join(",", hardParts.Order())}";
+        }
+        built = false;
+        if (_meshes.TryGetValue(slot, out var cached) && cached.Key == key)
         {
             if (!ReferenceEquals(cached.Mesh.Garment, garment))
             {
                 // Undo/redo swaps in a different Garment instance with identical geometry; keep the mesh, update the owner.
                 cached = (key, new GarmentMesh { Garment = garment, Pieces = cached.Mesh.Pieces, Stitches = cached.Mesh.Stitches });
-                _meshes[garment.Id] = cached;
+                _meshes[slot] = cached;
             }
             return cached.Mesh;
         }
-        var mesh = Mesher.Build(garment);
-        _meshes[garment.Id] = (key, mesh);
-        PrunePins(garment, mesh);
+        var mesh = Mesher.Build(garment, coarsest, hardParts);
+        _meshes[slot] = (key, mesh);
+        built = true;
         return mesh;
     }
 
@@ -1331,7 +1355,7 @@ public sealed class Workspace
 
             if (oldMesh == null || oldPositions == null)
                 return;
-            var mesh = Mesher.Build(garment);
+            var mesh = MeshFor(garment);
             var normals = Mesher.ComputeNormals(oldPositions, oldMesh.Triangles);
             var sampler = new SurfaceSampler(oldMesh, oldPositions, normals);
             void Drape(PatternPiece piece, Vector2 shift, float behind)
@@ -1432,7 +1456,7 @@ public sealed class Workspace
     /// <summary>Part of an edge as it was before Inset Band: the edge now starting at <see cref="Start"/>, covering fractions F0 to F1 of the old one.</summary>
     private sealed record EdgePart(PatternPiece Piece, PatternPoint Start, float F0, float F1);
 
-    private static void CutBands(Document doc, Garment garment, Dictionary<string, List<int>> chosen, float width,
+    private void CutBands(Document doc, Garment garment, Dictionary<string, List<int>> chosen, float width,
         Dictionary<string, (PieceMesh Mesh, Vector3[] Positions)> before, List<PatternPiece> created)
     {
         // Every edge as it is now, so seams can be followed to wherever their edges go.
@@ -1522,7 +1546,7 @@ public sealed class Workspace
         // Drape every piece whose mesh changed as it was: a band like the piece it was cut from.
         if (before.Count == 0)
             return;
-        var mesh = Mesher.Build(garment);
+        var mesh = MeshFor(garment);
         var samplers = new Dictionary<string, SurfaceSampler>();
         foreach (var piece in garment.Pieces)
         {
@@ -2542,6 +2566,20 @@ public sealed class Workspace
         {
             if (doc.FindGarment(garmentId) is { } garment)
                 garment.Frozen = value;
+        });
+    }
+
+    /// <summary>
+    /// Deactivates a garment (it is left out of the simulation and other cloth passes through it) or switches it back on.
+    /// </summary>
+    public void SetDeactivated(string garmentId, bool value)
+    {
+        if (Document.FindGarment(garmentId) is not { } current || current.Deactivated == value)
+            return;
+        History.Execute(value ? Lang.T("Deactivate garment") : Lang.T("Activate garment"), doc =>
+        {
+            if (doc.FindGarment(garmentId) is { } garment)
+                garment.Deactivated = value;
         });
     }
 

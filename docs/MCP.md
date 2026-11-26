@@ -59,12 +59,12 @@ step named `Agent: <tool>`.
 |---|---|
 | Project | `new_project`, `open_project`, `save_project`, `get_project_summary`, `export_garment` (.glb .gltf .obj .fbx .svg), `live_link` (work in the open window or headless) |
 | Body | `load_avatar`, `get_avatar_landmarks`, `list_body_profiles`, `save_body_profile`, `load_body_profile`, `step_pose`, `refit_garment_to_body`, `inspect_metahuman_dna` |
-| Garments | `create_garment`, `set_garment` (name, layer, body offset, mesh density, thickness, visibility), `add_template_garment` (fitted tee, trousers, jacket and hoodie cut to the body; trousers take `outseamBackCm` and `hemGirthCm`) |
+| Garments | `create_garment`, `set_garment` (name, layer, body offset, mesh density, thickness, visibility, `frozen`, `deactivated`), `add_template_garment` (fitted tee, trousers, jacket and hoodie cut to the body; trousers take `outseamBackCm` and `hemGirthCm`) |
 | Pieces | `add_piece`, `add_rectangle_piece`, `mirror_piece`, `cut_piece`, `inset_band`, `delete_piece`, `arrange_piece_3d`, `layout_pattern`, `import_mesh_as_pattern` |
 | Sewing | `sew_edges`, `sew_named`, `auto_sew`, `sew_surface_stitch`, `reverse_seam`, `delete_seam` |
 | Blocks | `add_patch` (patch, pocket, flap; on a piece or centred on a seam), `add_tube` (sleeve, cuff, leg), `add_collar` (stand, gathered cowl, or with `rollCm` a padded roll such as a pushed-down hood), `add_hood`, `add_hardware` (snap, button, rivet, bar, buckle, pen, handle, wrench, custom) |
 | Fabric and look | `set_fabric`, `set_material`, `pin_piece`, `set_creases` |
-| Simulation | `simulate`, `pull_cloth`, `reset_drape`, `inspect_fit`, `locate_on_piece` |
+| Simulation | `simulate`, `set_quality` (draft or final), `pull_cloth`, `reset_drape`, `inspect_fit`, `locate_on_piece` |
 | Looking | `render_preview` (shaded and textured PNG from any angle, framed on the figure, a point or one piece; 2D pattern SVG) |
 
 Edges can be given by number or by name everywhere. A back piece is turned round, so its own pattern x runs the other
@@ -84,6 +84,14 @@ way (pattern x = -body x) when you refer to points on it, for example in `add_pa
   so canvas keeps its folds the way worn canvas does. `pull_cloth` with `creasePercent` does both. Saved with the
   project; `set_creases` with `clear` forgets them. In the app: the Pinch tool (G) drags cloth during a live
   simulation, its Grab slider sets how much it takes hold of, and Set Creases (K) keeps the result.
+- **A big outfit simulates slowly.** Two things make it cheaper, as in Marvelous Designer. `set_garment` with
+  `deactivated: true` leaves a garment out of the simulation entirely: not simulated, not collided with, so other cloth
+  passes through it (it stays visible, drawn faded; `frozen: true` instead holds it still but keeps it there to collide
+  with). `set_quality` with `quality: "draft"` meshes every garment no finer than about 2 cm (`draftParticleDistance`
+  changes it; hard parts keep their detail); `"final"` refines back to each garment's own particle distance. Switching
+  carries drapes and pins across through the 2D pattern, and the reply counts what was carried. Creases come back
+  softer from Draft (`note` says so): `set_creases` again where fine folds matter. Refine to final before
+  `export_garment`. `get_project_summary` reports `quality` and each garment's `frozen` and `deactivated`.
 - **A texture looks huge or tiny.** Use `tileCm`. `repeat` counts repeats across the garment's whole 2D layout, so the
   same number looks different on every garment. The colour multiplies the texture: leave it out to see the texture as
   it is.

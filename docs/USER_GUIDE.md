@@ -156,7 +156,8 @@ maps what you already know to where it lives here.
 | Fabric physical property presets | **Fabric Physics ▸ Preset** |
 | Fabric (texture, colour) | **Material** section |
 | UV Editor | **Pattern / UV Layout** toggle (**U**) |
-| Freeze / deactivate a garment | Not needed: only the *active* garment is simulated. Everything else holds still unless you link it |
+| Freeze / deactivate a garment | **❄** (Freeze: holds still, still collided with) and **⊘** (Deactivate: left out of the simulation, other cloth passes through) on the garment's row in Layers |
+| Particle distance 20 mm while building, then refine | **Draft \| Final** switch beside Simulate; **Refine to Final** keeps the drape and pins |
 | Layers (which garment is on top) | Order of simulation: simulate the inner garment first, then the outer one |
 | Avatar | **Avatar** menu: built-in mannequin, MakeHuman base mesh, or your own OBJ |
 | Export OBJ / FBX / glTF | **File ▸ Export** |
@@ -673,6 +674,36 @@ simulated collides with it even when **Cloth-to-cloth collision** is off. Freeze
 build the jacket on top of them: the jacket drapes over the frozen layers without moving them, and quickly,
 because only the jacket's cloth is moving. Frozen is saved with the project and is one undo step.
 
+Click the **⊘** button next to ❄ (or tick **Deactivated** in the Simulation properties) to **deactivate** a
+garment: it is left out of the simulation entirely. It is not simulated, nothing collides with it, and other cloth
+passes straight through it, as if it were not there. It is still shown, drawn faded, so you can see where it is.
+Deactivate is the counterpart of Freeze: a frozen garment holds still but is still there to collide with, a
+deactivated one is not there at all. Use it to put aside the parts of a big outfit you are not working on (the
+holster, the tools, a hood) so they cost the simulation nothing; trim sewn onto a deactivated garment stays with
+it. Deactivated is saved with the project and is one undo step; click ⊘ again to switch it back on.
+
+### Draft and Final quality
+
+Big outfits simulate faster on a coarser mesh. The **Draft | Final** switch beside the Simulate button (also
+**Simulation ▸ Draft Quality**) chooses how finely every garment is meshed:
+
+- **Draft** meshes every garment no finer than the **Draft distance** (2 cm unless you change it in the
+  Simulation properties), like Marvelous Designer's 20 mm working mesh. Garments that are already coarser keep
+  their own mesh, and hardware (snaps, tools, buckles) keeps its detail. Build, arrange and drape at Draft.
+- **Final** uses each garment's own particle distance. At Draft the second half of the switch reads **Refine to
+  Final**: click it when the outfit is done, then simulate a little more to bring the fine folds back.
+
+Switching carries the current shape across. Every vertex of the new mesh finds its place in the 2D pattern, which
+lies in a triangle of the old mesh, and takes the 3D position there, so the drape is kept. Pins go to the nearest
+points of the new mesh (a pinned area stays pinned, and no pin is lost). Creases are carried the same way, but a
+coarse mesh cannot hold fine folds: after refining from Draft, set creases again where they matter. The status bar
+says so. Each switch is one undo step, and the quality is saved with the project. Export at Final: at Draft the
+exported mesh is the coarse one.
+
+On Gus, the jacket with its trim simulates with 14,000 particles at Draft instead of 62,000, at 35 to 42 frames
+per second instead of 11 to 22. A coarse mesh lets inner layers poke through between its particles more easily,
+so judge layering and fine folds at Final.
+
 ### Layering garments
 
 ![A shirt simulated over a skirt](images/layering.png)
@@ -697,6 +728,8 @@ At the bottom of the Properties panel, under **Simulation**:
 | Setting | Meaning |
 | --- | --- |
 | **Also simulate with other garments** | The same as the ⇄ button in Layers. |
+| **Frozen** / **Deactivated** | The same as the ❄ and ⊘ buttons in Layers. |
+| **Draft distance** | How coarse Draft quality meshes garments. Changing it at Draft meshes them again, keeping their shape. |
 | **Gravity** | Downward acceleration in m/s². |
 | **Substeps** | Solver steps per frame. More is stiffer and more accurate, and slower. |
 | **Speed** | Slow motion or fast forward. |

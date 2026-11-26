@@ -45,7 +45,10 @@ public sealed class SimulationController : IDisposable
     {
         var doc = _workspace.Document;
         var active = _workspace.ActiveGarment;
-        bool Movable(Garment g) => g.Visible && !g.Frozen && g.Pieces.Count > 0;
+        // Trim sewn onto a deactivated garment stays with it, as it comes along with a simulated one.
+        var deactivatedPieces = doc.Garments.Where(g => g.Deactivated).SelectMany(g => g.Pieces).Select(p => p.Id).ToHashSet();
+        bool Movable(Garment g) => g.Visible && !g.Frozen && !g.Deactivated && g.Pieces.Count > 0
+            && !g.SurfaceStitches.Any(s => deactivatedPieces.Contains(s.TargetPieceId));
         var simulated = doc.Garments.Where(g => Movable(g) && (all || g == active || g.SimulateWithOthers)).ToList();
         // What is sewn onto a simulated garment comes with it, as a pocket comes with the jacket it is sewn to (and a
         // flap with its pocket): left behind as an obstacle, trim stayed where it was while the garment moved away.
@@ -77,9 +80,12 @@ public sealed class SimulationController : IDisposable
         var doc = _workspace.Document;
         var simulated = GarmentsToSimulate(allGarments);
         if (simulated.Count == 0)
-            return _workspace.ActiveGarment is { Frozen: true } frozen
-                ? Lang.F("“{0}” is frozen. Unfreeze it in the layers panel to simulate it.", frozen.Name)
-                : Lang.T("There is no visible garment to simulate. Add a garment or select one in the layers panel.");
+            return _workspace.ActiveGarment switch
+            {
+                { Deactivated: true } off => Lang.F("“{0}” is deactivated. Switch it back on in the layers panel to simulate it.", off.Name),
+                { Frozen: true } frozen => Lang.F("“{0}” is frozen. Unfreeze it in the layers panel to simulate it.", frozen.Name),
+                _ => Lang.T("There is no visible garment to simulate. Add a garment or select one in the layers panel."),
+            };
 
         _stopping = true; // Begin raises BeforeChange; this run has not started yet
         _workspace.History.Begin(undoName ?? (simulated.Count == 1 ? Lang.F("Simulate {0}", simulated[0].Name) : Lang.T("Simulate garments")));
@@ -88,7 +94,7 @@ public sealed class SimulationController : IDisposable
         // Hard parts are lined up with the cloth they sit on, so they can be carried along as it moves.
         Seamstress.Core.Editing.Attachments.Prepare(doc, _workspace.MeshFor);
         var active = simulated.Select(g => _workspace.MeshFor(g)).ToList();
-        var obstacles = doc.Garments.Where(g => g.Visible && !simulated.Contains(g)).Select(g => _workspace.MeshFor(g)).ToList();
+        var obstacles = doc.Garments.Where(g => g.Visible && !g.Deactivated && !simulated.Contains(g)).Select(g => _workspace.MeshFor(g)).ToList();
         var solver = ClothSolver.Create(active, obstacles, _avatar()?.Sdf, settings ?? doc.Simulation.Clone());
         AppLog.Write($"Simulating {solver.ParticleCount} particles on {solver.BackendName}.");
         _garments.Clear();
