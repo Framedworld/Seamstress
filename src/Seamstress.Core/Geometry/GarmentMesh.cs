@@ -20,6 +20,12 @@ public sealed class PieceMesh
     public required int BoundaryCount { get; init; }
 
     /// <summary>
+    /// For each of the piece's internal lines, the vertices along it in order (empty when no part of the line is on
+    /// the cloth). Neighbouring vertices of a chain are always joined by a mesh edge.
+    /// </summary>
+    public int[][] LineChains { get; init; } = Array.Empty<int[]>();
+
+    /// <summary>
     /// Faces as they are shown and exported: quads and triangles when the garment uses quad topology, otherwise null
     /// (the faces are simply <see cref="Triangles"/>). Each quad is two triangles of the simulation mesh, so
     /// both describe exactly the same surface.
@@ -80,8 +86,8 @@ public sealed class SurfaceShell
     public required int[] Triangles { get; init; }
 }
 
-/// <summary>A pair of mesh vertices joined by a seam.</summary>
-public readonly record struct Stitch(int PieceA, int VertexA, int PieceB, int VertexB);
+/// <summary>A pair of mesh vertices joined by a seam; <see cref="Folded"/> when the seam sews them face to face.</summary>
+public readonly record struct Stitch(int PieceA, int VertexA, int PieceB, int VertexB, bool Folded = false);
 
 /// <summary>Meshes of every piece in a garment plus the vertex pairs its seams join.</summary>
 public sealed class GarmentMesh
@@ -178,7 +184,7 @@ public static class Mesher
                 int vb = seam.Reversed ? chainB[k] : chainB[chainB.Length - 1 - k];
                 if (pa == pb && va == vb)
                     continue;
-                stitches.Add(new Stitch(pa, va, pb, vb));
+                stitches.Add(new Stitch(pa, va, pb, vb, seam.Folded));
             }
         }
 
@@ -244,6 +250,10 @@ public static class Mesher
             max = Vector2.Max(max, p);
         }
         var points = new List<Vector2>(boundary);
+        // Internal lines get their vertices next, so the lattice can keep clear of them like it does of the outline.
+        var lineChains = piece.InternalLines.Count == 0 ? Array.Empty<int[]>()
+            : InternalLineMesher.AddLineVertices(piece, points, boundaryCount, outer, holes, h);
+        var linePolylines = lineChains.Length == 0 ? new List<List<Vector2>>() : InternalLineMesher.Polylines(piece);
         var centre = (min + max) / 2;
         float rowHeight = quads ? h : h * 0.8660254f;
         int rows = (int)MathF.Ceiling((max.Y - min.Y) / rowHeight / 2) + 1;
@@ -263,6 +273,8 @@ public static class Mesher
                     if (!OnCloth(outer, holes, p))
                         continue;
                     if (Outline.DistanceToPolyline(p, outer, true) < clearance || holes.Any(hole => Outline.DistanceToPolyline(p, hole, true) < clearance))
+                        continue;
+                    if (linePolylines.Count > 0 && InternalLineMesher.Near(p, linePolylines, clearance))
                         continue;
                     points.Add(p);
                 }
@@ -302,6 +314,8 @@ public static class Mesher
         }
 
         var raw = Delaunay.Triangulate(xs, ys);
+        if (lineChains.Length > 0)
+            raw = InternalLineMesher.Recover(xs, ys, raw, InternalLineMesher.ChainEdges(lineChains));
         var displaced = new Vector2[boundaryCount];
         for (int i = 0; i < boundaryCount; i++)
             displaced[i] = new Vector2((float)xs[i], (float)ys[i]);
@@ -332,6 +346,7 @@ public static class Mesher
             Triangles = triangles.ToArray(),
             EdgeChains = chains,
             BoundaryCount = boundaryCount,
+            LineChains = lineChains,
             Polygons = quads ? PairIntoQuads(pointArray, triangles) : null,
             Key = Fingerprint(pointArray, triangles.Count),
         };

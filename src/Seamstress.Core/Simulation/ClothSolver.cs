@@ -196,6 +196,8 @@ public sealed partial class ClothSolver : IDisposable
             int off = cloth.Offset;
 
             var positions = Mesher.CurrentPositions(cloth.Piece, mesh);
+            if (cloth.Simulated)
+                FoldLines.PreShape(cloth.Source, cloth.Piece, mesh, positions);
             var area = new float[mesh.VertexCount];
             for (int t = 0; t < mesh.Triangles.Length; t += 3)
             {
@@ -252,6 +254,7 @@ public sealed partial class ClothSolver : IDisposable
             float[]? crease = cloth.Piece.HasCreasesFor(mesh.Key, mesh.VertexCount) ? cloth.Piece.Crease : null;
             float creaseMix = Math.Clamp(cloth.Piece.CreaseStrength, 0f, 1f);
             var rim = rims[mesh] = new Dictionary<long, int>(Geometry.EdgeKey.Comparer);
+            var folds = FoldLines.Edges(cloth.Piece, mesh);
             foreach (var (key, opposite) in edges)
             {
                 if (opposite.D < 0)
@@ -284,10 +287,18 @@ public sealed partial class ClothSolver : IDisposable
                         float folded = new Vector3(crease[d3] - crease[c3], crease[d3 + 1] - crease[c3 + 1], crease[d3 + 2] - crease[c3 + 2]).Length();
                         across += (folded - across) * creaseMix;
                     }
+                    float bendCompliance = 1f / bendStiffness;
+                    if (folds.Count > 0 && folds.TryGetValue(key, out var fold))
+                    {
+                        // Along a fold line the spring rests at the folded distance (see FoldLines).
+                        Vector2 Shrunk(int v) => new(mesh.Points[v].X * shrinkX, mesh.Points[v].Y * shrinkY);
+                        across = FoldLines.FoldedDistance(Shrunk(a), Shrunk(b), Shrunk(opposite.C), Shrunk(opposite.D), fold.Angle) * 0.01f;
+                        bendCompliance = 1f / FoldLines.Stiffness(bendStiffness, fold.Strength);
+                    }
                     ca.Add(off + opposite.C);
                     cb.Add(off + opposite.D);
                     rest.Add(across);
-                    compliance.Add(1f / bendStiffness);
+                    compliance.Add(bendCompliance);
                 }
             }
         }
@@ -318,7 +329,7 @@ public sealed partial class ClothSolver : IDisposable
                 // A seam is a hinge unless something resists folding across it. Tie the vertices facing each other
                 // over the seam together at the distance they would have if both pieces lay flat, just like the
                 // bend constraints inside a piece.
-                if (k + 1 >= g.Stitches.Count)
+                if (k + 1 >= g.Stitches.Count || stitch.Folded)
                     continue;
                 var next = g.Stitches[k + 1];
                 if (next.PieceA != stitch.PieceA || next.PieceB != stitch.PieceB
