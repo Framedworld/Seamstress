@@ -180,8 +180,9 @@ public sealed partial class ClothSolver : IDisposable
         solver._simulatedParticleCount = simulatedCount;
         foreach (var cp in pieces)
         {
-            // At Draft the meshes are no finer than the draft distance, except hard parts, which are pinned stiff anyway.
-            if (cp.Simulated && (settings.CoarsestParticleDistance == null || !Editing.Attachments.IsHardPart(cp.Piece, cp.Mesh)))
+            // Hard parts (pinned in every vertex) never bend or stretch, so however fine their mesh, they need no extra
+            // substeps; the cloth around them decides.
+            if (cp.Simulated && !Editing.Attachments.IsHardPart(cp.Piece, cp.Mesh))
                 solver._fineMeshSubsteps = Math.Max(solver._fineMeshSubsteps,
                     SubstepsForMesh(cp.Source.EffectiveParticleDistance(cp.Piece, settings.CoarsestParticleDistance)));
         }

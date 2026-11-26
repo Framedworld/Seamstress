@@ -223,6 +223,34 @@ public class DeactivateAndQualityTests
     }
 
     [Fact]
+    public void FinelyMeshedHardPartsNeedNoExtraSubsteps()
+    {
+        // A snap at 0.6 cm on cloth at 2 cm: pinned in every vertex, it must not make the cloth take 58 substeps.
+        var garment = new Garment { Name = "Patch", ParticleDistance = 2f };
+        var snap = Sheet("Snap", 3, 3);
+        snap.ParticleDistance = 0.6f;
+        garment.Pieces.Add(Sheet("Cloth", 20, 20));
+        garment.Pieces.Add(snap);
+        var mesh = Mesher.Build(garment);
+        var snapMesh = mesh.Find(snap.Id)!;
+        ClothAcceleration.Enabled = false;
+        try
+        {
+            var settings = new SimulationSettings { Substeps = 12 };
+            using (var solver = ClothSolver.Create(new[] { mesh }, Array.Empty<GarmentMesh>(), null, settings))
+                Assert.True(solver.EffectiveSubsteps > 12, "a loose fine piece is cloth and needs its substeps");
+            snap.Pins = Enumerable.Range(0, snapMesh.VertexCount).ToHashSet();
+            snap.PinKey = snapMesh.Key;
+            using (var solver = ClothSolver.Create(new[] { mesh }, Array.Empty<GarmentMesh>(), null, settings))
+                Assert.Equal(12, solver.EffectiveSubsteps);
+        }
+        finally
+        {
+            ClothAcceleration.Enabled = true;
+        }
+    }
+
+    [Fact]
     public void DraftNeedsNoExtraSubstepsForFineMeshes()
     {
         var garment = new Garment { Name = "Fine", ParticleDistance = 0.85f };
