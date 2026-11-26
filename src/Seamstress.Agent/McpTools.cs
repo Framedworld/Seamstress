@@ -343,6 +343,9 @@ public sealed partial class McpToolRegistry
             ("pieceIds", "string", "Optional comma-separated piece IDs to ease (default: every visible piece)."),
             ("includeElastic", "boolean", "Also ease pieces with elastic across below 1 (default false)."),
             ("apply", "boolean", "Change the pattern (default false: only report)."))),
+        CritiqueTools.CritiqueDefinition(),
+        CritiqueTools.CompareDefinition(),
+        CritiqueTools.TuckDefinition(),
         Tool("render_preview", "Render a shaded, textured PNG of the draped outfit without the desktop app (and/or a 2D pattern SVG). Any camera: named views side by side, or yaw/pitch; frame the whole figure, a point, or one piece for a close look.", new JsonObject
         {
             ["type"] = "object",
@@ -462,6 +465,9 @@ public sealed partial class McpToolRegistry
             "fit_map" => FitMapReport.Build(_session.Doc, _session.Workspace.MeshFor, _session.ActiveAvatar,
                 FitMaps.Parse(OptString(args, "map")), OptString(args, "garmentId"), Math.Clamp(OptInt(args, "worst", 5), 1, 50)),
             "render_preview" => RenderPreview(args),
+            "critique_outfit" => CritiqueTools.Critique(_session, args),
+            "compare_to_reference" => CritiqueTools.CompareToReference(_session, args),
+            "tuck_layers" => CritiqueTools.TuckLayers(_session, args),
             "export_garment" => ExportGarment(args),
             "import_mesh_as_pattern" => ImportMeshAsPattern(args),
             "list_body_profiles" => ListBodyProfiles(),
