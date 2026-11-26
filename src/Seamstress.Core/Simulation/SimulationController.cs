@@ -34,6 +34,12 @@ public sealed class SimulationController : IDisposable
     public double StepMilliseconds => _runner?.StepMilliseconds ?? 0;
     public long Frame => _runner?.Frame ?? 0;
 
+    /// <summary>The fastest cloth of the last frame (m/s) and the widest seam still open (m).</summary>
+    public float PeakSpeed => _runner?.Solver.PeakSpeed ?? 0;
+    public float SeamGap => _runner?.Solver.SeamGap ?? 0;
+    public string BackendName => _runner?.Solver.BackendName ?? "";
+    public int EffectiveSubsteps => _runner?.Solver.EffectiveSubsteps ?? 0;
+
     /// <summary>The garments a run started now would simulate.</summary>
     public List<Garment> GarmentsToSimulate(bool all)
     {
@@ -63,7 +69,8 @@ public sealed class SimulationController : IDisposable
 
     /// <summary>Starts simulating. Returns a message when there is nothing to simulate.</summary>
     /// <param name="undoName">Name of the undo step for this run; null names it after the garments.</param>
-    public string? Start(bool allGarments, string? undoName = null)
+    /// <param name="settings">Settings for this run only (an agent's own substeps or self-collision); null uses the project's.</param>
+    public string? Start(bool allGarments, string? undoName = null, SimulationSettings? settings = null)
     {
         if (IsRunning)
             return null;
@@ -82,7 +89,7 @@ public sealed class SimulationController : IDisposable
         Seamstress.Core.Editing.Attachments.Prepare(doc, _workspace.MeshFor);
         var active = simulated.Select(g => _workspace.MeshFor(g)).ToList();
         var obstacles = doc.Garments.Where(g => g.Visible && !simulated.Contains(g)).Select(g => _workspace.MeshFor(g)).ToList();
-        var solver = ClothSolver.Create(active, obstacles, _avatar()?.Sdf, doc.Simulation.Clone());
+        var solver = ClothSolver.Create(active, obstacles, _avatar()?.Sdf, settings ?? doc.Simulation.Clone());
         AppLog.Write($"Simulating {solver.ParticleCount} particles on {solver.BackendName}.");
         _garments.Clear();
         foreach (var g in simulated)

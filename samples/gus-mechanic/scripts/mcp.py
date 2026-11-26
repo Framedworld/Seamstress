@@ -14,8 +14,10 @@ DEFAULT_EXE = os.environ.get("SEAMSTRESS_MCP") or str(ROOT / "src/Seamstress.Mcp
 
 
 class Mcp:
-    def __init__(self, exe=DEFAULT_EXE, log=None):
-        env = {**os.environ, "DOTNET_ROOT": os.environ.get("DOTNET_ROOT", str(pathlib.Path.home() / ".dotnet"))}
+    def __init__(self, exe=DEFAULT_EXE, log=None, live=False):
+        # A script builds its own project unless asked to work in the open Seamstress window (live=True).
+        env = {**os.environ, "DOTNET_ROOT": os.environ.get("DOTNET_ROOT", str(pathlib.Path.home() / ".dotnet")),
+               "SEAMSTRESS_LIVE": "1" if live else "0"}
         self.log = open(log, "w", encoding="utf-8") if log else subprocess.DEVNULL
         self.p = subprocess.Popen([exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log,
                                   env=env, text=True, encoding="utf-8", bufsize=1)

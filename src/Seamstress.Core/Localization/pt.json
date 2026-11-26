@@ -791,5 +791,8 @@
   "Pull & Freeze": "Puxar e congelar",
   "Let go and the cloth keeps simulating, settling from where you dropped it. Press Space to stop.": "Ao soltar, o tecido continua a ser simulado e assenta a partir de onde o largou. Prima Espaço para parar.",
   "Let go and the cloth stays where you dropped it: the simulation stops and the pulled folds are kept as creases.": "Ao soltar, o tecido fica onde o largou: a simulação para e as dobras puxadas ficam como vincos.",
-  "Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.": "Largado: o tecido continua a ser simulado e assenta. Volte a agarrá-lo ou prima Espaço para parar."
+  "Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.": "Largado: o tecido continua a ser simulado e assenta. Volte a agarrá-lo ou prima Espaço para parar.",
+  "Agent: {0}": "Agente: {0}",
+  "Simulate (agent)": "Simular (agente)",
+  "simulating": "a simular"
 }

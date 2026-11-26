@@ -452,8 +452,7 @@ public sealed class McpToolRegistry
 
     private object NewProject(JsonElement args)
     {
-        _session.Workspace.New();
-        _session.ResetMannequinAvatar();
+        _session.NewProject();
         if (OptString(args, "name") is { Length: > 0 } n)
             _session.Doc.Name = n;
         return new { ok = true, name = _session.Doc.Name, computeBackend = _session.ComputeBackend };

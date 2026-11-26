@@ -791,5 +791,8 @@
   "Pull & Freeze": "Tirer et figer",
   "Let go and the cloth keeps simulating, settling from where you dropped it. Press Space to stop.": "En relâchant, le tissu continue d’être simulé et se pose à partir de l’endroit où vous l’avez lâché. Appuyez sur Espace pour arrêter.",
   "Let go and the cloth stays where you dropped it: the simulation stops and the pulled folds are kept as creases.": "En relâchant, le tissu reste là où vous l’avez lâché : la simulation s’arrête et les plis tirés sont gardés comme pliures.",
-  "Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.": "Relâché : le tissu continue d’être simulé et se pose. Reprenez-le, ou appuyez sur Espace pour arrêter."
+  "Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.": "Relâché : le tissu continue d’être simulé et se pose. Reprenez-le, ou appuyez sur Espace pour arrêter.",
+  "Agent: {0}": "Agent : {0}",
+  "Simulate (agent)": "Simuler (agent)",
+  "simulating": "simulation"
 }

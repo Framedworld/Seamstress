@@ -1,6 +1,9 @@
 # Seamstress MCP Server (`Seamstress.Mcp`)
 
-A stdio Model Context Protocol (MCP) server built directly on `Seamstress.Core` and `Seamstress.Cuda` (NVIDIA CUDA cloth simulation via ILGPU).
+A stdio Model Context Protocol (MCP) server built on `Seamstress.Agent` (the tools, shared with the desktop window), `Seamstress.Core` and `Seamstress.Cuda` (NVIDIA CUDA cloth simulation via ILGPU).
+
+When the Seamstress window is open, the tools work on the project open there, live: see "Working in the open
+window" in `docs/MCP.md`. Set `SEAMSTRESS_LIVE=0` for a headless project of the server's own.
 
 ## Features
 

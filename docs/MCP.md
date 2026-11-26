@@ -15,6 +15,30 @@ was never rebuilt silently lacks the newest tools. Rebuild and restart it when y
 For a complete worked example see `samples/gus-mechanic/scripts/build.py` (a 14-garment outfit built in about ten
 seconds) and the tailoring guide in `docs/skills/seamstress-garment-tailoring/SKILL.md`.
 
+## Working in the open window (live link)
+
+When the Seamstress window is open, the server works on the project the user has open there instead of a project of
+its own. The user watches every change appear in the 2D and 3D views, and can undo it: each tool call is one undo
+step named `Agent: <tool>`.
+
+- **Where it works is settled at the first tool call:** live when a window is open, headless otherwise. It does not
+  change on its own after that. `live_link` reports which (`action: "status"`), connects to a window opened later
+  (`"connect"`) or switches to a headless project (`"headless"`). `get_project_summary` shows the window under
+  `liveLink`.
+- **`simulate` runs live:** the window's own simulation runs for the frames asked for, so the user sees the cloth
+  drape, and the reply is the usual report. Everything sewn onto the garment simulates with it, as when the user
+  simulates. If the user stops it or edits meanwhile, the reply says so.
+- **The user's work is safe:** `open_project` and `new_project` are refused while the window has unsaved changes;
+  ask the user to save first. A tool that fails leaves nothing behind.
+- **Scripts:** `samples/gus-mechanic/scripts/mcp.py` builds headless (it sets `SEAMSTRESS_LIVE=0`); pass `live=True`
+  to work in the window. Any client can set `SEAMSTRESS_LIVE=0` for a project of its own.
+- **How it connects:** the window listens on a port on this computer only (127.0.0.1) and writes the port and a
+  random key to `%LOCALAPPDATA%\Seamstress\live-link.json`, which only the user's own processes can read. Calls
+  without the key get no answer. Automated runs of the app (`--smoke`, `--screenshot`) do not listen.
+- **Builds:** the tool code lives in `src/Seamstress.Agent`, shared by this server and the window. Building the app
+  or the tests does not touch this server's folder, so they build while an agent is connected; this server itself
+  still has to be stopped (or built elsewhere with `-o`) to be rebuilt.
+
 ## The short version
 
 1. `load_avatar` a body (OBJ, binary FBX, glTF/GLB). The reply has tape measurements: girths per limb, crotch, armpit
@@ -33,7 +57,7 @@ seconds) and the tailoring guide in `docs/skills/seamstress-garment-tailoring/SK
 
 | Task | Tools |
 |---|---|
-| Project | `new_project`, `open_project`, `save_project`, `get_project_summary`, `export_garment` (.glb .gltf .obj .fbx .svg) |
+| Project | `new_project`, `open_project`, `save_project`, `get_project_summary`, `export_garment` (.glb .gltf .obj .fbx .svg), `live_link` (work in the open window or headless) |
 | Body | `load_avatar`, `get_avatar_landmarks`, `list_body_profiles`, `save_body_profile`, `load_body_profile`, `step_pose`, `refit_garment_to_body`, `inspect_metahuman_dna` |
 | Garments | `create_garment`, `set_garment` (name, layer, body offset, mesh density, thickness, visibility), `add_template_garment` (fitted tee, trousers, jacket and hoodie cut to the body; trousers take `outseamBackCm` and `hemGirthCm`) |
 | Pieces | `add_piece`, `add_rectangle_piece`, `mirror_piece`, `cut_piece`, `inset_band`, `delete_piece`, `arrange_piece_3d`, `layout_pattern`, `import_mesh_as_pattern` |

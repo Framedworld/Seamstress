@@ -22,7 +22,7 @@ public static class BuildInfo
                 return null;
             DateTime newest = DateTime.MinValue;
             string newestFile = "";
-            foreach (string project in new[] { "Seamstress.Core", "Seamstress.Cuda", "Seamstress.Mcp" })
+            foreach (string project in new[] { "Seamstress.Core", "Seamstress.Cuda", "Seamstress.Agent", "Seamstress.Mcp" })
             {
                 string root = Path.Combine(dir, "src", project);
                 if (!Directory.Exists(root))

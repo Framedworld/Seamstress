@@ -10,14 +10,50 @@ using Seamstress.Cuda;
 namespace Seamstress.Mcp;
 
 /// <summary>
-/// Headless session holding the active Seamstress workspace, avatar, CUDA acceleration,
-/// fit diagnostics, and software 3-view preview rendering.
+/// The project a session works on when it is not its own: the Seamstress window, which runs the tools on the
+/// project the user has open (see <see cref="LiveLink"/>).
+/// </summary>
+public interface ISessionHost
+{
+    Workspace Workspace { get; }
+
+    /// <summary>The avatar the window shows; setting it makes the window show that one.</summary>
+    Avatar? Avatar { get; set; }
+
+    /// <summary>Opens a project in the window. Refuses (InvalidOperationException) while the window has unsaved changes.</summary>
+    void Open(string path);
+
+    /// <summary>Starts a new project in the window, with the same refusal.</summary>
+    void New();
+}
+
+/// <summary>
+/// Session holding the active Seamstress workspace, avatar, CUDA acceleration, fit diagnostics, and software 3-view
+/// preview rendering: headless, or the open window's project through an <see cref="ISessionHost"/>.
 /// </summary>
 public sealed class GarmentSession
 {
-    public Workspace Workspace { get; private set; } = new();
+    private Workspace _workspace = new();
+    private Avatar? _avatar;
+
+    /// <summary>The window whose project this session works on, or null for a headless session of its own.</summary>
+    public ISessionHost? Host { get; }
+
+    public Workspace Workspace => Host?.Workspace ?? _workspace;
     public BodyLibrary BodyLibrary { get; } = new();
-    public Avatar? ActiveAvatar { get; private set; }
+
+    public Avatar? ActiveAvatar
+    {
+        get => Host != null ? Host.Avatar : _avatar;
+        private set
+        {
+            if (Host != null)
+                Host.Avatar = value;
+            else
+                _avatar = value;
+        }
+    }
+
     public Avatar Avatar => ActiveAvatar ?? throw new InvalidOperationException("This project has no avatar.");
     public bool CudaAvailable { get; }
     public string ComputeBackend => ClothAcceleration.RegisteredDeviceName ?? "CPU";
@@ -26,6 +62,13 @@ public sealed class GarmentSession
     {
         CudaAvailable = CudaClothBackend.Register();
         ResetMannequinAvatar();
+    }
+
+    /// <summary>A session on the open window's project.</summary>
+    public GarmentSession(ISessionHost host)
+    {
+        Host = host;
+        CudaAvailable = CudaClothBackend.Register();
     }
 
     public Document Doc => Workspace.Document;
@@ -47,8 +90,10 @@ public sealed class GarmentSession
             used.AddRange(file.Parts.Select(p => $"{p.Name} ({p.Positions.Length} vertices)"));
             skipped.AddRange(file.Skipped);
         }
-        ActiveAvatar = Avatar.FromFile(path, scale, include);
+        var avatar = Avatar.FromFile(path, scale, include);
+        // The project's avatar settings first, so a window taking the avatar knows it is the one they describe.
         Workspace.SetAvatar(AvatarKind.CustomObj, path, scale);
+        ActiveAvatar = avatar;
         return (used, skipped);
     }
 
@@ -57,8 +102,25 @@ public sealed class GarmentSession
         ActiveAvatar = Avatar.CreateMannequin();
     }
 
+    /// <summary>Starts an empty project with the mannequin.</summary>
+    public void NewProject()
+    {
+        if (Host != null)
+        {
+            Host.New();
+            return;
+        }
+        Workspace.New();
+        ResetMannequinAvatar();
+    }
+
     public void OpenProject(string path)
     {
+        if (Host != null)
+        {
+            Host.Open(path);
+            return;
+        }
         var next = new Workspace();
         next.Open(path);
         var settings = next.Document.Avatar;
@@ -69,7 +131,7 @@ public sealed class GarmentSession
             AvatarKind.MakeHuman => Avatar.FromMakeHumanBase(Seamstress.Core.AppSettings.Load().MakeHumanBaseMesh, settings),
             _ => Avatar.FromFile(settings.Path ?? throw new InvalidDataException("The saved project is missing its avatar path."), settings.Scale),
         };
-        Workspace = next;
+        _workspace = next;
         ActiveAvatar = avatar;
     }
 

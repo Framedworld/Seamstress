@@ -25,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Seamstress.Core\Seamstress.Core.csproj" />
     <ProjectReference Include="..\..\src\Seamstress.Cuda\Seamstress.Cuda.csproj" />
+    <ProjectReference Include="..\..\src\Seamstress.Agent\Seamstress.Agent.csproj" />
   </ItemGroup>
 
 </Project>

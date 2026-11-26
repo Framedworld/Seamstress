@@ -791,5 +791,8 @@
   "Pull & Freeze": "引っ張って固定",
   "Let go and the cloth keeps simulating, settling from where you dropped it. Press Space to stop.": "放すと布はシミュレーションを続け、放した位置から落ち着きます。止めるにはスペースキーを押します。",
   "Let go and the cloth stays where you dropped it: the simulation stops and the pulled folds are kept as creases.": "放すと布はその位置にとどまります。シミュレーションが止まり、引っ張ったしわが折り目として保持されます。",
-  "Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.": "放しました。布はシミュレーションを続けて落ち着きます。もう一度つかむか、スペースキーで止めます。"
+  "Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.": "放しました。布はシミュレーションを続けて落ち着きます。もう一度つかむか、スペースキーで止めます。",
+  "Agent: {0}": "エージェント: {0}",
+  "Simulate (agent)": "シミュレーション（エージェント）",
+  "simulating": "シミュレーション中"
 }

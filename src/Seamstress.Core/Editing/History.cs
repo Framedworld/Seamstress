@@ -18,6 +18,7 @@ public sealed class History
     private long _savedId;
     private string? _mergeKey;
     private long _mergeTime;
+    private bool _grouped;
 
     public Document Current { get; private set; }
 
@@ -46,6 +47,7 @@ public sealed class History
         _undo.Clear();
         _redo.Clear();
         _pending = null;
+        _grouped = false;
         _currentId = _savedId = _nextId++;
         Changed?.Invoke();
     }
@@ -63,6 +65,13 @@ public sealed class History
     public void Execute(string name, Action<Document> edit, string? mergeKey = null)
     {
         BeforeChange?.Invoke();
+        if (_grouped)
+        {
+            // Part of the group's single step (an agent's tool call that makes several edits).
+            edit(Current);
+            Changed?.Invoke();
+            return;
+        }
         if (_pending != null)
             Commit();
         long now = Environment.TickCount64;
@@ -99,7 +108,7 @@ public sealed class History
     /// </summary>
     public void Amend(string name, Action<Document> edit)
     {
-        if (!CanUndo || _pending != null || _redo.Count > 0)
+        if (!CanUndo || _pending != null || _redo.Count > 0 || _grouped)
         {
             Execute(name, edit);
             return;
@@ -118,6 +127,8 @@ public sealed class History
     public void Begin(string name)
     {
         BeforeChange?.Invoke();
+        if (_grouped)
+            return;
         if (_pending != null)
             Commit();
         _pending = Current.Clone();
@@ -126,6 +137,11 @@ public sealed class History
 
     public void Commit()
     {
+        if (_grouped)
+        {
+            Changed?.Invoke();
+            return;
+        }
         if (_pending == null)
             return;
         Push(_pendingName, _pending);
@@ -140,6 +156,32 @@ public sealed class History
         Current = _pending;
         _pending = null;
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Starts a group: everything done until <see cref="EndGroup"/>, including edits that would each be a step of their
+    /// own, becomes one undo step. Used for an agent's tool call, so the user undoes what it did in one go.
+    /// </summary>
+    public void BeginGroup(string name)
+    {
+        BeforeChange?.Invoke();
+        if (_pending != null)
+            Commit();
+        _pending = Current.Clone();
+        _pendingName = name;
+        _grouped = true;
+    }
+
+    /// <summary>Ends the group: records it as one step, or with <paramref name="keep"/> false undoes all of it.</summary>
+    public void EndGroup(bool keep)
+    {
+        if (!_grouped)
+            return;
+        _grouped = false;
+        if (keep)
+            Commit();
+        else
+            Cancel();
     }
 
     /// <summary>Tells listeners the document changed mid-transaction (live feedback while dragging).</summary>

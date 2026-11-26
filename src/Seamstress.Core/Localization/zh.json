@@ -791,5 +791,8 @@
   "Pull & Freeze": "拉动并冻结",
   "Let go and the cloth keeps simulating, settling from where you dropped it. Press Space to stop.": "松开后布料继续模拟，从松开的位置自然落定。按空格键停止。",
   "Let go and the cloth stays where you dropped it: the simulation stops and the pulled folds are kept as creases.": "松开后布料停在松开的位置：模拟停止，拉出的褶皱保留为折痕。",
-  "Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.": "已松开：布料继续模拟并落定。可再次抓取，或按空格键停止。"
+  "Let go: the cloth keeps simulating and settles. Grab again, or press Space to stop.": "已松开：布料继续模拟并落定。可再次抓取，或按空格键停止。",
+  "Agent: {0}": "智能体：{0}",
+  "Simulate (agent)": "模拟（智能体）",
+  "simulating": "模拟中"
 }

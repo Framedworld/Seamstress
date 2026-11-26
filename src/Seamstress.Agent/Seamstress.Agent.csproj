@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The agent tools: used by the MCP server (Seamstress.Mcp) and by the window, which runs them on the open
+       project over the live link. A library of its own, so building the app or the tests never writes into the MCP
+       server's folder, which a connected agent keeps locked. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Seamstress.Agent</AssemblyName>
+    <RootNamespace>Seamstress.Mcp</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Seamstress.Core\Seamstress.Core.csproj" />
+    <ProjectReference Include="..\Seamstress.Cuda\Seamstress.Cuda.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -26,8 +26,9 @@ open next to it.
 14. [Exporting](#exporting)
 15. [Send to MakeHuman](#send-to-makehuman)
 16. [Preferences](#preferences)
-17. [Keyboard and mouse reference](#keyboard-and-mouse-reference)
-18. [Troubleshooting](#troubleshooting)
+17. [Working with an AI agent](#working-with-an-ai-agent)
+18. [Keyboard and mouse reference](#keyboard-and-mouse-reference)
+19. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -1159,6 +1160,18 @@ the keys you changed. Keys without Ctrl, Alt or Meta are ignored while you type 
 name never switches tools.
 
 ---
+
+## Working with an AI agent
+
+An assistant connected to Seamstress's MCP server (see `docs/MCP.md`) works in this window when it is open: what it
+drafts, sews and simulates appears in the 2D and 3D views as it goes, and its simulations run live here.
+
+- Each thing it does is one step in **Edit ▸ Undo**, named "Agent: …", so you can take back any of it.
+- The status bar shows what it is doing.
+- It cannot open another project or start a new one while you have unsaved changes: it is told to ask you first.
+- You can keep working while it does: pressing Simulate, pulling the cloth or editing stops a simulation it started,
+  and it is told so.
+- Only programs running as you on this computer can connect.
 
 ## Keyboard and mouse reference
 

@@ -20,8 +20,11 @@ reference: `docs/MCP.md`.
    server's exe is locked, so build a private copy (`~/.dotnet/dotnet.exe build src/Seamstress.Mcp -c Release -o
    <scratch>/mcp`) and point the script's `SEAMSTRESS_MCP` at it. A connected MCP session only picks up a new build
    after a restart.
-2. For more than a handful of pieces, script it with `scripts/mcp.py` (a stdio client) and build in stages that each
-   save a project.
+2. Check `live_link` (or `liveLink` in the summary): with the Seamstress window open, the tools work on the user's
+   open project, live. They watch, each call is one undo step, and `simulate` drapes in their window. Ask before
+   `open_project` or `new_project` there (refused over unsaved changes). Building a whole outfit from scratch is
+   better headless: script it with `scripts/mcp.py` (a stdio client, headless unless `live=True`) in stages that each
+   save a project, then open the result in the window.
 3. `load_avatar` takes OBJ, binary FBX or glTF/GLB directly and reports which meshes it used and skipped. Drape on the
    pose the garment will be skinned to (the file's rest pose); use `step_pose` only for a different final pose.
 4. Read the `tape` block it returns: girths per leg and arm, crotch, armpit and neck heights, arm axis and droop, and

@@ -83,6 +83,7 @@ public partial class AppController : INotifyPropertyChanged
         ApplyStartupOptions();
         InitRecovery();
         EnsureAvatar();
+        StartLiveLink();
     }
 
     private void Notify([CallerMemberName] string? name = null)
@@ -964,34 +965,12 @@ public partial class AppController : INotifyPropertyChanged
     /// <summary>Called by a UI timer: applies the newest simulation frame and finishes background avatar loading.</summary>
     public void Tick()
     {
+        RunAgentWork();
         RecoveryTick();
-        if (_avatarTask is { IsCompleted: true } task)
-        {
-            _avatarTask = null;
-            if (task.IsCompletedSuccessfully)
-            {
-                _avatar = task.Result;
-                _avatarKey = _avatarTaskKey;
-                StatusText = _avatar == null ? Lang.T("No avatar")
-                    : _avatar.MakeHuman is { Shaped: false }
-                        ? Lang.T("Avatar ready: MakeHuman base mesh as it is on disk (MakeHuman's targets folder was not found next to it, so body shape cannot be changed)")
-                        : Lang.F("Avatar ready: {0}", Lang.T(_avatar.Name));
-            }
-            else
-            {
-                _avatar = null;
-                _avatarKey = _avatarTaskKey;
-                Fail(Lang.T("Could not load the avatar."), task.Exception?.GetBaseException() ?? new Exception(Lang.T("Unknown error")));
-            }
-            ViewportRevision++;
-            AvatarRevision++;
-            EnsureAvatar();
-            if (_startWhenAvatarReady && _avatarTask == null)
-            {
-                _startWhenAvatarReady = false;
-                StartSimulation();
-            }
-        }
+        if (_avatarTask is { IsCompleted: true })
+            FinishAvatar();
+
+        if (!_simulation.IsRunning)
 
         if (!_simulation.IsRunning)
         {
@@ -1007,6 +986,37 @@ public partial class AppController : INotifyPropertyChanged
     }
 
     // ---------------------------------------------------------------- avatar
+
+    /// <summary>Takes the avatar that finished loading in the background (the Tick timer, or a tool that needs it now).</summary>
+    private void FinishAvatar()
+    {
+        if (_avatarTask is not { } task)
+            return;
+        _avatarTask = null;
+        if (task.IsCompletedSuccessfully)
+        {
+            _avatar = task.Result;
+            _avatarKey = _avatarTaskKey;
+            StatusText = _avatar == null ? Lang.T("No avatar")
+                : _avatar.MakeHuman is { Shaped: false }
+                    ? Lang.T("Avatar ready: MakeHuman base mesh as it is on disk (MakeHuman's targets folder was not found next to it, so body shape cannot be changed)")
+                    : Lang.F("Avatar ready: {0}", Lang.T(_avatar.Name));
+        }
+        else
+        {
+            _avatar = null;
+            _avatarKey = _avatarTaskKey;
+            Fail(Lang.T("Could not load the avatar."), task.Exception?.GetBaseException() ?? new Exception(Lang.T("Unknown error")));
+        }
+        ViewportRevision++;
+        AvatarRevision++;
+        EnsureAvatar();
+        if (_startWhenAvatarReady && _avatarTask == null)
+        {
+            _startWhenAvatarReady = false;
+            StartSimulation();
+        }
+    }
 
     private string AvatarKeyFor(AvatarSettings a) => a.Kind switch
     {
@@ -1815,6 +1825,7 @@ public partial class AppController : INotifyPropertyChanged
     public void Shutdown()
     {
         AppLog.Write("Seamstress closed.");
+        StopLiveLink();
         // Closed properly: what was not saved was given up on purpose, so there is nothing to recover.
         ForgetRecovery();
         _simulation.Dispose();

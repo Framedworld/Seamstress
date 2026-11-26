@@ -46,6 +46,8 @@
     <PackageReference Include="$(QtBridgePackageId)" Version="0.4.*-*" />
     <ProjectReference Include="..\Seamstress.Core\Seamstress.Core.csproj" />
     <ProjectReference Include="..\Seamstress.Cuda\Seamstress.Cuda.csproj" />
+    <!-- The agent tools, so the window can run them on its own project over the live link. -->
+    <ProjectReference Include="..\Seamstress.Agent\Seamstress.Agent.csproj" />
   </ItemGroup>
 
   <ItemGroup>

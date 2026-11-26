@@ -9,8 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Seamstress.Core\Seamstress.Core.csproj" />
-    <ProjectReference Include="..\Seamstress.Cuda\Seamstress.Cuda.csproj" />
+    <ProjectReference Include="..\Seamstress.Agent\Seamstress.Agent.csproj" />
   </ItemGroup>
 
 </Project>
