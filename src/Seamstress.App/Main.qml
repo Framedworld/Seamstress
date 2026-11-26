@@ -850,7 +850,8 @@ ApplicationWindow {
         title: tr("Export")
         fileMode: FileDialog.SaveFile
         currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
-        onAccepted: riggedBox.visible && riggedBox.enabled && riggedBox.checked
+        // Not riggedBox.visible: the options dialog is closed by now, which hides its check boxes.
+        onAccepted: window.pendingExport !== "obj" && riggedBox.enabled && riggedBox.checked
                     ? App.exportRiggedTo(window.pendingExport, selectedFile, weldBox.checked, scopeBox.currentIndex === 1, avatarBox.checked)
                     : App.exportTo(window.pendingExport, selectedFile, weldBox.checked, scopeBox.currentIndex === 1)
     }

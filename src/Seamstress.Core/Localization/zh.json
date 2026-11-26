@@ -602,6 +602,7 @@
   "Bind to the avatar's skeleton, ready to animate (%1 joints)": "绑定到虚拟形象的骨架，可直接制作动画（%1 个关节）",
   "Bind to the avatar's skeleton (load a rigged FBX or glTF body first)": "绑定到虚拟形象的骨架（请先加载带骨骼绑定的 FBX 或 glTF 身体）",
   "Include the avatar as a skinned mesh": "同时导出虚拟形象作为蒙皮网格",
+  "{0} Bound to the avatar's skeleton ({1} joints).": "{0} 已绑定到虚拟形象的骨架（{1} 个关节）。",
   "OBJ files cannot hold a skeleton. Choose glTF or FBX for a rigged export.": "OBJ 文件无法包含骨架。如需带骨骼导出，请选择 glTF 或 FBX。",
   "The avatar has no skeleton. Load a rigged body (FBX or glTF with a skin) to export garments ready to animate.": "虚拟形象没有骨架。请加载带骨骼绑定的身体（带蒙皮的 FBX 或 glTF），才能导出可直接制作动画的服装。",
   "When on, this garment is simulated too while another garment is the active one.": "开启后，即使当前服装是另一件，此服装也会一同模拟。",

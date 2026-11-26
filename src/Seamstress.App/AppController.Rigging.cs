@@ -9,6 +9,7 @@ public partial class AppController
 {
     // Set only while ExportRiggedTo runs ExportTo: whether to bind, and whether to add the body.
     private (bool IncludeAvatar, bool Active) _rigExport;
+    private int _riggedJoints;
 
     /// <summary>How many joints the current avatar's skeleton has; 0 when the body is not rigged.</summary>
     public int AvatarJointCount() => _avatar?.Rig?.Skeleton.Count ?? 0;
@@ -22,9 +23,13 @@ public partial class AppController
             return false;
         }
         _rigExport = (includeAvatar, true);
+        _riggedJoints = 0;
         try
         {
-            return ExportTo(format, fileUrl, weld, activeOnly);
+            bool ok = ExportTo(format, fileUrl, weld, activeOnly);
+            if (ok)
+                StatusText = Lang.F("{0} Bound to the avatar's skeleton ({1} joints).", StatusText, _riggedJoints);
+            return ok;
         }
         finally
         {
@@ -41,6 +46,7 @@ public partial class AppController
         var avatar = ((Seamstress.Mcp.ISessionHost)this).Avatar
             ?? throw new InvalidOperationException(Lang.T("The avatar has no skeleton. Load a rigged body (FBX or glTF with a skin) to export garments ready to animate."));
         RiggedExport.Bind(scene, avatar, _rigExport.IncludeAvatar);
+        _riggedJoints = scene.Skeleton!.Count;
         AppLog.Write($"Bound {scene.Meshes.Count} mesh(es) to the avatar's {scene.Skeleton!.Count} joints");
     }
 }

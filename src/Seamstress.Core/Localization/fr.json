@@ -602,6 +602,7 @@
   "Bind to the avatar's skeleton, ready to animate (%1 joints)": "Lier au squelette de l’avatar, prêt à animer (%1 articulations)",
   "Bind to the avatar's skeleton (load a rigged FBX or glTF body first)": "Lier au squelette de l’avatar (chargez d’abord un corps FBX ou glTF riggé)",
   "Include the avatar as a skinned mesh": "Inclure l’avatar comme maillage skinné",
+  "{0} Bound to the avatar's skeleton ({1} joints).": "{0} Lié au squelette de l’avatar ({1} articulations).",
   "OBJ files cannot hold a skeleton. Choose glTF or FBX for a rigged export.": "Les fichiers OBJ ne peuvent pas contenir de squelette. Choisissez glTF ou FBX pour un export riggé.",
   "The avatar has no skeleton. Load a rigged body (FBX or glTF with a skin) to export garments ready to animate.": "L’avatar n’a pas de squelette. Chargez un corps riggé (FBX ou glTF avec skin) pour exporter des vêtements prêts à animer.",
   "When on, this garment is simulated too while another garment is the active one.": "Activé : ce vêtement est aussi simulé lorsqu’un autre vêtement est actif.",

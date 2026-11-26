@@ -602,6 +602,7 @@
   "Bind to the avatar's skeleton, ready to animate (%1 joints)": "アバターのスケルトンにバインド（アニメーション対応、%1 ジョイント）",
   "Bind to the avatar's skeleton (load a rigged FBX or glTF body first)": "アバターのスケルトンにバインド（先にリグ付きの FBX または glTF のボディを読み込んでください）",
   "Include the avatar as a skinned mesh": "アバターもスキンメッシュとして含める",
+  "{0} Bound to the avatar's skeleton ({1} joints).": "{0} アバターのスケルトンにバインドしました（{1} ジョイント）。",
   "OBJ files cannot hold a skeleton. Choose glTF or FBX for a rigged export.": "OBJ ファイルにはスケルトンを保存できません。リグ付きで書き出すには glTF か FBX を選んでください。",
   "The avatar has no skeleton. Load a rigged body (FBX or glTF with a skin) to export garments ready to animate.": "アバターにスケルトンがありません。アニメーション対応で衣服を書き出すには、リグ付きのボディ（スキン付きの FBX または glTF）を読み込んでください。",
   "When on, this garment is simulated too while another garment is the active one.": "オンにすると、別の衣服がアクティブなときもこの衣服をシミュレートします。",
