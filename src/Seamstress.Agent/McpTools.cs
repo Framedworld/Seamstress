@@ -329,6 +329,7 @@ public sealed class McpToolRegistry
         Tool("inspect_fit", "Inspect seam length mismatches, avatar penetrations, vertex/triangle counts, and 3D bounding box.", Props(("garmentId", "string", "Optional garment ID."))),
         CritiqueTools.CritiqueDefinition(),
         CritiqueTools.CompareDefinition(),
+        CritiqueTools.TuckDefinition(),
         Tool("render_preview", "Render a shaded, textured PNG of the draped outfit without the desktop app (and/or a 2D pattern SVG). Any camera: named views side by side, or yaw/pitch; frame the whole figure, a point, or one piece for a close look.", new JsonObject
         {
             ["type"] = "object",
@@ -442,6 +443,7 @@ public sealed class McpToolRegistry
             "render_preview" => RenderPreview(args),
             "critique_outfit" => CritiqueTools.Critique(_session, args),
             "compare_to_reference" => CritiqueTools.CompareToReference(_session, args),
+            "tuck_layers" => CritiqueTools.TuckLayers(_session, args),
             "export_garment" => ExportGarment(args),
             "import_mesh_as_pattern" => ImportMeshAsPattern(args),
             "list_body_profiles" => ListBodyProfiles(),

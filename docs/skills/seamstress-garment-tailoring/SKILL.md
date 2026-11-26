@@ -176,6 +176,9 @@ Garment-level `thicknessMm` is also what makes cloth render as a shell rather th
    `fix` with the tool to call and a `look` camera for `render_preview`), then call it again. It finds open seams,
    undraped pieces, cloth in the body, inner layers showing through, hems in the wrong order, trim and hardware
    floating or sunk, stretch over 8%, cloth still moving, and (as a hint) worn garments that look too clean.
+   For `layer_show_through` and `hem_order`, simulate the inner garment again with `selfCollision: true` first; if it
+   will not settle under the layers over it, `tuck_layers` moves just the cloth that shows back under, without
+   simulating, then render the places it moved.
 2. `render_preview` after every stage: `views: "front,quarter,back"` for the whole figure, then `focusPieceId` or
    `focus` + `spanCm` with `yaw`/`pitch` for close looks at the neck, a pocket, a cuff. Piece edges are drawn darker,
    so same-cloth patches and seams are visible. It needs no window and takes about a second.

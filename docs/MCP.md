@@ -66,7 +66,7 @@ step named `Agent: <tool>`.
 | Fabric and look | `set_fabric`, `set_material`, `pin_piece`, `set_creases` |
 | Simulation | `simulate`, `pull_cloth`, `reset_drape`, `inspect_fit`, `locate_on_piece` |
 | Looking | `render_preview` (shaded and textured PNG from any angle, framed on the figure, a point or one piece; 2D pattern SVG) |
-| Checking | `critique_outfit` (ranked list of concrete problems, each with a place and a suggested fix), `compare_to_reference` (render with a reference picture's camera, side by side, with silhouette and colour scores) |
+| Checking | `critique_outfit` (ranked list of concrete problems, each with a place and a suggested fix), `compare_to_reference` (render with a reference picture's camera, side by side, with silhouette and colour scores), `tuck_layers` (put inner layers showing through, or hems over the layer worn over them, back under it without simulating) |
 
 Edges can be given by number or by name everywhere. A back piece is turned round, so its own pattern x runs the other
 way (pattern x = -body x) when you refer to points on it, for example in `add_patch`.
@@ -96,6 +96,12 @@ Before showing a result, check it yourself:
 
   Fix critical and major problems before showing the outfit; `checkMotion: false` skips the probe when time matters
   (it takes most of the few seconds a large outfit needs).
+- **`tuck_layers`** (optional `garmentId`, `clearanceMm`, `passes`) fixes `layer_show_through` and `hem_order`
+  without simulating: the inner cloth that shows is moved back under the garment over it, along the body's normal,
+  with its neighbours and the panel sewn to it following, never closer to the skin than it was; where there is no room,
+  the outer cloth is lifted instead. Only the drapes of the garments involved change. Use it when simulating the inner
+  layer again does not settle under the outer ones (a crowded outfit: on Gus the hoodie keeps moving and opens its
+  side seams). It returns what moved and the layering problems left.
 - **`compare_to_reference`** (`referencePath`; `yaw`/`pitch` or `view`, `focus`/`spanCm` or `focusPieceId` like
   `render_preview`) renders the outfit with the reference's aspect and writes `*_compare.png`: reference, render,
   and the two silhouettes overlaid with the figures scaled to the same height. It returns `iou` (above 0.85 is

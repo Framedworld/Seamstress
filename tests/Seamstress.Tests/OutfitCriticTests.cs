@@ -38,6 +38,8 @@ public class OutfitCriticTests
 
         public List<CritiqueProblem> Critique(bool motion = false, bool? worn = false)
             => OutfitCritic.Critique(Doc, MeshFor, Avatar, new CritiqueOptions { CheckMotion = motion, LookWorn = worn });
+
+        public List<TuckedPair> Tuck() => LayerTuck.Tuck(Doc, MeshFor, Avatar);
     }
 
     private static Avatar CylinderBody() => new()
@@ -171,6 +173,71 @@ public class OutfitCriticTests
         Assert.Equal("Tee", problem.Garment);
         Assert.InRange(problem.PatternCm.Y, 0f, 1.2f);
         Assert.DoesNotContain(problems, p => p.Type == OutfitCritic.ShowThrough);
+    }
+
+    // ---- Tucking layers back under -----------------------------------------------------------------------------
+
+    private static Vector3[] Positions(Scene s, string garment)
+    {
+        var g = s.Doc.Garments.First(x => x.Name == garment);
+        return s.MeshFor(g).Pieces.SelectMany(pm => Mesher.CurrentPositions(g.FindPiece(pm.PieceId)!, pm)).ToArray();
+    }
+
+    [Fact]
+    public void TuckingPutsALayerShowingThroughBackUnder()
+    {
+        var s = Layers(q => Vector2.Distance(q, new Vector2(15, 15)) < 4f ? 0.20f : 0.17f);
+        var jacketBefore = Positions(s, "Jacket");
+        var tee = s.Doc.Garments.First(g => g.Name == "Tee");
+        var mesh = s.MeshFor(tee).Pieces[0];
+        var before = Mesher.CurrentPositions(tee.Pieces[0], mesh);
+
+        var pair = Assert.Single(s.Tuck());
+        Assert.Equal(("Tee", "Jacket"), (pair.Inner, pair.Outer));
+        Assert.Equal(0, pair.Lifted);
+        Assert.InRange(pair.MaxMoveMm, 10f, 20f);
+        Assert.DoesNotContain(s.Critique(), p => p.Type is OutfitCritic.ShowThrough or OutfitCritic.HemOrder or OutfitCritic.BodyPenetration);
+
+        // Only the bulge and the cloth round it moved; the jacket did not.
+        var after = Mesher.CurrentPositions(tee.Pieces[0], mesh);
+        for (int i = 0; i < after.Length; i++)
+            if (Vector2.Distance(mesh.Points[i], new Vector2(15, 15)) > 7f)
+                Assert.Equal(before[i], after[i]);
+        Assert.Equal(jacketBefore, Positions(s, "Jacket"));
+    }
+
+    [Fact]
+    public void TuckingPutsAHemBackUnderTheLayerOverIt()
+    {
+        var s = Layers(q => q.Y < 1.2f && q.X > 5 && q.X < 25 ? 0.21f : 0.17f);
+        Assert.NotEmpty(s.Tuck());
+        Assert.DoesNotContain(s.Critique(), p => p.Type is OutfitCritic.ShowThrough or OutfitCritic.HemOrder or OutfitCritic.BodyPenetration);
+    }
+
+    [Fact]
+    public void WithNoRoomUnderneathTheOuterLayerIsLifted()
+    {
+        // The jacket lies 5 mm off the skin, the tee 2 cm off it, outside the jacket.
+        var s = new Scene();
+        var tee = s.Garment("Tee", 0);
+        var jacket = s.Garment("Jacket", 1, bodyOffset: 8);
+        Drape(s, tee, Rect(tee, "Tee front", 20, 20), q => Wrap(q, 0.17f, y0: 1f, u0: 10));
+        Drape(s, jacket, Rect(jacket, "Jacket front", 40, 40), q => Wrap(q, 0.155f, y0: 0.9f, u0: 20));
+        var pair = Assert.Single(s.Tuck());
+        Assert.True(pair.Lifted > 0);
+        var problems = s.Critique();
+        Assert.DoesNotContain(problems, p => p.Type is OutfitCritic.ShowThrough or OutfitCritic.BodyPenetration);
+        // The tee went down only as far as there was room: never into the body.
+        Assert.All(Positions(s, "Tee"), p => Assert.True(MathF.Sqrt(p.X * p.X + p.Z * p.Z) > BodyRadius + 0.002f));
+    }
+
+    [Fact]
+    public void LayersInTheRightOrderAreLeftAlone()
+    {
+        var s = Layers(_ => 0.17f);
+        var before = Positions(s, "Tee");
+        Assert.Empty(s.Tuck());
+        Assert.Equal(before, Positions(s, "Tee"));
     }
 
     // ---- Trim ----------------------------------------------------------------------------------------------------
@@ -358,6 +425,7 @@ public class OutfitCriticTests
         var names = tools.GetToolDefinitions().Select(t => t!["name"]!.GetValue<string>()).ToList();
         Assert.Contains("critique_outfit", names);
         Assert.Contains("compare_to_reference", names);
+        Assert.Contains("tuck_layers", names);
 
         var g = session.Workspace.AddTemplate("Fitted Tee", session.Avatar.Mesh.Bounds().Max.Y, session.Avatar.Mesh);
         var json = System.Text.Json.JsonSerializer.Serialize(

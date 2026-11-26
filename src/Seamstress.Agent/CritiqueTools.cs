@@ -62,6 +62,53 @@ public static class CritiqueTools
         },
     };
 
+    public static JsonObject TuckDefinition() => new()
+    {
+        ["name"] = "tuck_layers",
+        ["description"] = "Fix an inner layer showing through the one over it, and hems stacked the wrong way round, without "
+            + "simulating: inner cloth lying outside a garment worn over it, where that garment covers it, is moved back under "
+            + "it (half of each cloth's thickness plus clearanceMm below it) along the body's normal, its neighbours following part of the way, and nothing is moved "
+            + "closer to the skin than it was. Where there is no room underneath, the outer cloth is lifted a little instead. "
+            + "Only the drapes of the garments involved change. Use it when critique_outfit reports layer_show_through or "
+            + "hem_order and simulating the inner layer again does not settle (a crowded outfit). Returns what moved and "
+            + "the layering problems left.",
+        ["inputSchema"] = new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["garmentId"] = new JsonObject { ["type"] = "string", ["description"] = "Only tuck this garment under what is worn over it (default: every layer)." },
+                ["clearanceMm"] = new JsonObject { ["type"] = "number", ["description"] = "Air left between the two cloths on top of half of each one's thickness (default 1)." },
+                ["passes"] = new JsonObject { ["type"] = "integer", ["description"] = "Most rounds over all pairs of layers (default 10; stops once nothing moves)." },
+            },
+        },
+    };
+
+    public static object TuckLayers(GarmentSession session, JsonElement args)
+    {
+        var options = new TuckOptions
+        {
+            GarmentId = Str(args, "garmentId"),
+            ClearanceMm = Math.Clamp(Float(args, "clearanceMm") ?? 1f, 0f, 20f),
+            Passes = Int(args, "passes") ?? 10,
+        };
+        var tucked = LayerTuck.Tuck(session.Doc, session.Workspace.MeshFor, session.ActiveAvatar, options);
+        var left = OutfitCritic.Critique(session.Doc, session.Workspace.MeshFor, session.ActiveAvatar,
+                new CritiqueOptions { CheckMotion = false, LookWorn = false })
+            .Where(p => p.Type is OutfitCritic.ShowThrough or OutfitCritic.HemOrder or OutfitCritic.BodyPenetration)
+            .ToList();
+        return new
+        {
+            ok = left.All(p => p.Type != OutfitCritic.BodyPenetration),
+            tucked = tucked.Select(t => new { inner = t.Inner, outer = t.Outer, movedVertices = t.Moved, liftedOuterVertices = t.Lifted, maxMoveMm = t.MaxMoveMm }),
+            remaining = left.Select(p => new { type = p.Type, severity = p.Severity, garment = p.Garment, piece = p.Piece, at = V(p.At), description = p.Description }),
+            note = left.Count == 0
+                ? "No layer shows through and no hem lies over the layer worn over it. Render the places it moved to check."
+                : "Some remain: call it again, or with more clearanceMm; cloth inside the body means the layers have no room "
+                  + "there (give the outer garment more bodyOffsetMm and simulate it).",
+        };
+    }
+
     public static object Critique(GarmentSession session, JsonElement args)
     {
         var options = new CritiqueOptions

@@ -364,13 +364,13 @@ public static class OutfitCritic
     // ---- Inner layers showing through, hems stacked the wrong way ------------------------------------------------
 
     /// <summary>A garment that is a surface of its own rather than trim on another or hard parts.</summary>
-    private static bool IsShell(Scene scene, Garment g)
+    internal static bool IsShell(Scene scene, Garment g)
     {
         var pieces = scene.Of(g).ToList();
         return pieces.Count > 0 && pieces.Any(p => !p.Hard && !p.Trim);
     }
 
-    private static int CompareLayer(Garment a, Garment b)
+    internal static int CompareLayer(Garment a, Garment b)
     {
         int c = a.Layer.CompareTo(b.Layer);
         return c != 0 ? c : a.BodyOffset.CompareTo(b.BodyOffset);
@@ -382,7 +382,7 @@ public static class OutfitCritic
     /// outer cloth faces the same way as the body under the point (so a sleeve's underside does not count as covering
     /// the side of the torso); without one, the side of the surface the point is on.
     /// </summary>
-    private static float? Outside(Scene scene, Vector3 v, SpatialHash.Hit hit)
+    internal static float? Outside(Scene scene, Vector3 v, SpatialHash.Hit hit)
     {
         var off = v - hit.Point;
         if (scene.Avatar != null)
