@@ -8,7 +8,9 @@ CUDA solver as the app, and reads and writes the same `*.garment.json` projects.
 dotnet build src/Seamstress.Mcp -c Release
 ```
 
-Register `src/Seamstress.Mcp/bin/Release/net8.0/Seamstress.Mcp.exe` as a stdio server (see `.mcp.json`).
+Register `src/Seamstress.Mcp/bin/Release/net8.0/Seamstress.Mcp.exe` as a stdio server (see `.mcp.json`), or install the
+Claude Code plugin in [`plugin/`](../plugin/README.md): the server, the tailoring skill and `/dress`, `/critique`,
+`/fit-check` and `/compare` in one step.
 `get_project_summary` reports when the server was built and warns when the source next to it is newer: a server that
 was never rebuilt silently lacks the newest tools. Rebuild and restart it when you see that warning.
 

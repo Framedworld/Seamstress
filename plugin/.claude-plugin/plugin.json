@@ -1,0 +1,8 @@
+{
+  "name": "seamstress",
+  "version": "0.1.0",
+  "description": "Design, sew and drape clothing on an avatar in Seamstress: its MCP server, the garment tailoring skill, and /dress, /critique, /fit-check and /compare.",
+  "author": { "name": "Seamstress contributors" },
+  "license": "MIT",
+  "keywords": ["seamstress", "garment", "clothing", "cloth-simulation", "pattern-making", "mcp"]
+}

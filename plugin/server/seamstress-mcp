@@ -1,0 +1,44 @@
+#!/usr/bin/env sh
+# Starts the Seamstress MCP server (src/Seamstress.Mcp) for the Claude Code plugin (Linux and macOS;
+# seamstress-mcp.cmd next to this file is the Windows version).
+#
+# Where the server is looked for, first match wins:
+#   1. SEAMSTRESS_MCP   the server executable itself (for a copy built with -o elsewhere)
+#   2. SEAMSTRESS_REPO  a Seamstress checkout
+#   3. the project Claude Code is working in, when it is a Seamstress checkout
+#   4. the checkout this plugin folder sits in (when it is loaded in place)
+# The server must be built first: dotnet build src/Seamstress.Mcp -c Release
+set -eu
+
+rel="src/Seamstress.Mcp/bin/Release/net8.0/Seamstress.Mcp"
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exe=""
+repo=""
+
+if [ -n "${SEAMSTRESS_MCP:-}" ]; then
+  exe=$SEAMSTRESS_MCP
+elif [ -n "${SEAMSTRESS_REPO:-}" ] && [ -f "$SEAMSTRESS_REPO/Seamstress.slnx" ]; then
+  repo=$SEAMSTRESS_REPO
+elif [ -n "${SEAMSTRESS_PROJECT_DIR:-}" ] && [ -f "$SEAMSTRESS_PROJECT_DIR/Seamstress.slnx" ]; then
+  repo=$SEAMSTRESS_PROJECT_DIR
+elif [ -f "$here/../../Seamstress.slnx" ]; then
+  repo=$(CDPATH= cd -- "$here/../.." && pwd)
+else
+  echo "[seamstress plugin] Could not find a Seamstress checkout. Set SEAMSTRESS_REPO to the folder that holds" >&2
+  echo "[seamstress plugin] Seamstress.slnx, or SEAMSTRESS_MCP to a built Seamstress.Mcp, and restart Claude Code." >&2
+  exit 1
+fi
+[ -n "$exe" ] || exe="$repo/$rel"
+
+if [ ! -f "$exe" ]; then
+  echo "[seamstress plugin] The Seamstress MCP server is not built yet: $exe is missing." >&2
+  echo "[seamstress plugin] Build it in the checkout with: dotnet build src/Seamstress.Mcp -c Release" >&2
+  exit 1
+fi
+
+# A .NET installed per user (dotnet-install.sh) is not on the system path: point the app host at it.
+if [ -z "${DOTNET_ROOT:-}" ] && [ -x "$HOME/.dotnet/dotnet" ]; then
+  export DOTNET_ROOT="$HOME/.dotnet"
+fi
+
+exec "$exe" "$@"

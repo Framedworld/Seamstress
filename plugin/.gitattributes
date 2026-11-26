@@ -1,0 +1,3 @@
+# Batch files need CRLF line endings (labels and goto misbehave with LF); the shell launcher needs LF.
+*.cmd text eol=crlf
+server/seamstress-mcp text eol=lf

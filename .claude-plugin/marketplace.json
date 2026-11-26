@@ -1,0 +1,12 @@
+{
+  "name": "seamstress",
+  "description": "Claude Code plugins for Seamstress, the garment design and cloth simulation app.",
+  "owner": { "name": "Seamstress" },
+  "plugins": [
+    {
+      "name": "seamstress",
+      "source": "./plugin",
+      "description": "The Seamstress MCP server, the garment tailoring skill, and /dress, /critique, /fit-check and /compare."
+    }
+  ]
+}
