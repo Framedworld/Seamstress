@@ -44,6 +44,9 @@ Item {
     property string stitchSource: ""
     property string pinSource: ""
     property string pinSelectionSource: ""
+    // The fit map the cloth is coloured by ("off", "stretch", "pressure", "distance") and its range, from the same update as the meshes.
+    property var fitInfo: ({ kind: "off" })
+    readonly property bool fitMapOn: fitInfo.kind !== "off"
 
     property real yaw: 25
     property real pitch: -8
@@ -85,6 +88,7 @@ Item {
         wireSource = data.wire
         pinSource = data.pins
         pinSelectionSource = data.pinSelection
+        fitInfo = data.fitMap || { kind: "off" }
         hasGizmo = data.gizmo !== undefined
         if (hasGizmo)
             gizmoOrigin = Qt.vector3d(data.gizmo[0], data.gizmo[1], data.gizmo[2])
@@ -307,6 +311,8 @@ Item {
         if (App.startupView.indexOf("rip") >= 0) ripMode = true
         if (App.startupView.indexOf("ortho") >= 0) orthographic = true
         if (App.startupView.indexOf("normals") >= 0) showNormals = true
+        const fitView = App.startupView.match(/map-(stretch|pressure|distance)/)
+        if (fitView) App.fitMap = fitView[1]
         if (App.startupView.indexOf("ruler") >= 0) {
             // For documentation screenshots: across the shoulders of the mannequin.
             rulerA = Qt.vector3d(-0.19, 1.42, 0.02)
@@ -424,7 +430,17 @@ Item {
 
                 mesh: meshUrl
                 pickable: true
-                materials: root.showNormals ? [frontFaces] : [fabric]
+                materials: root.showNormals ? [frontFaces] : root.fitMapOn ? [fitColours] : [fabric]
+                // A fit map: the colours are in the mesh's vertices (FitMapPainter); lit, so the folds still read.
+                PrincipledMaterial {
+                    id: fitColours
+                    baseColor: "#ffffff"
+                    vertexColorsEnabled: true
+                    roughness: 0.78
+                    specularAmount: 0.25
+                    cullMode: Material.NoCulling
+                    emissiveFactor: pieceItem.sel && !root.capturing ? Qt.vector3d(0.10, 0.10, 0.10) : Qt.vector3d(0, 0, 0)
+                }
                 PrincipledMaterial {
                     id: fabric
                     baseColor: pieceItem.checker ? "#ffffff" : (pieceItem.tex !== "" ? "#ffffff" : pieceItem.tint)
@@ -1033,6 +1049,12 @@ Item {
         }
     }
 
+    // Bottom left, above the hints: the view buttons can run across the whole top of a narrow view.
+    FitMapLegend {
+        info: root.fitInfo
+        anchors { left: parent.left; bottom: parent.bottom; leftMargin: 8; bottomMargin: 34 }
+    }
+
     RowLayout {
         id: viewButtons
         anchors { right: parent.right; top: parent.top; margins: 8 }
@@ -1076,6 +1098,12 @@ Item {
                     : "transparent"
                 Behavior on color { ColorAnimation { duration: 90 } }
             }
+        }
+        component FitMapItem: MenuItem {
+            property string kind
+            checkable: true
+            checked: App.fitMap === kind
+            onTriggered: App.fitMap = kind
         }
         // Pinch options: how much cloth a pinch takes hold of, and setting the folds it has been pulled into.
         ViewPill {
@@ -1143,6 +1171,23 @@ Item {
             }
         }
         ViewPill {
+            ViewButton {
+                id: fitMapButton
+                readonly property var names: ({ off: tr("Fit Map"), stretch: tr("Stretch"), pressure: tr("Pressure"), distance: tr("Distance") })
+                text: App.fitMap === "off" ? names.off : names.off + ": " + names[App.fitMap]
+                checkable: true
+                checked: App.fitMap !== "off"
+                onClicked: { checked = Qt.binding(() => App.fitMap !== "off"); fitMapMenu.popup(fitMapButton, 0, fitMapButton.height + 4) }
+                ToolTip.visible: hovered && !fitMapMenu.visible
+                ToolTip.text: tr("Colour the cloth by how it fits, live while it simulates: stretch, pressure on the body, or distance from it")
+                Menu {
+                    id: fitMapMenu
+                    FitMapItem { kind: "off"; text: tr("Off") }
+                    FitMapItem { kind: "stretch"; text: tr("Stretch") }
+                    FitMapItem { kind: "pressure"; text: tr("Pressure") }
+                    FitMapItem { kind: "distance"; text: tr("Distance to body") }
+                }
+            }
             ViewButton {
                 text: tr("Checker")
                 checkable: true

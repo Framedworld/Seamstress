@@ -510,6 +510,8 @@ a dotted thread joining the two, and a dot (on the edge) and a ring (on the line
 | 9 | **Gizmo** | Show or hide the move, rotate and scale handles. **Q / W / E / R** choose which of them are shown. |
 | 10 | **Avatar** | Show or hide the avatar. Hidden, it still collides with the cloth. |
 
+Left of **Checker**, the **Fit Map** button colours the cloth by how it fits: see [Fit maps](#fit-maps).
+
 **Orthographic view.** With **Ortho** on (or **5**, or **View ▸ 3D: Orthographic**) the camera has no
 perspective: things further away are not drawn smaller, so the two sides of a garment, or a sleeve and the
 body, can be compared by eye. Together with **Front** and **Side** it gives flat, technical-drawing views.
@@ -530,6 +532,25 @@ Properties (also in the Edit menu and the right-click menu). This turns its face
 shape, its drape or the simulation, and it is one undo step. With several pieces selected each one is turned
 round, and Properties shows how many of them are inverted. The setting is saved with the project and applies
 to every export: OBJ, glTF, FBX and Send to MakeHuman.
+
+### Fit maps
+
+Click **Fit Map** in the 3D view and choose a map to colour the cloth by how it fits, the way Marvelous Designer's
+fit maps do. The colours follow the cloth live while it simulates, so you can watch a tight spot appear as a garment
+settles, pinch it, or change the pattern and simulate again. A key in the bottom left corner shows the colours and
+the worst value on screen, leaving out the most extreme 1% of the cloth (a single pinched corner would otherwise
+stand for the whole garment). Choose **Off** to see the fabric again.
+
+![Gus's jacket with the stretch map on](images/fitmap-stretch.png)
+
+| Map | What it shows |
+| --- | --- |
+| **Stretch** | How much longer or shorter the cloth is than its pattern, after the fabric's **Elastic** (shrink) settings. **Green** is at rest, **yellow** about 5% stretched and **red** 10% or more; **blue** is compressed by 10% or more, where the cloth is pushed together and usually folds. |
+| **Pressure** | How hard the cloth presses on the body. Cloth that does not touch is **grey**; cloth that touches but is slack is **green**; it turns **yellow**, **orange** and **red** the more it is stretched where it touches, as a tight band presses harder than a loose one. Red areas are where a garment would feel tight. |
+| **Distance to body** | How much air is under the cloth, in centimetres: **red** touching, **yellow** about 1 cm, **green** 2.5 cm and **blue** 5 cm or more. It is measured beyond the room the garment keeps for itself, its thickness and **Room underneath**, so a jacket worn over a tee shows red where it lies on the tee. |
+
+Hidden pieces and garments are left out, and the maps measure the cloth against the avatar as it is now. The same
+numbers are available to agents through the `fit_map` tool (see [MCP](MCP.md)).
 
 ### Moving, rotating and scaling pieces
 

@@ -26,7 +26,7 @@ internal sealed unsafe class LiveGeometry : IDisposable
 {
     // QQuick3DGeometry::Attribute::Semantic and ComponentType, and QQuick3DGeometry::PrimitiveType.
     private const int IndexSemantic = 0, PositionSemantic = 1, NormalSemantic = 2, TexCoordSemantic = 3,
-        TangentSemantic = 4, BinormalSemantic = 5;
+        TangentSemantic = 4, BinormalSemantic = 5, ColorSemantic = 8;
     private const int U32Type = 1, F32Type = 3;
     private const int PrimitiveLines = 2, PrimitiveTriangles = 5;
 
@@ -107,6 +107,8 @@ internal sealed unsafe class LiveGeometry : IDisposable
         public int Stride;
         public int Primitive;
         public bool HasUv;
+        /// <summary>Where each vertex's RGBA colour starts, in bytes, or -1 for none.</summary>
+        public int ColourOffset = -1;
         public Vector3 Min, Max;
         public readonly List<IntPtr> Targets = new();
     }
@@ -122,17 +124,23 @@ internal sealed unsafe class LiveGeometry : IDisposable
     /// <summary>True when geometry can be handed over in memory; checked once the 3D view exists.</summary>
     public bool Available => !_disposed && !DisabledByEnvironment && Native.Resolve();
 
-    /// <summary>Sets a triangle mesh with normals and, when given, UVs plus the tangents a normal map needs.</summary>
-    public string SetTriangles(string name, Vector3[] positions, Vector3[] normals, Vector2[]? uvs, int[] indices)
+    /// <summary>
+    /// Sets a triangle mesh with normals and, when given, UVs plus the tangents a normal map needs, and an RGBA colour
+    /// per vertex (a fit map).
+    /// </summary>
+    public string SetTriangles(string name, Vector3[] positions, Vector3[] normals, Vector2[]? uvs, int[] indices,
+        Vector4[]? colours = null)
     {
         var slot = Begin(name);
         bool hasUv = uvs != null;
-        int stride = QtMesh.TriangleStride(hasUv);
+        int stride = QtMesh.TriangleStride(hasUv, colours != null);
         slot.Stride = stride;
         slot.HasUv = hasUv;
+        slot.ColourOffset = colours != null ? QtMesh.TriangleStride(hasUv) : -1;
         slot.Primitive = PrimitiveTriangles;
         slot.Vertices = NewArray((long)positions.Length * stride);
-        QtMesh.FillTriangleVertices(new Span<float>(slot.Vertices->Ptr, positions.Length * stride / 4), positions, normals, uvs, indices);
+        QtMesh.FillTriangleVertices(new Span<float>(slot.Vertices->Ptr, positions.Length * stride / 4), positions, normals, uvs, indices,
+            colours);
         slot.Indices = NewArray((long)indices.Length * 4);
         MemoryMarshal.AsBytes(indices.AsSpan()).CopyTo(new Span<byte>(slot.Indices->Ptr, indices.Length * 4));
         (slot.Min, slot.Max) = Bounds(positions);
@@ -151,6 +159,7 @@ internal sealed unsafe class LiveGeometry : IDisposable
         var slot = Begin(name);
         slot.Stride = 12;
         slot.HasUv = false;
+        slot.ColourOffset = -1;
         slot.Primitive = PrimitiveLines;
         slot.Vertices = NewArray((long)points.Count * 12);
         var span = new Span<Vector3>(slot.Vertices->Ptr, points.Count);
@@ -256,6 +265,8 @@ internal sealed unsafe class LiveGeometry : IDisposable
                 Native.AddAttribute(g, TangentSemantic, 32, F32Type);
                 Native.AddAttribute(g, BinormalSemantic, 44, F32Type);
             }
+            if (slot.ColourOffset >= 0)
+                Native.AddAttribute(g, ColorSemantic, slot.ColourOffset, F32Type);
         }
         Native.SetVertexData(g, slot.Vertices);
         if (slot.Indices != null)

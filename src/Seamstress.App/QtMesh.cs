@@ -15,13 +15,14 @@ internal static class QtMesh
     private const uint DrawLines = 4, DrawTriangles = 7;
     private const uint CounterClockwise = 2;
 
-    public static void WriteTriangles(string path, Vector3[] positions, Vector3[] normals, Vector2[]? uvs, int[] indices)
+    public static void WriteTriangles(string path, Vector3[] positions, Vector3[] normals, Vector2[]? uvs, int[] indices,
+        Vector4[]? colours = null)
     {
         bool hasUv = uvs != null;
-        int stride = TriangleStride(hasUv);
+        int stride = TriangleStride(hasUv, colours != null);
         var vertices = new byte[positions.Length * stride];
         FillTriangleVertices(System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(vertices.AsSpan()),
-            positions, normals, uvs, indices);
+            positions, normals, uvs, indices, colours);
         var entries = new List<(string, uint, uint)> { ("attr_pos", 3, 0), ("attr_norm", 3, 12) };
         if (hasUv)
         {
@@ -29,20 +30,27 @@ internal static class QtMesh
             entries.Add(("attr_textan", 3, 32));
             entries.Add(("attr_binormal", 3, 44));
         }
+        if (colours != null)
+            entries.Add(("attr_color", 4, (uint)TriangleStride(hasUv)));
         Write(path, vertices, stride, entries, positions, indices, DrawTriangles);
     }
 
-    /// <summary>Bytes per vertex of a triangle mesh: position and normal, plus UV, tangent and binormal with UVs.</summary>
-    public static int TriangleStride(bool hasUv) => hasUv ? 56 : 24;
+    /// <summary>
+    /// Bytes per vertex of a triangle mesh: position and normal, plus UV, tangent and binormal with UVs, plus an RGBA
+    /// colour (a fit map) at the end when there is one.
+    /// </summary>
+    public static int TriangleStride(bool hasUv, bool hasColour = false) => (hasUv ? 56 : 24) + (hasColour ? 16 : 0);
 
     /// <summary>
     /// Interleaves a triangle mesh's vertices as the viewport draws them (see <see cref="TriangleStride"/>), working
     /// out the tangents a normal map needs from the UVs. Used for the mesh files and for buffers handed over in memory.
     /// </summary>
-    public static void FillTriangleVertices(Span<float> span, Vector3[] positions, Vector3[] normals, Vector2[]? uvs, int[] indices)
+    public static void FillTriangleVertices(Span<float> span, Vector3[] positions, Vector3[] normals, Vector2[]? uvs, int[] indices,
+        Vector4[]? colours = null)
     {
         bool hasUv = uvs != null;
-        int floats = TriangleStride(hasUv) / 4;
+        int floats = TriangleStride(hasUv, colours != null) / 4;
+        int colourAt = TriangleStride(hasUv) / 4;
 
         Vector3[]? tangents = null;
         Vector3[]? binormals = null;
@@ -90,6 +98,11 @@ internal static class QtMesh
                     b = -b;
                 span[o + 8] = t.X; span[o + 9] = t.Y; span[o + 10] = t.Z;
                 span[o + 11] = b.X; span[o + 12] = b.Y; span[o + 13] = b.Z;
+            }
+            if (colours != null)
+            {
+                var c = colours[i];
+                span[o + colourAt] = c.X; span[o + colourAt + 1] = c.Y; span[o + colourAt + 2] = c.Z; span[o + colourAt + 3] = c.W;
             }
         }
     }
