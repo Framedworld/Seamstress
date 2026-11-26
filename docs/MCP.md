@@ -80,7 +80,10 @@ to be the avatar the garments are on (the file loaded with `load_avatar`, or a m
 - `frames` (default: the whole animation), `speed` (0.5 is slow motion), `blendInSeconds` (from the draped pose to
   the clip's first frame; 1 s for files), `substeps`, `selfCollision`, `cellCm` (the moving body's collision grid;
   1 cm, coarser is faster).
-- The report: `peakSpeedMetresPerSec`, `widestSeamGapMetres` and `openSeams` at the end, `penetration` (deepest cloth
+- The report: `peakSpeedMetresPerSec` (the fastest particle of the fastest frame), `peakSpeedMedianMetresPerSec`
+  and `peakSpeedLastFrameMetresPerSec` (what `simulate` calls `peakSpeedMetresPerSec`: compare with that one; the
+  highest of many frames is always larger, a body standing still included), `widestSeamGapMetres` and `openSeams` at
+  the end, `penetration` (deepest cloth
   inside the moving body and how many particles went more than 2 mm in), and `timing` (ms per frame for the solver and
   for skinning and updating the body's collision field).
 - `recordPath` writes the recording as a .glb point cache: one mesh per garment plus the avatar, one morph target per

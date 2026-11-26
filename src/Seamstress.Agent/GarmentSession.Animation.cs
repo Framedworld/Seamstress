@@ -125,7 +125,11 @@ public sealed partial class GarmentSession
                     collisionFieldMsMax = R(anim.FieldMillisecondsMax),
                     framesPerSecond = R(frames / Math.Max(1e-3, total.Elapsed.TotalSeconds)),
                 },
+                // simulate reports the last frame's fastest particle; the highest of all frames is always larger, a still
+                // body included, so all three are given.
                 peakSpeedMetresPerSec = MathF.Round(anim.PeakSpeed, 3),
+                peakSpeedMedianMetresPerSec = MathF.Round(anim.PeakSpeedMedian, 3),
+                peakSpeedLastFrameMetresPerSec = MathF.Round(anim.PeakSpeedLastFrame, 3),
                 widestSeamGapMetres = MathF.Round(anim.WidestSeamGap, 4),
                 finalSeamGapMetres = MathF.Round(solver.SeamGap, 4),
                 penetration = new
@@ -140,7 +144,7 @@ public sealed partial class GarmentSession
                 keptResult = request.KeepResult,
                 advice = anim.MaxPenetratingParticles > 0
                     ? "Cloth went into the moving body: play slower (speed 0.5), add substeps, or give layered garments more bodyOffsetMm."
-                    : anim.PeakSpeed > 6 ? "The cloth whipped round fast at some point: try a lower speed or more substeps." : null,
+                    : anim.PeakSpeedMedian > 6 ? "The cloth kept moving fast through the animation: try a lower speed or more substeps." : null,
             };
         }
         finally

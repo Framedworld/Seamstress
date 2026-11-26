@@ -53,7 +53,24 @@ public sealed class BodyAnimation : IBodyMotion
     public float MaxPenetration { get; private set; }
     public int MaxPenetratingParticles { get; private set; }
     public int LastPenetratingParticles { get; private set; }
+    /// <summary>
+    /// The fastest particle of the fastest frame (m/s). One particle in one substep sets it, so it jumps about from
+    /// frame to frame even on a still body; <see cref="PeakSpeedMedian"/> is steadier, and
+    /// <see cref="PeakSpeedLastFrame"/> is what the simulate tool reports.
+    /// </summary>
     public float PeakSpeed { get; private set; }
+    public float PeakSpeedLastFrame { get; private set; }
+    public float PeakSpeedMedian
+    {
+        get
+        {
+            if (_peaks.Count == 0)
+                return 0;
+            var sorted = _peaks.OrderBy(p => p).ToList();
+            return sorted[sorted.Count / 2];
+        }
+    }
+    private readonly List<float> _peaks = new();
     public float WidestSeamGap { get; private set; }
     public double FieldMilliseconds { get; private set; }
     public double FieldMillisecondsMax { get; private set; }
@@ -122,7 +139,8 @@ public sealed class BodyAnimation : IBodyMotion
         Frames = 0;
         MaxPenetration = 0;
         MaxPenetratingParticles = LastPenetratingParticles = 0;
-        PeakSpeed = 0;
+        PeakSpeed = PeakSpeedLastFrame = 0;
+        _peaks.Clear();
         WidestSeamGap = 0;
         FieldMilliseconds = FieldMillisecondsMax = PoseMilliseconds = 0;
     }
@@ -148,6 +166,8 @@ public sealed class BodyAnimation : IBodyMotion
     {
         Frames++;
         PeakSpeed = MathF.Max(PeakSpeed, solver.PeakSpeed);
+        PeakSpeedLastFrame = solver.PeakSpeed;
+        _peaks.Add(solver.PeakSpeed);
         WidestSeamGap = MathF.Max(WidestSeamGap, solver.SeamGap);
         Recording.Capture(Time, solver, _posed);
         if (TrackPenetration)
