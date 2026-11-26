@@ -495,6 +495,10 @@ QtObject {
         check("export obj", App.exportTo("obj", base + ".obj", true, false))
         check("export glb", App.exportTo("gltf", base + ".glb", true, false))
         check("export fbx", App.exportTo("fbx", base + ".fbx", true, true))
+        // The mannequin has no skeleton, so a rigged export is refused with a reason (tests cover rigged bodies).
+        const errors = App.errorRevision
+        check("rigged export needs a rigged body", App.avatarJointCount() === 0
+              && !App.exportRiggedTo("gltf", base + "-rigged.glb", true, false, true) && App.errorRevision === errors + 1)
         App.newDocument()
         check("reopen", App.open(base + ".garment.json") && scene().pieces.length === 7)
         check("reopened with its hole", scene().pieces.filter(p => p.holes !== undefined).length === 1)

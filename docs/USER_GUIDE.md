@@ -976,23 +976,51 @@ ordinary `.garment.json` file, so it can also be opened by hand.
 
 ## Exporting
 
-**File ▸ Export** offers three formats. Each first asks two questions:
+**File ▸ Export** offers three formats. Each first asks a few questions:
 
 ![Export options](images/dialog-export.png)
 
 - **Export**: all visible garments, or only the active one.
 - **Weld sewn seams**: merge the stitched vertices so each garment is one connected mesh. Only seams that
   simulation has actually closed are merged, so an unsimulated garment exports as separate flat pieces.
+- **Bind to the avatar's skeleton** (glTF and FBX): export the garments ready to animate in a game engine. See
+  [Rigged export](#rigged-export-for-game-engines) below. Greyed out until the avatar is a rigged body.
+- **Include the avatar as a skinned mesh**: with the option above, the body is exported too, bound to the same
+  skeleton.
 
 | Format | Notes |
 | --- | --- |
 | **Wavefront OBJ** | `.obj` plus `.mtl`. One object per garment, one group per piece. Keeps quads. |
 | **glTF 2.0** | `.glb` (single file, textures embedded) or `.gltf` + `.bin`, chosen by the file name. Triangles only. |
-| **FBX** | Binary FBX 7.4. Geometry, normals, UVs and materials; no skeleton or animation. Keeps quads. |
+| **FBX** | Binary FBX 7.4. Geometry, normals, UVs and materials, and with a rigged export the skeleton and skin weights; no animation. Keeps quads. |
 
 All formats export the garment as it currently looks in the 3D view, with Y up. OBJ and glTF are in metres; FBX
 is in centimetres, which is that format's convention, so it imports at the right size. Textures are copied next
 to the exported file (or embedded, for `.glb`). Hidden garments and pieces are left out.
+
+### Rigged export for game engines
+
+When the avatar comes from a **rigged** FBX or glTF/GLB (a body with a skeleton and skin weights, such as a Mixamo,
+Character Creator or Blender character), Seamstress keeps its skeleton and the weight each bone has on
+each body vertex. Tick **Bind to the avatar's skeleton** in the export options and the garments are written as
+skinned meshes on that skeleton, so they bend, twist and walk with the character in Unity, Unreal, Godot or
+Blender. The option shows how many joints the skeleton has; it is greyed out for OBJ bodies, the mannequin and the
+MakeHuman base mesh, which have no skeleton.
+
+How the weights are found:
+
+1. Each garment vertex takes the weights of the nearest point on the body's surface (a blend of the three body
+   vertices around that point).
+2. The weights are then smoothed over the cloth, so a seam's two sides, a skirt hanging between the legs or a hood
+   move as one piece instead of tearing between bones. Cloth lying on the body keeps close to the body's weights;
+   cloth far from it takes its weights from the cloth around it.
+3. Each vertex keeps its four strongest bones, with weights that add up to one, which is what game engines take.
+
+The skeleton is exported in the pose the garment was draped in (the body file's bind pose), with the bones' names
+from the body file, so animations made for the original character play on the garments. glTF keeps the skeleton
+in metres; FBX in centimetres like the rest of the file. Cloth is bound like skin: it follows the bones, but does not
+swing or fold on its own. Drape the garment on the body as it was loaded, since that is the pose it is bound in. A body posed with
+**step_pose** is an OBJ and has no skeleton; export from the rigged body.
 
 Two more exports are for showing your work rather than for other 3D programs:
 
