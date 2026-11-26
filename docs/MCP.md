@@ -76,6 +76,7 @@ way (pattern x = -body x) when you refer to points on it, for example in `add_pa
 held up. `animation` is `builtin:t-pose-to-a-pose` (arms lift level, then lower to 45°), `builtin:arm-raise`, or the
 path of a rigged FBX or glTF/GLB with animation clips (`clip` picks one by name or number). A file's skinned body has
 to be the avatar the garments are on (the file loaded with `load_avatar`, or a motion file with the same skeleton).
+Pinned cloth and hardware ride on the body, keeping their place on it; frozen garments stay where they are.
 
 - `frames` (default: the whole animation), `speed` (0.5 is slow motion), `blendInSeconds` (from the draped pose to
   the clip's first frame; 1 s for files), `substeps`, `selfCollision`, `cellCm` (the moving body's collision grid;

@@ -377,6 +377,16 @@ public sealed class MovingBodyField
         });
     }
 
+    /// <summary>The skin triangle nearest to a point within the band round the skin, or -1 further out.</summary>
+    public int NearestTriangle(Vector3 p)
+    {
+        var g = (p - _origin) / _cell;
+        int x = (int)MathF.Round(g.X), y = (int)MathF.Round(g.Y), z = (int)MathF.Round(g.Z);
+        if (x < 0 || y < 0 || z < 0 || x >= _nx || y >= _ny || z >= _nz)
+            return -1;
+        return _nearest[Index(x, y, z)];
+    }
+
     /// <summary>
     /// The field blended between the previous frame (<paramref name="blend"/> 0) and the current one (1) at a point,
     /// with its outward direction and the body's velocity there. Far outside the grid it reports "no contact".

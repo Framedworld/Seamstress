@@ -145,9 +145,78 @@ public sealed class BodyAnimation : IBodyMotion
         FieldMilliseconds = FieldMillisecondsMax = PoseMilliseconds = 0;
     }
 
+    // Pinned particles (hard parts, pinned cloth) ride on the skin: the triangle under each, where on it, and the
+    // offset from it in the triangle's own frame.
+    private ClothSolver? _ridersOf;
+    private int[] _riders = Array.Empty<int>();
+    private (int Triangle, float Wa, float Wb, float Wc, Vector3 Local)[] _ride = Array.Empty<(int, float, float, float, Vector3)>();
+    private Vector3[] _rideTargets = Array.Empty<Vector3>();
+
+    private static (Vector3 Point, Vector3 E1, Vector3 E2, Vector3 N) Frame(Vector3 a, Vector3 b, Vector3 c, float wa, float wb, float wc)
+    {
+        var e1 = b - a;
+        var n = Vector3.Cross(e1, c - a);
+        e1 = e1.LengthSquared() > 1e-20f ? Vector3.Normalize(e1) : Vector3.UnitX;
+        n = n.LengthSquared() > 1e-20f ? Vector3.Normalize(n) : Vector3.UnitY;
+        return (a * wa + b * wb + c * wc, e1, Vector3.Cross(n, e1), n);
+    }
+
+    private void BindPinned(ClothSolver solver)
+    {
+        _ridersOf = solver;
+        _riders = solver.PinnedParticles();
+        _ride = new (int, float, float, float, Vector3)[_riders.Length];
+        _rideTargets = new Vector3[_riders.Length];
+        var tris = Body.Triangles;
+        var pos = _posed;
+        Parallel.For(0, _riders.Length, k =>
+        {
+            var p = solver.Positions[_riders[k]];
+            int best = Field.NearestTriangle(p);
+            if (best < 0)
+            {
+                // Further out than the band: look through every triangle.
+                float nearest = float.MaxValue;
+                for (int t = 0; t < tris.Length / 3; t++)
+                {
+                    var q = SdfGrid.ClosestPointOnTriangle(p, pos[tris[3 * t]], pos[tris[3 * t + 1]], pos[tris[3 * t + 2]]);
+                    float d = Vector3.DistanceSquared(p, q);
+                    if (d < nearest)
+                    {
+                        nearest = d;
+                        best = t;
+                    }
+                }
+            }
+            var a = pos[tris[3 * best]];
+            var b = pos[tris[3 * best + 1]];
+            var c = pos[tris[3 * best + 2]];
+            SdfGrid.ClosestPointOnTriangle(p, a, b, c, out float wa, out float wb, out float wc);
+            var f = Frame(a, b, c, wa, wb, wc);
+            var r = p - f.Point;
+            _ride[k] = (best, wa, wb, wc, new Vector3(Vector3.Dot(r, f.E1), Vector3.Dot(r, f.E2), Vector3.Dot(r, f.N)));
+        });
+    }
+
+    private void MovePinned(ClothSolver solver)
+    {
+        if (_riders.Length == 0)
+            return;
+        var tris = Body.Triangles;
+        for (int k = 0; k < _riders.Length; k++)
+        {
+            var (t, wa, wb, wc, local) = _ride[k];
+            var f = Frame(_posed[tris[3 * t]], _posed[tris[3 * t + 1]], _posed[tris[3 * t + 2]], wa, wb, wc);
+            _rideTargets[k] = f.Point + f.E1 * local.X + f.E2 * local.Y + f.N * local.Z;
+        }
+        solver.MovePinned(_riders, _rideTargets);
+    }
+
     public void BeforeStep(ClothSolver solver)
     {
         float dt = solver.FrameDuration;
+        if (!ReferenceEquals(_ridersOf, solver))
+            BindPinned(solver); // where the body is now, before it moves on
         var clock = Stopwatch.StartNew();
         if (!Finished)
         {
@@ -160,6 +229,7 @@ public sealed class BodyAnimation : IBodyMotion
         FieldMilliseconds += Field.LastUpdateMilliseconds;
         FieldMillisecondsMax = Math.Max(FieldMillisecondsMax, Field.LastUpdateMilliseconds);
         solver.MoveBody(Field);
+        MovePinned(solver);
     }
 
     public void AfterStep(ClothSolver solver)

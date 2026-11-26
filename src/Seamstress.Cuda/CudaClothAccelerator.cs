@@ -986,6 +986,7 @@ public sealed partial class CudaClothAccelerator : IClothAccelerator
 
         for (int step = 0; step < p.Substeps; step++)
         {
+            RidePinnedGpu(step, p.Substeps);
             if (gpuContacts && step % p.SearchEvery == 0)
             {
                 if (_hostPosValid)

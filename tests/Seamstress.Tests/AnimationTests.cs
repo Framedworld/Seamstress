@@ -296,8 +296,14 @@ public class AnimationTests : IClassFixture<AvatarFixture>
         var ws = new Workspace();
         var sleeve = new Garment { Name = "Sleeve", ParticleDistance = 1.5f };
         ws.Document.Garments.Add(sleeve);
-        GarmentBlocks.AddTube(ws.Document, sleeve, "Sleeve", new Vector3(0.12f, y, 0), Vector3.UnitX, Vector3.UnitY,
+        var tube = GarmentBlocks.AddTube(ws.Document, sleeve, "Sleeve", new Vector3(0.12f, y, 0), Vector3.UnitX, Vector3.UnitY,
             MathF.Tau * (radius + 0.012f) * 100, MathF.Tau * (radius + 0.012f) * 100, 36, splitStart: false);
+        // A pin near the far end of the sleeve: during playback it rides on the arm instead of standing in its way.
+        var tubeMesh = ws.MeshFor(sleeve).Pieces[0];
+        var startPositions = Mesher.CurrentPositions(tube, tubeMesh);
+        int pin = Enumerable.Range(0, startPositions.Length).MaxBy(i => startPositions[i].X - MathF.Abs(startPositions[i].Y - (y + radius + 0.012f)));
+        tube.PinKey = tubeMesh.Key;
+        tube.Pins.Add(pin);
         var settings = new SimulationSettings { Substeps = 12, GroundPlane = false, SelfCollision = false };
 
         bool before = ClothAcceleration.Enabled;
@@ -341,6 +347,15 @@ public class AnimationTests : IClassFixture<AvatarFixture>
             }
             _output.WriteLine($"farthest cloth from the raised arm's axis: {worst * 100:0.0} cm");
             Assert.True(worst < radius + 0.06f, $"cloth was left behind: {worst * 100:0.0} cm from the arm's axis");
+
+            // The pin kept its place on the arm: the same distance along it and out from it as before the raise.
+            var restOffset = startPositions[pin] - pivot;
+            var pinOffset = solver.Positions[pin] - pivot;
+            float restAlong = restOffset.X, restOut = new Vector2(restOffset.Y, restOffset.Z).Length();
+            float pinAlong = Vector3.Dot(pinOffset, axis), pinOut = (pinOffset - axis * pinAlong).Length();
+            _output.WriteLine($"pin: along {restAlong * 100:0.0} -> {pinAlong * 100:0.0} cm, out {restOut * 100:0.0} -> {pinOut * 100:0.0} cm");
+            Assert.InRange(pinAlong - restAlong, -0.002f, 0.002f);
+            Assert.InRange(pinOut - restOut, -0.002f, 0.002f);
 
             // Recording round trip.
             var recording = anim.Recording;

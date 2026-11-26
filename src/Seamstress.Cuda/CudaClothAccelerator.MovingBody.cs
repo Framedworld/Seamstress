@@ -127,6 +127,17 @@ internal static class MovingBodyKernels
     }
 
     private static Float3 Lerp(Float3 a, Float3 b, float t) => a + (b - a) * t;
+
+    /// <summary>Puts pinned particles where they are this substep on their way across the frame.</summary>
+    public static void RidePinned(Index1D k, ArrayView<Float3> pos, ArrayView<Float3> prev, ArrayView<int> particles,
+        ArrayView<Float3> from, ArrayView<Float3> to, float t0, float t1)
+    {
+        int i = particles[k];
+        var a = from[k];
+        var b = to[k];
+        prev[i] = Lerp(a, b, t0);
+        pos[i] = Lerp(a, b, t1);
+    }
 }
 
 public sealed partial class CudaClothAccelerator : IMovingBodyAccelerator
@@ -138,6 +149,53 @@ public sealed partial class CudaClothAccelerator : IMovingBodyAccelerator
     private MemoryBuffer1D<float, Stride1D.Dense>? _bodyPrev;
     private MemoryBuffer1D<Float3, Stride1D.Dense>? _bodyVelocity;
     private long _bodyVersion = -1;
+
+    private static Action<Index1D, ArrayView<Float3>, ArrayView<Float3>, ArrayView<int>, ArrayView<Float3>, ArrayView<Float3>, float, float>? _rideKernel;
+    private static Accelerator? _rideKernelOwner;
+    private MemoryBuffer1D<int, Stride1D.Dense>? _riders;
+    private MemoryBuffer1D<Float3, Stride1D.Dense>? _rideFrom, _rideTo;
+    private int[]? _ridersUploaded;
+    private int _riderCount;
+
+    public void MovePinned(int[] particles, Vector3[] from, Vector3[] to)
+    {
+        var acc = _rt.Accelerator;
+        _riderCount = particles.Length;
+        if (_riderCount == 0)
+            return;
+        if (_riders == null || _riders.Length != _riderCount)
+        {
+            _riders?.Dispose();
+            _rideFrom?.Dispose();
+            _rideTo?.Dispose();
+            _riders = acc.Allocate1D<int>(_riderCount);
+            _rideFrom = acc.Allocate1D<Float3>(_riderCount);
+            _rideTo = acc.Allocate1D<Float3>(_riderCount);
+            _ridersUploaded = null;
+        }
+        if (!ReferenceEquals(_ridersUploaded, particles))
+        {
+            _riders.CopyFromCPU(particles);
+            _ridersUploaded = particles;
+        }
+        _rideFrom!.View.CopyFromCPU(ref Unsafe.As<Vector3, Float3>(ref from[0]), _riderCount);
+        _rideTo!.View.CopyFromCPU(ref Unsafe.As<Vector3, Float3>(ref to[0]), _riderCount);
+    }
+
+    private void RidePinnedGpu(int step, int substeps)
+    {
+        if (_riderCount == 0 || _riders == null || _rideFrom == null || _rideTo == null)
+            return;
+        var acc = _rt.Accelerator;
+        if (_rideKernel == null || !ReferenceEquals(_rideKernelOwner, acc))
+        {
+            _rideKernel = acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<Float3>, ArrayView<Float3>, ArrayView<int>,
+                ArrayView<Float3>, ArrayView<Float3>, float, float>(MovingBodyKernels.RidePinned);
+            _rideKernelOwner = acc;
+        }
+        _rideKernel(_riderCount, _pos.View, _prev.View, _riders.View, _rideFrom.View, _rideTo.View,
+            step / (float)substeps, (step + 1f) / substeps);
+    }
 
     public void SetMovingBody(MovingBodyField field)
     {
@@ -194,5 +252,10 @@ public sealed partial class CudaClothAccelerator : IMovingBodyAccelerator
         _bodyVelocity?.Dispose();
         _bodyPrev = null;
         _bodyVelocity = null;
+        _riders?.Dispose();
+        _rideFrom?.Dispose();
+        _rideTo?.Dispose();
+        _riders = null;
+        _rideFrom = _rideTo = null;
     }
 }

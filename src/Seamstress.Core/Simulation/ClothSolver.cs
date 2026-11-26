@@ -644,6 +644,7 @@ public sealed partial class ClothSolver : IDisposable
 
         for (int step = 0; step < substeps; step++)
         {
+            RidePinned(step, substeps);
             if (_collides && step % searchEvery == 0)
                 FindContacts();
             for (int i = 0; i < n; i++)

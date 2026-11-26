@@ -723,7 +723,7 @@ body, the way Marvelous Designer does.
    skeleton as an avatar that was loaded from a rigged file. A file's clip starts after a one-second blend from the
    pose the garments were draped in.
 2. Press **▶**. Every visible garment that is not frozen simulates while the body moves; frozen garments stay where
-   they are. **❚❚** pauses.
+   they are. Pins and hardware (snaps, pens, buckles) ride on the body at the place they had on it. **❚❚** pauses.
 3. Drag the timeline to look back through what has been recorded (the green line shows how far that reaches). Press
    ▶ again and playback carries on from the frame you are looking at, recording over what came after it.
 4. The speed box plays slower or faster. Animation time runs at that speed while the cloth simulates in real time,

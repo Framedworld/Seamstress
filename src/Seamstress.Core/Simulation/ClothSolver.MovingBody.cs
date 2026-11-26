@@ -21,6 +21,12 @@ public interface IMovingBodyAccelerator
     /// frame's substeps and lets the body's velocity drive friction.
     /// </summary>
     void SetMovingBody(MovingBodyField field);
+
+    /// <summary>
+    /// Moves pinned particles (which the solver never moves itself) from <paramref name="from"/> to
+    /// <paramref name="to"/> over the next frame's substeps, so they ride on the moving body.
+    /// </summary>
+    void MovePinned(int[] particles, Vector3[] from, Vector3[] to);
 }
 
 public sealed partial class ClothSolver
@@ -28,6 +34,8 @@ public sealed partial class ClothSolver
     private MovingBodyField? _movingBody;
     private long _movingBodyVersion = -1;
     private float _bodyBlend = 1f, _bodyH = FrameTime;
+    private int[] _riders = Array.Empty<int>();
+    private Vector3[] _rideFrom = Array.Empty<Vector3>(), _rideTo = Array.Empty<Vector3>();
 
     /// <summary>Simulated seconds one <see cref="Step"/> covers.</summary>
     public float FrameDuration => FrameTime * Math.Clamp(Settings.TimeScale, 0.05f, 4f);
@@ -59,6 +67,58 @@ public sealed partial class ClothSolver
             _accelerator.Dispose();
             _accelerator = null;
             AppLog.Write("The cloth accelerator cannot collide with a moving body; simulating on the CPU.");
+        }
+    }
+
+    /// <summary>The pinned particles of the simulated pieces: hard parts and pinned cloth, which the solver holds still.</summary>
+    public int[] PinnedParticles()
+    {
+        var pinned = new List<int>();
+        foreach (var cloth in Pieces)
+        {
+            if (!cloth.Simulated)
+                continue;
+            for (int k = 0; k < cloth.Mesh.VertexCount; k++)
+            {
+                if (_invMass[cloth.Offset + k] == 0)
+                    pinned.Add(cloth.Offset + k);
+            }
+        }
+        return pinned.ToArray();
+    }
+
+    /// <summary>
+    /// Carries pinned particles to <paramref name="targets"/> over the next <see cref="Step"/>, a substep at a time.
+    /// A moving body calls it every frame so that pins and hard parts move with it instead of standing in its way.
+    /// </summary>
+    public void MovePinned(int[] particles, Vector3[] targets)
+    {
+        if (_rideFrom.Length != particles.Length)
+        {
+            _rideFrom = new Vector3[particles.Length];
+            _rideTo = new Vector3[particles.Length];
+        }
+        _riders = particles;
+        for (int k = 0; k < particles.Length; k++)
+        {
+            _rideFrom[k] = Positions[particles[k]];
+            _rideTo[k] = targets[k];
+        }
+        if (_accelerator is IMovingBodyAccelerator moving)
+            moving.MovePinned(particles, _rideFrom, _rideTo);
+    }
+
+    /// <summary>The CPU side of <see cref="MovePinned"/>: where the pinned particles are during this substep.</summary>
+    private void RidePinned(int step, int substeps)
+    {
+        if (_riders.Length == 0)
+            return;
+        float t0 = step / (float)substeps, t1 = (step + 1f) / substeps;
+        for (int k = 0; k < _riders.Length; k++)
+        {
+            int i = _riders[k];
+            _previous[i] = Vector3.Lerp(_rideFrom[k], _rideTo[k], t0);
+            Positions[i] = Vector3.Lerp(_rideFrom[k], _rideTo[k], t1);
         }
     }
 
