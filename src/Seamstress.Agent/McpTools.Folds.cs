@@ -61,7 +61,7 @@ public sealed partial class McpToolRegistry
             ("lengthCm", "number", "How far the dart reaches into the piece, square to the edge (default 10)."),
             ("apexX", "number", "Instead of lengthCm: the dart's point, local X in cm."),
             ("apexY", "number", "Instead of lengthCm: the dart's point, local Y in cm.")), "pieceId", "edge"));
-        tools.Add(Tool("add_pleats", "Pleat a stretch of an edge with knife pleats: for each pleat a mountain fold line and a valley fold line run from the edge straight across the piece, and the top of the pleat is tacked (the edge folded under is sewn face to face to the edge it lies on), so the edge comes in by count x 2 x depthCm. For a pleated skirt, pleat the waist edge of each panel before sewing it to a waistband. The edge is split: edges after it are renumbered and a seam on that edge is taken off. Returns the fold line IDs and the depth used (reduced when the pleats would not fit).", Props(
+        tools.Add(Tool("add_pleats", "Pleat a stretch of an edge with knife pleats: for each pleat a mountain fold line and a valley fold line run from the edge straight across the piece, the top of the pleat is tacked (the edge folded under is sewn face to face to the edge it lies on) and the fold is stitched down onto the cloth for stitchDownCm, so the edge comes in by count x 2 x depthCm. For a pleated skirt, pleat the waist edge of each panel before sewing the sides; stitched down, the pleats hold the skirt up without a waistband. The edge is split: edges after it are renumbered and a seam on that edge is taken off. Returns the fold line IDs and the depth used (reduced when the pleats would not fit).", Props(
             ("pieceId", "string", "The piece to pleat."),
             ("edge", "edge", "Edge to pleat along: its 0-based number or its name."),
             ("count", "integer", "How many pleats (default 4)."),
@@ -70,7 +70,8 @@ public sealed partial class McpToolRegistry
             ("toCm", "number", "Where it ends (default: the end of the edge)."),
             ("foldAngle", "number", "How far each fold turns, in degrees (default 170: pressed nearly flat)."),
             ("strengthPercent", "number", "How firmly the folds hold, 0-100 (default 80)."),
-            ("tack", "boolean", "Sew the top of each pleat shut (default true).")), "pieceId", "edge"));
+            ("tack", "boolean", "Sew the top of each pleat shut (default true)."),
+            ("stitchDownCm", "number", "Stitch each pleat's fold down onto the cloth this far from the edge (default 8; 0 = tacked at the edge only). Below the stitching the pleats open. Stitched down, the pleats carry a skirt's weight; tacked at the edge only, a pleated skirt needs a waistband.")), "pieceId", "edge"));
         return tools;
     }
 
@@ -195,13 +196,16 @@ public sealed partial class McpToolRegistry
         float to = Math.Clamp(OptFloat(args, "toCm", length), 0, length) / length;
         var result = _session.Workspace.AddPleats(piece.Id, edge, from, to, OptInt(args, "count", PatternEditor.DefaultPleatCount),
             OptFloat(args, "depthCm", PatternEditor.DefaultPleatDepth), OptFloat(args, "foldAngle", PatternFolds.DefaultPleatFoldAngle),
-            Math.Clamp(OptFloat(args, "strengthPercent", PatternFolds.DefaultPleatStrength * 100), 0, 100) / 100f, OptBool(args, "tack", true));
+            Math.Clamp(OptFloat(args, "strengthPercent", PatternFolds.DefaultPleatStrength * 100), 0, 100) / 100f, OptBool(args, "tack", true),
+            OptFloat(args, "stitchDownCm", PatternFolds.DefaultPleatStitchDown));
         return new
         {
             ok = true,
             depthCm = MathF.Round(result.Depth, 2),
             takenInCm = MathF.Round(result.Lines.Count * result.Depth, 2),
             lines = result.Lines.Select(Describe).ToList(),
+            stitchedDownCm = MathF.Round(result.StitchDown, 2),
+            placementLines = result.Placements.Select(l => l.Id).ToList(),
             tackSeams = result.Tacks.Select(t => t.Id).ToList(),
             edgeCount = _session.Doc.FindPiece(piece.Id)!.EdgeCount,
             removedSeams = result.RemovedSeams,

@@ -72,6 +72,8 @@ public static class FoldLines
     {
         if (piece.Drape != null && piece.DrapeKey == mesh.Key && piece.Drape.Length == mesh.VertexCount * 3)
             return;
+        // A pleat folding from flat snaps through itself hard enough to throw the garment off the body: lay it
+        // already folded instead. (Its layers do not collide with each other; see PleatIds.)
         PreFoldPleats(garment, piece, mesh, positions);
         var darts = Darts(garment, piece, mesh);
         if (darts.Count == 0 && !piece.InternalLines.Any(l => l.IsFold))
@@ -135,11 +137,10 @@ public static class FoldLines
     }
 
     /// <summary>
-    /// Lays a flat piece's tacked knife pleats already folded: from each pleat's fold the cloth turns back under
-    /// itself for the pleat's depth, then forward again, and everything beyond moves along by twice the depth. The
-    /// tacks then start closed, so the garment is sewn at the width it will have rather than falling while its
-    /// pleats are still being pulled in. Only the pleats' folds lying square to the edge, as the Pleat tool makes
-    /// them, are folded this way.
+    /// Lays a flat piece's tacked knife pleats already folded: from each
+    /// pleat's fold the cloth turns back under itself for the pleat's depth, then forward again, and everything
+    /// beyond moves along by twice the depth. The tacks then start closed. Only folds lying square to the edge, as
+    /// the Pleat tool makes them, are folded this way.
     /// </summary>
     public static void PreFoldPleats(Garment garment, PatternPiece piece, PieceMesh mesh, Vector3[] positions)
     {
@@ -183,6 +184,41 @@ public static class FoldLines
             var normal = Vector3.TransformNormal(Vector3.UnitZ, rotation);
             positions[i] = position + normal * (inward * layer * depth);
         }
+    }
+
+    /// <summary>
+    /// For each particle of the solver, the pleat whose folded layers it is part of (unique across the solver), or
+    /// -1. A pleat's layers lie folded against each other by design, held in order by its fold lines and its tack;
+    /// cloth-to-cloth contacts between them only fought that (pushing the stack apart and working the garment down
+    /// the body), so the solver leaves pairs within one pleat out.
+    /// </summary>
+    public static int[] PleatIds(IReadOnlyList<ClothPiece> pieces, int particleCount)
+    {
+        int[]? ids = null;
+        for (int pi = 0; pi < pieces.Count; pi++)
+        {
+            var cloth = pieces[pi];
+            if (!cloth.Simulated)
+                continue;
+            var pleats = Pleats(cloth.Source, cloth.Piece);
+            for (int k = 0; k < pleats.Count; k++)
+            {
+                var pleat = pleats[k];
+                var along = Vector2.Normalize(pleat.B - pleat.A);
+                // The layers span from a pleat's depth before its fold (where the fold lies on the cloth) to twice
+                // its depth after it, plus a little for the triangles along the band's edges.
+                float margin = cloth.Source.EffectiveParticleDistance(cloth.Piece);
+                for (int i = 0; i < cloth.Mesh.VertexCount; i++)
+                {
+                    float u = Vector2.Dot(cloth.Mesh.Points[i] - pleat.A, along);
+                    if (u < -pleat.Depth - margin || u > 2 * pleat.Depth + margin)
+                        continue;
+                    ids ??= Enumerable.Repeat(-1, particleCount).ToArray();
+                    ids[cloth.Offset + i] = pi * 4096 + k;
+                }
+            }
+        }
+        return ids ?? Array.Empty<int>();
     }
 
     /// <summary>

@@ -35,6 +35,7 @@ public sealed partial class PatternEditor
 
     private int _pleatCount = DefaultPleatCount;
     private float _pleatDepth = DefaultPleatDepth;
+    private float _pleatStitchDown = PatternFolds.DefaultPleatStitchDown;
     private EdgeRef? _pleatEdge;
     private float _pleatFrom, _pleatTo;
     private bool _pleatDragging;
@@ -102,6 +103,17 @@ public sealed partial class PatternEditor
         set
         {
             _pleatDepth = Math.Clamp(float.IsFinite(value) ? value : DefaultPleatDepth, 0.2f, 100f);
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>How far down from the edge the Pleat tool stitches each pleat shut, in centimetres (0: tacked at the edge only).</summary>
+    public float PleatStitchDown
+    {
+        get => _pleatStitchDown;
+        set
+        {
+            _pleatStitchDown = Math.Clamp(float.IsFinite(value) ? value : PatternFolds.DefaultPleatStitchDown, 0f, 200f);
             Changed?.Invoke();
         }
     }
@@ -414,7 +426,8 @@ public sealed partial class PatternEditor
         copyPiece.InternalLines.Clear();
         try
         {
-            return (piece, PatternFolds.AddPleats(copy, copyPiece, e.Edge, _pleatFrom, _pleatTo, _pleatCount, PleatDepthNow));
+            return (piece, PatternFolds.AddPleats(copy, copyPiece, e.Edge, _pleatFrom, _pleatTo, _pleatCount, PleatDepthNow,
+                stitchDown: _pleatStitchDown));
         }
         catch (ArgumentException ex)
         {
@@ -438,7 +451,8 @@ public sealed partial class PatternEditor
         }
         try
         {
-            var made = _workspace.AddPleats(edge.PieceId, edge.Edge, _pleatFrom, _pleatTo, _pleatCount, p.Result.Depth);
+            var made = _workspace.AddPleats(edge.PieceId, edge.Edge, _pleatFrom, _pleatTo, _pleatCount, p.Result.Depth,
+                stitchDown: _pleatStitchDown);
             string text = Lang.F("Added {0} pleats, {1} deep, to “{2}”.", made.Tacks.Count > 0 ? made.Tacks.Count : made.Lines.Count / 2,
                 LengthText(made.Depth), p.Piece.Name);
             if (made.RemovedSeams > 0)
@@ -488,7 +502,8 @@ public sealed partial class PatternEditor
             return;
         // The settings the tool panel shows.
         sb.Append(inv, $",\"foldTool\":{{\"angle\":{FoldAngle:0.#},\"valley\":{(FoldValley ? "true" : "false")},\"strength\":{FoldStrength:0.###}");
-        sb.Append(inv, $",\"count\":{_pleatCount},\"depth\":{PleatDepthNow:0.###},\"selected\":{(HasSelectedLine ? "true" : "false")}}}");
+        sb.Append(inv, $",\"count\":{_pleatCount},\"depth\":{PleatDepthNow:0.###},\"stitchDown\":{_pleatStitchDown:0.###}");
+        sb.Append(",\"selected\":").Append(HasSelectedLine ? "true" : "false").Append('}');
 
         if (_tool == PatternTool.InternalLine && _lineDraft.Count > 0)
         {

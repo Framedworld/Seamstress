@@ -41,6 +41,13 @@ public partial class AppController
         set { _editor.PleatDepth = (float)value; Notify(); }
     }
 
+    /// <summary>How far down from the edge the Pleat tool stitches each pleat shut, in centimetres (0: only tacked at the edge).</summary>
+    public double PleatStitchDown
+    {
+        get => _editor.PleatStitchDown;
+        set { _editor.PleatStitchDown = (float)value; Notify(); }
+    }
+
     /// <summary>Removes the internal line selected with the Internal Line tool.</summary>
     public void DeleteInternalLine()
     {

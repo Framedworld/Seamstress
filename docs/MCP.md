@@ -61,7 +61,7 @@ step named `Agent: <tool>`.
 | Body | `load_avatar`, `get_avatar_landmarks`, `list_body_profiles`, `save_body_profile`, `load_body_profile`, `step_pose`, `refit_garment_to_body`, `inspect_metahuman_dna` |
 | Garments | `create_garment`, `set_garment` (name, layer, body offset, mesh density, thickness, visibility), `add_template_garment` (fitted tee, trousers, jacket and hoodie cut to the body; trousers take `outseamBackCm` and `hemGirthCm`) |
 | Pieces | `add_piece`, `add_rectangle_piece`, `mirror_piece`, `cut_piece`, `inset_band`, `delete_piece`, `arrange_piece_3d`, `layout_pattern`, `import_mesh_as_pattern` |
-| Shaping inside a piece | `add_internal_line` (a line the mesh follows; with `foldAngle` a fold line: crease, cuff, lapel roll), `set_fold_line`, `delete_internal_line`, `add_dart` (`atCm`, `widthCm`, `lengthCm` or the point), `add_pleats` (knife pleats along an edge: `count`, `depthCm`, `fromCm`, `toCm`) |
+| Shaping inside a piece | `add_internal_line` (a line the mesh follows; with `foldAngle` a fold line: crease, cuff, lapel roll), `set_fold_line`, `delete_internal_line`, `add_dart` (`atCm`, `widthCm`, `lengthCm` or the point), `add_pleats` (knife pleats along an edge: `count`, `depthCm`, `fromCm`, `toCm`, `stitchDownCm`) |
 | Sewing | `sew_edges`, `sew_named`, `auto_sew`, `sew_surface_stitch`, `reverse_seam`, `delete_seam` |
 | Blocks | `add_patch` (patch, pocket, flap; on a piece or centred on a seam), `add_tube` (sleeve, cuff, leg), `add_collar` (stand, gathered cowl, or with `rollCm` a padded roll such as a pushed-down hood), `add_hood`, `add_hardware` (snap, button, rivet, bar, buckle, pen, handle, wrench, custom) |
 | Fabric and look | `set_fabric`, `set_material`, `pin_piece`, `set_creases` |
@@ -86,10 +86,11 @@ way (pattern x = -body x) when you refer to points on it, for example in `add_pa
   project; `set_creases` with `clear` forgets them. In the app: the Pinch tool (G) drags cloth during a live
   simulation, its Grab slider sets how much it takes hold of, and Set Creases (K) keeps the result.
 - **A pleated garment falls off.** `add_pleats` takes the edge in by `takenInCm`; the pleated waist must still be a
-  little smaller than the body (cut it wider by that much, then a few cm snug). Simulate pleated garments with
-  `selfCollision: false` for now: with it on, the folded layers push apart and the garment slides down. `add_dart` and
-  `add_pleats` split the edge they work on, so later edges are renumbered and a seam already on that edge is taken off
-  (the result says so): add darts and pleats before sewing, or sew by name.
+  little smaller than the body (cut it wider by that much, then a few cm snug). The pleats are stitched down
+  `stitchDownCm` (default 8) from the edge, and that band carries the garment: with `stitchDownCm: 0` they are only
+  tacked along the edge, open right below it, and the garment needs a waistband. Pleats drape with or without
+  `selfCollision`. `add_dart` and `add_pleats` split the edge they work on, so later edges are renumbered and a seam
+  already on that edge is taken off (the result says so): add darts and pleats before sewing, or sew by name.
 - **A texture looks huge or tiny.** Use `tileCm`. `repeat` counts repeats across the garment's whole 2D layout, so the
   same number looks different on every garment. The colour multiplies the texture: leave it out to see the texture as
   it is.

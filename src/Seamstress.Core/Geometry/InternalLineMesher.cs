@@ -173,6 +173,59 @@ public static class InternalLineMesher
         return edges;
     }
 
+    /// <summary>
+    /// The vertex pairs that stitch lines together (<see cref="InternalLine.TackLineId"/>): from both lines' starts,
+    /// each vertex of the line within its tack length paired with the vertex of the other line the same distance
+    /// along. The two starts themselves are left out; they lie on the outline, where the edges are sewn.
+    /// </summary>
+    public static List<(int A, int B)> TackPairs(PatternPiece piece, PieceMesh mesh)
+    {
+        var pairs = new List<(int, int)>();
+        int count = Math.Min(piece.InternalLines.Count, mesh.LineChains.Length);
+        for (int l = 0; l < count; l++)
+        {
+            var line = piece.InternalLines[l];
+            if (line.TackLineId == null || line.TackLength <= 0)
+                continue;
+            int other = piece.InternalLines.FindIndex(o => o.Id == line.TackLineId);
+            if (other < 0 || other == l || other >= count)
+                continue;
+            var ca = mesh.LineChains[l];
+            var cb = mesh.LineChains[other];
+            if (ca.Length < 2 || cb.Length < 2)
+                continue;
+            float[] Along(int[] chain)
+            {
+                var s = new float[chain.Length];
+                for (int k = 1; k < chain.Length; k++)
+                    s[k] = s[k - 1] + Vector2.Distance(mesh.Points[chain[k - 1]], mesh.Points[chain[k]]);
+                return s;
+            }
+            var sa = Along(ca);
+            var sb = Along(cb);
+            var used = new HashSet<int>();
+            for (int k = 1; k < ca.Length && sa[k] <= line.TackLength + 1e-3f; k++)
+            {
+                int best = -1;
+                float bestD = float.MaxValue;
+                for (int j = 1; j < cb.Length; j++)
+                {
+                    float d = MathF.Abs(sb[j] - sa[k]);
+                    if (d < bestD)
+                    {
+                        bestD = d;
+                        best = j;
+                    }
+                }
+                float step = sa[k] - sa[k - 1];
+                if (best < 0 || bestD > 0.5f * step + 1e-3f || ca[k] == cb[best] || !used.Add(best))
+                    continue;
+                pairs.Add((ca[k], cb[best]));
+            }
+        }
+        return pairs;
+    }
+
     private static long Key(int a, int b) => a < b ? ((long)a << 32) | (uint)b : ((long)b << 32) | (uint)a;
 
     /// <summary>

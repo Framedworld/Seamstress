@@ -68,13 +68,14 @@ public sealed partial class Workspace
 
     /// <summary>Adds knife pleats along an edge (see <see cref="PatternFolds.AddPleats"/>); throws <see cref="ArgumentException"/> when they do not fit.</summary>
     public PatternFolds.PleatResult AddPleats(string pieceId, int edge, float from, float to, int count, float depth,
-        float foldAngle = PatternFolds.DefaultPleatFoldAngle, float strength = PatternFolds.DefaultPleatStrength, bool tack = true)
+        float foldAngle = PatternFolds.DefaultPleatFoldAngle, float strength = PatternFolds.DefaultPleatStrength, bool tack = true,
+        float stitchDown = PatternFolds.DefaultPleatStitchDown)
     {
         PatternFolds.PleatResult? result = null;
         History.Execute(count == 1 ? Lang.T("Add pleat") : Lang.T("Add pleats"), doc =>
         {
             var garment = doc.GarmentOfPiece(pieceId) ?? throw new ArgumentException(Lang.T("No such piece."));
-            result = PatternFolds.AddPleats(garment, garment.FindPiece(pieceId)!, edge, from, to, count, depth, foldAngle, strength, tack);
+            result = PatternFolds.AddPleats(garment, garment.FindPiece(pieceId)!, edge, from, to, count, depth, foldAngle, strength, tack, stitchDown);
         });
         return result!;
     }

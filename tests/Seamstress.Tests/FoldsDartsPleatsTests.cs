@@ -123,7 +123,8 @@ public class FoldsDartsPleatsTests
 
         var loaded = GarmentFile.Deserialize(GarmentFile.Serialize(doc)).Garments[0];
         var lines = loaded.Pieces[0].InternalLines;
-        Assert.Equal(5, lines.Count);
+        // The roll line, and for each of the two pleats its fold, the fold under it and the line it is stitched to.
+        Assert.Equal(7, lines.Count);
         Assert.Equal("roll line", lines[0].Name);
         Assert.Equal(120, lines[0].FoldAngle, 0.01f);
         Assert.True(lines[0].Valley);
@@ -131,8 +132,12 @@ public class FoldsDartsPleatsTests
         Assert.Equal(new Vector2(20, 2), lines[0].Points[0].Curve);
         Assert.Equal(piece.PointCount, loaded.Pieces[0].PointCount);
         Assert.Equal(2, loaded.Seams.Count(s => s.Folded));
+        var stitched = lines.Where(l => l.TackLineId != null).ToList();
+        Assert.Equal(2, stitched.Count);
+        Assert.All(stitched, l => Assert.Contains(lines, o => o.Id == l.TackLineId));
+        Assert.Equal(PatternFolds.DefaultPleatStitchDown, stitched[0].TackLength, 0.01f);
         // The clone used for undo keeps them too.
-        Assert.Equal(5, doc.Clone().Garments[0].Pieces[0].InternalLines.Count);
+        Assert.Equal(7, doc.Clone().Garments[0].Pieces[0].InternalLines.Count);
     }
 
     /// <summary>A 30 x 12 cm strip with a fold line across its middle, from the bottom edge to the top.</summary>
@@ -234,8 +239,13 @@ public class FoldsDartsPleatsTests
         // Each fold runs from the waist all the way to the hem.
         Assert.All(result.Lines, l => Assert.Equal(40f, l.Length(), 0.05f));
 
+        Assert.Equal(4, result.Placements.Count);
+        Assert.Equal(PatternFolds.DefaultPleatStitchDown, result.StitchDown, 0.01f);
         var gm = Mesher.Build(garment);
         var mesh = gm.Pieces[0];
+        // Besides each tack along the edge, every fold is stitched to its placement line down to 8 cm.
+        int edgeTacks = result.Tacks.Sum(t => mesh.EdgeChains[t.A.Edge].Length - 1);
+        Assert.True(gm.Stitches.Count(s => s.Folded) >= edgeTacks + 4 * 4, $"{gm.Stitches.Count(s => s.Folded)} folded stitches");
         var positions = Simulate(garment, 500);
         float gap = gm.Stitches.Max(s => Vector3.Distance(positions[s.VertexA], positions[s.VertexB]));
         Assert.True(gap < 0.01f, $"pleat tack left open by {gap * 100:0.0} cm");
@@ -249,9 +259,9 @@ public class FoldsDartsPleatsTests
         }
         // And the folds are pressed: across each fold line the cloth turns right back.
         var bent = 0;
-        for (int l = 0; l < piece.InternalLines.Count; l++)
+        foreach (var foldLine in result.Lines)
         {
-            var chain = mesh.LineChains[l];
+            var chain = mesh.LineChains[piece.InternalLines.IndexOf(foldLine)];
             int mid = chain[chain.Length / 2];
             // Neighbours a couple of centimetres either side of the fold, across it.
             var p = mesh.Points[mid];
@@ -315,7 +325,97 @@ public class FoldsDartsPleatsTests
         Assert.Contains(session.Doc.Garments[0].Seams, s => s.A.Matches(id, 6) || s.B.Matches(id, 6));
 
         Call("add_pleats", $"{{\"pieceId\":\"{id}\",\"edge\":0,\"count\":3,\"depthCm\":2}}");
-        Assert.Equal(6, front.InternalLines.Count);
+        Assert.Equal(9, front.InternalLines.Count); // fold, under and placement line for each pleat
         Assert.Equal(3, session.Doc.Garments[0].Seams.Count(s => s.Folded));
+    }
+
+    private static readonly Lazy<Avatar> Mannequin = new(Avatar.CreateMannequin);
+
+    /// <summary>
+    /// A wool skirt drafted on the mannequin through the agent tools: front and back panels, their waists
+    /// 2 x <paramref name="waistHalfCm"/> wide with five 2.5 cm knife pleats (stitched down, the default), sewn at
+    /// the sides. The pleats take the waist in by 25 cm.
+    /// </summary>
+    private static Document PleatedSkirt(float waistHalfCm)
+    {
+        var session = new GarmentSession();
+        var tools = new McpToolRegistry(session);
+        void Call(string name, object args)
+        {
+            using var json = JsonDocument.Parse(JsonSerializer.Serialize(args));
+            tools.Dispatch(name, json.RootElement);
+        }
+        Call("new_project", new { name = "Pleated skirt" });
+        Call("create_garment", new { name = "Pleated skirt", particleDistance = 1.2 });
+        string garmentId = session.Doc.Garments[0].Id;
+        string Panel(string side)
+        {
+            var points = new object[]
+            {
+                new { x = -45, y = 47, edge = "hem" }, new { x = 45, y = 47, edge = "side_l" }, new { x = 36, y = 85, edge = "hip_l" },
+                new { x = waistHalfCm, y = 102, edge = "waist" }, new { x = -waistHalfCm, y = 102, edge = "hip_r" }, new { x = -36, y = 85, edge = "side_r" },
+            };
+            Call("add_piece", new { garmentId, name = "Skirt " + side, points, drawnOn = side, depthCm = 16, preset = "Wool" });
+            string id = session.Doc.Garments[0].Pieces[^1].Id;
+            Call("add_pleats", new { pieceId = id, edge = "waist", count = 5, depthCm = 2.5, fromCm = 3, toCm = 2 * waistHalfCm - 3 });
+            return id;
+        }
+        string front = Panel("front"), back = Panel("back");
+        Call("sew_named", new { pieceAId = front, pieceBId = back, names = new[] { "side_l", "side_r", "hip_l", "hip_r" } });
+        Call("set_fabric", new { garmentId, preset = "Wool", stretch = 94, shear = 70, bend = 45 });
+        return session.Doc;
+    }
+
+    /// <summary>Drapes the skirt from flat on the mannequin: the highest point of the cloth after 200 frames, and the widest seam gap.</summary>
+    private static (float Top, float Gap) Drape(Document doc, bool selfCollision, bool gpu)
+    {
+        var garment = doc.Garments[0];
+        var mesh = Mesher.Build(garment);
+        var settings = doc.Simulation.Clone();
+        settings.SelfCollision = selfCollision;
+        bool before = ClothAcceleration.Enabled;
+        ClothAcceleration.Enabled = gpu;
+        try
+        {
+            using var solver = ClothSolver.Create(new[] { mesh }, Array.Empty<GarmentMesh>(), Mannequin.Value.Sdf, settings);
+            for (int f = 0; f < 200; f++)
+                solver.Step();
+            return (solver.Positions.Take(mesh.VertexCount).Max(p => p.Y), solver.SeamGap);
+        }
+        finally
+        {
+            ClothAcceleration.Enabled = before;
+        }
+    }
+
+    // The mannequin's waist is at 1.04 m and its hips at 0.87 m; a skirt that slips past them ends on the floor.
+    // Skirts like these used to: a pleat tacked only along the edge opens below it, so that one row of stitches held
+    // the whole skirt and stretched over the hips, and with cloth collision the pleat's own layers pushed each other
+    // apart. Whether one fell depended on where its pleats happened to lie, so several waists are tried.
+    [Theory]
+    [InlineData(27f, true)]
+    [InlineData(27f, false)]
+    [InlineData(28.5f, true)]
+    [InlineData(28.5f, false)]
+    [InlineData(30f, true)]
+    [InlineData(30f, false)]
+    public void APleatedSkirtStaysAtTheWaistWithOrWithoutClothCollision(float waistHalfCm, bool selfCollision)
+    {
+        var (top, gap) = Drape(PleatedSkirt(waistHalfCm), selfCollision, gpu: false);
+        Assert.True(gap < 0.01f, $"seams left {gap * 100:0.0} cm open");
+        Assert.True(top > 0.95f, $"the skirt slid down to {top:0.00} m");
+    }
+
+    [Fact]
+    public void APleatedSkirtStaysAtTheWaistOnTheGpuWithClothCollision()
+    {
+        if (!Seamstress.Cuda.CudaClothBackend.Register())
+            return; // no CUDA device here
+        foreach (float waist in new[] { 27f, 28.5f, 30f })
+        {
+            var (top, gap) = Drape(PleatedSkirt(waist), true, gpu: true);
+            Assert.True(gap < 0.01f, $"waist {waist}: seams left {gap * 100:0.0} cm open");
+            Assert.True(top > 0.95f, $"waist {waist}: the skirt slid down to {top:0.00} m");
+        }
     }
 }

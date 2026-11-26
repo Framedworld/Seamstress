@@ -52,6 +52,7 @@ public sealed partial class ClothSolver : IDisposable
     private int[] _ca = Array.Empty<int>(), _cb = Array.Empty<int>();
     private float[] _rest = Array.Empty<float>(), _compliance = Array.Empty<float>();
     private int[] _sa = Array.Empty<int>(), _sb = Array.Empty<int>();
+    private int[] _pleatOf = Array.Empty<int>(); // the pleat each particle's cloth is folded into, or -1; see FoldLines.PleatIds
     private int[] _ha = Array.Empty<int>(), _hb = Array.Empty<int>(); // bending across seams
     private float[] _hrest = Array.Empty<float>(), _hcompliance = Array.Empty<float>();
     private Vector3[] _pieceShift = Array.Empty<Vector3>();
@@ -504,6 +505,7 @@ public sealed partial class ClothSolver : IDisposable
         solver._hcompliance = hcompliance.ToArray();
         solver._sa = sa.ToArray();
         solver._sb = sb.ToArray();
+        solver._pleatOf = FoldLines.PleatIds(pieces, totalCount);
         solver._openStitchBytes = new byte[totalCount];
         solver.TryAttachAccelerator(garmentCount, pieces.Count);
         return solver;

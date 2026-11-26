@@ -169,6 +169,16 @@ public sealed partial class ClothSolver
         _hemRest = hemRest.ToArray();
     }
 
+    /// <summary>True when the particle and the triangle are layers of the same pleat (see FoldLines.PleatIds).</summary>
+    private bool SamePleat(int particle, int triangle)
+    {
+        if (_pleatOf.Length == 0)
+            return false;
+        int pleat = _pleatOf[particle];
+        return pleat >= 0 && _pleatOf[_tris[3 * triangle]] == pleat && _pleatOf[_tris[3 * triangle + 1]] == pleat
+            && _pleatOf[_tris[3 * triangle + 2]] == pleat;
+    }
+
     private bool AreNeighbours(int particle, int triangle)
     {
         var near = _near[_weld[particle]];
@@ -329,6 +339,8 @@ public sealed partial class ClothSolver
                     continue;
 
                 if (triPiece[t] == pPiece && Vector2.DistanceSquared(triRest[t], pRest) < samePieceSq)
+                    continue;
+                if (SamePleat(p, t))
                     continue;
 
                 int t3 = 3 * t;
@@ -514,6 +526,8 @@ public sealed partial class ClothSolver
                     if (j == i || (moving[j] && j < i))
                         continue;
                     if (piece1 == _hemPiece[j] && Vector2.DistanceSquared(_hemRest[i], _hemRest[j]) < samePieceSq)
+                        continue;
+                    if (_pleatOf.Length > 0 && _pleatOf[_hemA[i]] >= 0 && _pleatOf[_hemA[i]] == _pleatOf[_hemA[j]])
                         continue;
                     int a2 = _hemA[j], b2 = _hemB[j];
                     if (_weld[a1] == _weld[a2] || _weld[a1] == _weld[b2] || _weld[b1] == _weld[a2] || _weld[b1] == _weld[b2])

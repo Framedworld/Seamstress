@@ -12,11 +12,22 @@ public static class PatternFolds
 {
     public const float DefaultPleatFoldAngle = 170f;
     public const float DefaultPleatStrength = 0.8f;
+
+    /// <summary>
+    /// How far down from the edge each pleat is stitched shut unless told otherwise (cm). Below a tack along the edge
+    /// alone a pleat opens under the slightest pull, so the edge's single row of stitches carried the whole garment
+    /// and stretched until a pleated skirt slid off the hips; stitched down, a band of cloth carries it.
+    /// </summary>
+    public const float DefaultPleatStitchDown = 8f;
     public const int MaxPleats = 40;
 
     public sealed record DartResult(Seam Seam, int LegA, int LegB, int RemovedSeams);
 
-    public sealed record PleatResult(List<InternalLine> Lines, List<Seam> Tacks, float Depth, int RemovedSeams);
+    /// <summary>
+    /// <see cref="Lines"/> are the fold lines (each pleat's mountain fold, then its valley fold); <see cref="Placements"/>
+    /// are the lines each fold is stitched down onto, when the pleats are stitched down.
+    /// </summary>
+    public sealed record PleatResult(List<InternalLine> Lines, List<Seam> Tacks, float Depth, int RemovedSeams, List<InternalLine> Placements, float StitchDown);
 
     /// <summary>True when a local point is on the cloth: inside the outline and in none of the holes.</summary>
     public static bool OnCloth(PatternPiece piece, Vector2 local)
@@ -219,11 +230,12 @@ public static class PatternFolds
     /// Adds knife pleats along an edge, between <paramref name="from"/> and <paramref name="to"/> (fractions of the
     /// edge's length): <paramref name="count"/> pleats, each folding <paramref name="depth"/> centimetres of cloth
     /// under. Each pleat is a mountain fold line and a valley fold line running from the edge across the piece; with
-    /// <paramref name="tack"/> its top is sewn shut, so the fold sits on the cloth beside it. The depth is reduced
+    /// <paramref name="tack"/> its top is sewn shut, so the fold sits on the cloth beside it, and with
+    /// <paramref name="stitchDown"/> the fold is stitched onto the cloth that far down from the edge. The depth is reduced
     /// when the pleats would not fit; the result gives the depth used.
     /// </summary>
     public static PleatResult AddPleats(Garment garment, PatternPiece piece, int edge, float from, float to, int count, float depth,
-        float foldAngle = DefaultPleatFoldAngle, float strength = DefaultPleatStrength, bool tack = true)
+        float foldAngle = DefaultPleatFoldAngle, float strength = DefaultPleatStrength, bool tack = true, float stitchDown = DefaultPleatStitchDown)
     {
         if (edge < 0 || edge >= piece.EdgeCount)
             throw new ArgumentException(Lang.T("No such edge."));
@@ -249,15 +261,17 @@ public static class PatternFolds
             marks.Add((s / length, (s + depth) / length, (s + 2 * depth) / length));
         }
         // The folds run across the piece from the edge, square to it, as the edge is now.
-        var folds = marks.Select(m => (Fold: Across(piece, edge, m.Fold), Under: Across(piece, edge, m.Under))).ToList();
-        if (folds.Any(f => f.Fold == null || f.Under == null))
+        var folds = marks.Select(m => (Fold: Across(piece, edge, m.Fold), Under: Across(piece, edge, m.Under), Settle: Across(piece, edge, m.Settle))).ToList();
+        if (folds.Any(f => f.Fold == null || f.Under == null || f.Settle == null))
             throw new ArgumentException(Lang.T("The pleats have to run across the piece from the edge."));
 
         var made = SplitEdge(garment, piece, edge, marks.SelectMany(m => new[] { m.Fold, m.Under, m.Settle }).ToList(), out int removed);
         if (made.Length != 3 * count)
             throw new ArgumentException(Lang.T("The pleats are too close together."));
         var lines = new List<InternalLine>();
+        var placements = new List<InternalLine>();
         var tacks = new List<Seam>();
+        stitchDown = tack && float.IsFinite(stitchDown) ? Math.Max(0, stitchDown) : 0;
         for (int i = 0; i < count; i++)
         {
             var fold = InternalLine.Straight(folds[i].Fold!.Value.A, folds[i].Fold!.Value.B, foldAngle, false, strength);
@@ -275,9 +289,19 @@ public static class PatternFolds
                 garment.Seams.Add(seam);
                 tacks.Add(seam);
             }
+            if (stitchDown > 0)
+            {
+                // Stitched down: the fold is sewn onto the line where it comes to rest, from the edge down.
+                var settle = InternalLine.Straight(folds[i].Settle!.Value.A, folds[i].Settle!.Value.B);
+                settle.Name = Lang.F("Pleat {0} placement", i + 1);
+                fold.TackLineId = settle.Id;
+                fold.TackLength = MathF.Min(stitchDown, 0.5f * Math.Min(fold.Length(), settle.Length()));
+                piece.InternalLines.Add(settle);
+                placements.Add(settle);
+            }
         }
         piece.ClearDrape();
-        return new PleatResult(lines, tacks, depth, removed);
+        return new PleatResult(lines, tacks, depth, removed, placements, placements.Count > 0 ? lines[0].TackLength : 0);
     }
 
     /// <summary>The line from the edge at a fraction along it straight into the piece, to where it leaves the cloth.</summary>

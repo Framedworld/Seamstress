@@ -5,7 +5,7 @@ namespace Seamstress.Core.IO;
 
 // Internal lines (fold lines, pleat folds, plain lines the mesh follows) in the garment file:
 //   "internalLines": [ { "id": "...", "points": [ { "at": [x, y] }, ... ], "foldAngle": 170, "valley": true,
-//                        "foldStrength": 0.7, "name": "..." } ]
+//                        "foldStrength": 0.7, "name": "...", "tackTo": "<line id>", "tackLength": 8 } ]
 // Points are written like outline points; "curve" bends the stretch to the next point.
 public static partial class GarmentFile
 {
@@ -24,6 +24,11 @@ public static partial class GarmentFile
                 if (line.Valley)
                     parts.Add("\"valley\": true");
                 parts.Add($"\"foldStrength\": {N(line.FoldStrength)}");
+            }
+            if (line.TackLineId != null && line.TackLength > 0)
+            {
+                parts.Add($"\"tackTo\": {Quote(line.TackLineId)}");
+                parts.Add($"\"tackLength\": {N(line.TackLength)}");
             }
             return "{ " + string.Join(", ", parts) + " }";
         }), 6));
@@ -44,6 +49,8 @@ public static partial class GarmentFile
             line.FoldAngle = Math.Clamp(Finite(Num(l, "foldAngle", 0), 0), 0, InternalLine.MaxFoldAngle);
             line.Valley = Bool(l, "valley", false);
             line.FoldStrength = Math.Clamp(Finite(Num(l, "foldStrength", InternalLine.DefaultFoldStrength), InternalLine.DefaultFoldStrength), 0, 1);
+            line.TackLineId = Str(l, "tackTo");
+            line.TackLength = Math.Max(0, Finite(Num(l, "tackLength", 0), 0));
             piece.InternalLines.Add(line);
         }
     }

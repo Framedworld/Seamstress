@@ -533,7 +533,7 @@ QtObject {
         App.pleatCount = 3
         App.pleatDepth = 2
         drag(52, 40.3, 8, 40.3)
-        check("three pleats along the top", folds().length === 1 + 6 && scene().seams.length === 1 + 3
+        check("three pleats along the top, stitched down", folds().length === 1 + 9 && scene().seams.length === 1 + 3
               && folds().slice(1).filter(l => l.valley).length === 3 && App.undoText === "Undo Add pleats")
         App.tool = "Select"
 

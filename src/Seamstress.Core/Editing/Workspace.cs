@@ -115,6 +115,17 @@ public sealed partial class Workspace
                 hash.Add(point.Position);
                 hash.Add(point.Curve);
             }
+            // The mesh follows internal lines too.
+            foreach (var line in piece.InternalLines)
+            {
+                hash.Add(line.TackLineId);
+                hash.Add(line.TackLength);
+                foreach (var point in line.Points)
+                {
+                    hash.Add(point.Position);
+                    hash.Add(point.Curve);
+                }
+            }
         }
         foreach (var seam in garment.Seams)
         {
@@ -123,6 +134,7 @@ public sealed partial class Workspace
             hash.Add(seam.B.PieceId);
             hash.Add(seam.B.Edge);
             hash.Add(seam.Reversed);
+            hash.Add(seam.Folded);
         }
         return $"{garment.Pieces.Count}:{garment.Seams.Count}:{hash.ToHashCode()}";
     }

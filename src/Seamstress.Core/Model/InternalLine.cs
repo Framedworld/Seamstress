@@ -41,6 +41,15 @@ public sealed class InternalLine
     /// <summary>How firmly the fold holds its angle, 0 (as stiff as the fabric anyway) to 1 (pressed hard).</summary>
     public float FoldStrength { get; set; } = DefaultFoldStrength;
 
+    /// <summary>
+    /// Another line of the same piece this one is stitched to, from both their starts for <see cref="TackLength"/>
+    /// centimetres: a pleat stitched down from the waist, its fold sewn onto the line it lies on. Null for none.
+    /// </summary>
+    public string? TackLineId { get; set; }
+
+    /// <summary>How far down from their starts this line and <see cref="TackLineId"/> are stitched together (cm).</summary>
+    public float TackLength { get; set; }
+
     public bool IsFold => FoldAngle > 0.5f;
 
     public InternalLine Clone() => new()
@@ -51,6 +60,8 @@ public sealed class InternalLine
         FoldAngle = FoldAngle,
         Valley = Valley,
         FoldStrength = FoldStrength,
+        TackLineId = TackLineId,
+        TackLength = TackLength,
     };
 
     /// <summary>A straight line from <paramref name="a"/> to <paramref name="b"/>.</summary>

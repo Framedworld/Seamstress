@@ -220,6 +220,23 @@ Item {
                     onEdited: (v) => App.pleatDepth = v * panel.unit
                 }
                 Label { text: App.imperial ? "in" : "cm"; opacity: 0.6 }
+                Label {
+                    text: overlay.tr("Stitched down")
+                    ToolTip.visible: stitchMouse.containsMouse
+                    ToolTip.delay: 500
+                    ToolTip.text: overlay.tr("How far down from the edge each pleat is sewn shut. Below that the pleats open. 0 only tacks them at the edge; the garment then needs a waistband to hold it up.")
+                    MouseArea { id: stitchMouse; anchors.fill: parent; hoverEnabled: true }
+                }
+                NumberField {
+                    Layout.fillWidth: true
+                    implicitHeight: 26
+                    padding: 3
+                    live: true
+                    from: 0; decimals: 1; step: App.imperial ? 0.5 : 1
+                    value: panel.tool && panel.tool.stitchDown !== undefined ? panel.tool.stitchDown / panel.unit : 8
+                    onEdited: (v) => App.pleatStitchDown = v * panel.unit
+                }
+                Label { text: App.imperial ? "in" : "cm"; opacity: 0.6 }
             }
             Button {
                 visible: panel.lineTool && panel.tool !== undefined && panel.tool.selected

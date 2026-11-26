@@ -188,6 +188,13 @@ public static class Mesher
             }
         }
 
+        // Lines stitched together inside a piece (pleats stitched down), sewn face to face like a pleat's tack.
+        for (int i = 0; i < pieces.Count; i++)
+        {
+            foreach (var (a, b) in InternalLineMesher.TackPairs(pieces[i], meshes[i]))
+                stitches.Add(new Stitch(i, a, i, b, true));
+        }
+
         return new GarmentMesh { Garment = garment, Pieces = meshes, Stitches = stitches };
     }
 

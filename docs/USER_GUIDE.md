@@ -435,15 +435,18 @@ edge is split where the legs meet it. A seam on that edge is taken off, because 
 sew the new edges again.
 
 **Pleats.** Pick **Pleat** (**Y**) and drag along an edge over the stretch you want pleated. The tool's panel sets how
-many pleats there are and how deep each one is (how much cloth it folds under); pulling the pointer into the piece
-while you drag sets the depth too. The preview shows the folds before you let go. Each pleat is a knife pleat: a
-mountain fold and a valley fold running straight across the piece from the edge, with the top of the pleat sewn shut
-(tacked), so the edge comes in by twice the depth for each pleat. Pleat a skirt panel's waist before sewing it to a
-waistband: the waist must still fit the body once the pleats take it in.
+many pleats there are, how deep each one is (how much cloth it folds under) and how far down they are **stitched**;
+pulling the pointer into the piece while you drag sets the depth too. The preview shows the folds before you let go.
+Each pleat is a knife pleat: a mountain fold and a valley fold running straight across the piece from the edge, its
+top sewn shut, so the edge comes in by twice the depth for each pleat. Each fold is also stitched onto the cloth it
+lies on, 8 cm down from the edge unless you change it; below that the pleats open and swing. The stitching is what
+carries a pleated skirt: set it to 0 and the pleats are only tacked along the edge, and the garment then needs a
+waistband to stay up. Pleat a skirt panel's waist before sewing it at the sides: the waist must still fit the body
+once the pleats take it in.
 
-A flat pleated piece starts its simulation already folded, so the tacks begin closed. For now, simulate pleated
-garments with **Cloth-to-cloth collision** off: with it on, the folded layers push each other apart and the garment
-can slide off the body.
+A flat pleated piece starts its simulation already folded, so its stitching begins closed. Pleats drape with or
+without **Cloth-to-cloth collision**; the layers of one pleat are folded against each other on purpose, so they do
+not collide with each other.
 
 ---
 
